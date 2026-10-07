@@ -1,0 +1,294 @@
+import { sb, api, $, $$, money, esc, hhmm, dayLabel, localToISO, todayLocal, toast } from "./common.js";
+import { openPayphone } from "./payphone.js";
+
+const state = { cfg: null, cats: [], products: [], cart: new Map(), filter: "Todo", loc: null, quote: null };
+const CART_KEY = "tbs_cart";
+const PROFILE_KEY = "tbs_cliente";
+
+// ---------- carga inicial ----------
+async function init() {
+  try {
+    const [cfg, cats, prods] = await Promise.all([
+      api("config"),
+      sb.from("categories").select("id,name,sort").eq("active", true).order("sort"),
+      sb.from("products").select("id,category_id,name,description,price,prep_minutes,lead_hours,image_url,sort").eq("active", true).order("sort"),
+    ]);
+    if (cats.error) throw cats.error;
+    if (prods.error) throw prods.error;
+    state.cfg = cfg; state.cats = cats.data; state.products = prods.data;
+  } catch (e) {
+    $("#menu").innerHTML = `<p class="err">No pudimos cargar el menú. ${esc(e.message)}</p>`;
+    return;
+  }
+  const c = state.cfg;
+  $("#hoursTxt").textContent = `${c.open_time} a ${c.close_time}`;
+  $("#openTxt").textContent = c.open_now ? "Abierto ahora" : (c.store_open ? "Fuera de horario · agenda tu pedido" : "Cerrado temporalmente");
+  $("#openPill").classList.toggle("closed", !c.open_now);
+  try { JSON.parse(localStorage.getItem(CART_KEY) || "[]").forEach(([id, q]) => state.products.some((p) => p.id === id) && state.cart.set(id, q)); } catch {}
+  renderCats(); renderMenu(); renderCart();
+}
+
+// ---------- menú ----------
+function renderCats() {
+  const names = ["Todo", ...state.cats.map((c) => c.name)];
+  $("#cats").innerHTML = names.map((n) => `<button type="button" aria-pressed="${n === state.filter}" data-cat="${esc(n)}">${esc(n)}</button>`).join("");
+}
+$("#cats").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-cat]"); if (!b) return;
+  state.filter = b.dataset.cat; renderCats(); renderMenu();
+});
+
+function itemCard(p) {
+  const q = state.cart.get(p.id) || 0;
+  const img = p.image_url ? `<img src="${esc(p.image_url)}" alt="${esc(p.name)}" loading="lazy">` : `<span class="can" aria-hidden="true">${esc(p.name.split(" ").map((w) => w[0]).join("").slice(0, 2))}</span>`;
+  const ctrl = q
+    ? `<div class="qty"><button type="button" data-a="-" data-id="${p.id}" aria-label="Quitar uno">−</button><span>${q}</span><button type="button" data-a="+" data-id="${p.id}" aria-label="Agregar uno">+</button></div>`
+    : `<button class="btn small" type="button" data-a="+" data-id="${p.id}">Agregar</button>`;
+  const lead = p.lead_hours ? `<span class="small" style="color:var(--aviso)">Pedir con ${p.lead_hours} h de anticipación</span>` : "";
+  return `<article class="item"><div class="ph">${img}</div><div class="body"><h3>${esc(p.name)}</h3><p>${esc(p.description)}</p>${lead}<div class="foot"><span class="price">${money(p.price)}</span>${ctrl}</div></div></article>`;
+}
+function renderMenu() {
+  const groups = state.cats
+    .filter((c) => state.filter === "Todo" || c.name === state.filter)
+    .map((c) => ({ c, items: state.products.filter((p) => p.category_id === c.id) }))
+    .filter((g) => g.items.length);
+  $("#menu").innerHTML = groups.length
+    ? groups.map((g) => `<h3 class="cat-title">${esc(g.c.name)}</h3><div class="menu-grid">${g.items.map(itemCard).join("")}</div>`).join("")
+    : `<p class="muted">Pronto publicaremos el menú.</p>`;
+}
+$("#menu").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-a]"); if (!b) return;
+  changeQty(Number(b.dataset.id), b.dataset.a === "+" ? 1 : -1);
+});
+function changeQty(id, d) {
+  const q = (state.cart.get(id) || 0) + d;
+  if (q <= 0) state.cart.delete(id); else state.cart.set(id, Math.min(q, 50));
+  try { localStorage.setItem(CART_KEY, JSON.stringify([...state.cart])); } catch {}
+  renderMenu(); renderCart(); if (state.loc) requestQuote();
+}
+
+// ---------- carrito ----------
+const cartItems = () => [...state.cart].map(([product_id, quantity]) => ({ product_id, quantity }));
+const product = (id) => state.products.find((p) => p.id === id);
+const subtotal = () => [...state.cart].reduce((s, [id, q]) => s + Number(product(id).price) * q, 0);
+
+function renderCart() {
+  const lines = [...state.cart].map(([id, q]) => {
+    const p = product(id);
+    return `<div class="line"><span>${q} × ${esc(p.name)}</span><span class="tabnum">${money(p.price * q)}</span></div>`;
+  });
+  const n = [...state.cart.values()].reduce((a, b) => a + b, 0);
+  $("#cartLines").innerHTML = lines.length
+    ? lines.join("") + `<div class="line total"><span>Subtotal</span><span class="tabnum">${money(subtotal())}</span></div><p class="muted small">El envío se calcula con tu ubicación.</p>`
+    : `<p class="muted">Agrega productos del menú para empezar.</p>`;
+  $("#goCheckout").disabled = !n;
+  $("#mbCount").textContent = n; $("#mbTotal").textContent = money(subtotal());
+  $("#mobileBar").hidden = !n || !$("#checkout").hidden;
+  renderSummary();
+}
+$("#mbOpen").onclick = () => $("#cart").classList.add("open");
+$("#closeCart").onclick = () => $("#cart").classList.remove("open");
+$("#goCheckout").onclick = openCheckout;
+$("#backToMenu").onclick = () => {
+  $("#checkout").hidden = true; $(".layout").hidden = false; $(".intro").hidden = false; renderCart(); scrollTo(0, 0);
+};
+
+// ---------- checkout ----------
+let map, marker;
+function openCheckout() {
+  $("#cart").classList.remove("open");
+  $(".layout").hidden = true; $(".intro").hidden = true; $("#checkout").hidden = false; $("#mobileBar").hidden = true;
+  scrollTo(0, 0);
+  const c = state.cfg;
+  // cuándo
+  $("#whenNow").disabled = !c.open_now;
+  $("#nowHint").textContent = c.open_now ? "Te mostramos la hora estimada" : `Ahora no: pedidos de ${c.open_time} a ${c.close_time}`;
+  const needLead = [...state.cart.keys()].some((id) => product(id).lead_hours > 0);
+  if (needLead) { $("#whenNow").disabled = true; $("#nowHint").textContent = "Tu pedido necesita agendarse"; }
+  ($("#whenNow").disabled ? $("#whenLater") : $("#whenNow")).checked = true;
+  syncWhen(); fillDates();
+  // pago
+  $("#payCard").disabled = !c.card_enabled;
+  if (!c.card_enabled) $("#cardHint").textContent = "Disponible muy pronto";
+  ($("#payCard").disabled ? $("#payTransfer") : $("#payCard")).checked = true;
+  $("#bankInfo").textContent = c.bank_info || "Escríbenos por WhatsApp para recibir los datos de la cuenta.";
+  syncPay();
+  // datos guardados del cliente
+  try { const p = JSON.parse(localStorage.getItem(PROFILE_KEY) || "{}"); for (const k of ["cName", "cPhone", "address", "reference"]) if (p[k] && !$("#" + k).value) $("#" + k).value = p[k]; if (p.lat && !state.loc) state.loc = { lat: p.lat, lng: p.lng }; } catch {}
+  setupMap();
+  renderSummary();
+}
+
+function syncWhen() { $("#scheduleBox").hidden = !$("#whenLater").checked; renderSummary(); }
+$$('input[name="when"]').forEach((r) => r.addEventListener("change", syncWhen));
+
+function maxLeadHours() { return Math.max(0, ...[...state.cart.keys()].map((id) => product(id).lead_hours)); }
+function fillDates() {
+  const opts = [];
+  for (let i = 0; i < 14; i++) {
+    const d = todayLocal(i);
+    if (timesFor(d).length) opts.push(`<option value="${d}">${i === 0 ? "Hoy" : i === 1 ? "Mañana" : new Date(d + "T12:00:00-05:00").toLocaleDateString("es-EC", { weekday: "long", day: "numeric", month: "short", timeZone: "America/Guayaquil" })}</option>`);
+  }
+  $("#schedDate").innerHTML = opts.join("");
+  fillTimes();
+}
+function timesFor(date) {
+  const c = state.cfg, [oh, om] = c.open_time.split(":").map(Number), [ch, cm] = c.close_time.split(":").map(Number);
+  const earliest = Date.now() + Math.max(60 * 60000, maxLeadHours() * 3600000);
+  const out = [];
+  for (let m = oh * 60 + om; m <= ch * 60 + cm; m += c.slot_minutes) {
+    const t = `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+    if (new Date(localToISO(date, t)).getTime() >= earliest) out.push(t);
+  }
+  return out;
+}
+function fillTimes() {
+  const ts = timesFor($("#schedDate").value);
+  $("#schedTime").innerHTML = ts.map((t) => `<option value="${t}">${t}</option>`).join("");
+  renderSummary();
+}
+$("#schedDate").addEventListener("change", fillTimes);
+$("#schedTime").addEventListener("change", renderSummary);
+
+// ---------- mapa ----------
+function setupMap() {
+  if (map) { setTimeout(() => map.invalidateSize(), 50); return; }
+  const k = state.cfg.kitchen?.lat ? [state.cfg.kitchen.lat, state.cfg.kitchen.lng] : [-2.17, -79.9];
+  map = L.map("map", { zoomControl: true }).setView(state.loc ? [state.loc.lat, state.loc.lng] : k, state.loc ? 17 : 13);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(map);
+  map.on("click", (e) => setLoc(e.latlng.lat, e.latlng.lng, true));
+  if (state.loc) setLoc(state.loc.lat, state.loc.lng, false);
+  setTimeout(() => map.invalidateSize(), 50);
+}
+function setLoc(lat, lng, reverse) {
+  state.loc = { lat, lng };
+  if (!marker) {
+    marker = L.marker([lat, lng], { draggable: true }).addTo(map);
+    marker.on("dragend", () => { const p = marker.getLatLng(); setLoc(p.lat, p.lng, true); });
+  } else marker.setLatLng([lat, lng]);
+  requestQuote();
+  if (reverse && !$("#address").value.trim()) reverseGeocode(lat, lng);
+}
+$("#locateMe").onclick = () => {
+  if (!navigator.geolocation) return toast("Tu navegador no permite compartir ubicación.");
+  $("#locateMe").disabled = true;
+  navigator.geolocation.getCurrentPosition(
+    (p) => { $("#locateMe").disabled = false; map.setView([p.coords.latitude, p.coords.longitude], 18); setLoc(p.coords.latitude, p.coords.longitude, true); },
+    () => { $("#locateMe").disabled = false; toast("No pudimos obtener tu ubicación. Marca el punto en el mapa."); },
+    { enableHighAccuracy: true, timeout: 12000 },
+  );
+};
+async function nominatim(path) {
+  const r = await fetch(`https://nominatim.openstreetmap.org/${path}&format=json&accept-language=es`);
+  return r.ok ? r.json() : null;
+}
+async function reverseGeocode(lat, lng) {
+  try { const j = await nominatim(`reverse?lat=${lat}&lon=${lng}&zoom=18`); const a = j?.address; if (a && !$("#address").value.trim()) $("#address").value = [a.road, a.house_number, a.neighbourhood || a.suburb].filter(Boolean).join(", "); } catch {}
+}
+async function search() {
+  const q = $("#searchQ").value.trim(); if (!q) return;
+  try {
+    const j = await nominatim(`search?q=${encodeURIComponent(q + ", Guayaquil")}&countrycodes=ec&limit=1&viewbox=-80.15,-1.95,-79.75,-2.35`);
+    if (!j?.length) return toast("No encontramos esa dirección. Marca el punto en el mapa.");
+    map.setView([+j[0].lat, +j[0].lon], 17); setLoc(+j[0].lat, +j[0].lon, false);
+    toast("Ajusta el pin a la puerta exacta.");
+  } catch { toast("No pudimos buscar. Marca el punto en el mapa."); }
+}
+$("#searchBtn").onclick = search;
+$("#searchQ").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); search(); } });
+
+let quoteSeq = 0, quoteTimer;
+function requestQuote() {
+  clearTimeout(quoteTimer);
+  $("#quoteBox").textContent = "Calculando envío…";
+  quoteTimer = setTimeout(async () => {
+    const my = ++quoteSeq;
+    try {
+      const q = await api("cotizar", { lat: state.loc.lat, lng: state.loc.lng, items: cartItems() });
+      if (my !== quoteSeq) return;
+      state.quote = q;
+      $("#quoteBox").innerHTML = `Envío <b>${money(q.delivery_fee)}</b> · ${q.distance_km.toFixed(1)} km${q.eta_if_now ? ` · si sale ahora, llega aprox. <b>${hhmm(q.eta_if_now)}</b>` : ""}`;
+    } catch (e) {
+      if (my !== quoteSeq) return;
+      state.quote = null; $("#quoteBox").innerHTML = `<span class="err">${esc(e.message)}</span>`;
+    }
+    renderSummary();
+  }, 350);
+}
+
+// ---------- resumen ----------
+function renderSummary() {
+  if (!state.cfg) return;
+  const fee = state.quote?.delivery_fee;
+  const sub = subtotal();
+  let whenTxt = "";
+  if ($("#whenLater").checked && $("#schedTime").value) whenTxt = `Entrega ${dayLabel(localToISO($("#schedDate").value, $("#schedTime").value))} a las ${$("#schedTime").value}`;
+  else if (state.quote?.eta_if_now) whenTxt = `Llega aprox. a las ${hhmm(state.quote.eta_if_now)}`;
+  $("#summary").innerHTML =
+    [...state.cart].map(([id, q]) => `<div class="line"><span>${q} × ${esc(product(id).name)}</span><span class="tabnum">${money(product(id).price * q)}</span></div>`).join("") +
+    `<div class="line"><span>Envío</span><span class="tabnum">${fee != null ? money(fee) : "—"}</span></div>` +
+    `<div class="line total"><span>Total</span><span class="tabnum">${fee != null ? money(sub + fee) : money(sub) + " + envío"}</span></div>` +
+    (whenTxt ? `<p class="muted small">${whenTxt}</p>` : "");
+  $("#payBtn").textContent = fee != null ? `Pagar ${money(sub + fee)}` : "Pagar";
+}
+
+// ---------- extras del formulario ----------
+$("#isGift").onchange = (e) => ($("#giftBox").hidden = !e.target.checked);
+$("#wantInvoice").onchange = (e) => ($("#invoiceBox").hidden = !e.target.checked);
+function syncPay() { $("#transferBox").hidden = !$("#payTransfer").checked; }
+$$('input[name="pay"]').forEach((r) => r.addEventListener("change", syncPay));
+
+// ---------- enviar ----------
+$("#orderForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const err = $("#formErr"); err.textContent = "";
+  const bad = (msg, el) => { err.textContent = msg; el?.focus(); };
+  if (!state.cart.size) return bad("Tu carrito está vacío.");
+  const later = $("#whenLater").checked;
+  if (later && !$("#schedTime").value) return bad("Elige un día y una hora de entrega.", $("#schedDate"));
+  if (!state.loc) return bad("Marca tu ubicación en el mapa.", $("#locateMe"));
+  if (!state.quote) return bad("Aún no tenemos el costo de envío para esa ubicación.");
+  if (!$("#address").value.trim()) return bad("Escribe la dirección de entrega.", $("#address"));
+  if (!$("#cName").value.trim()) return bad("Escribe tu nombre.", $("#cName"));
+  if ($("#cPhone").value.replace(/\D/g, "").length < 10) return bad("Escribe tu WhatsApp de 10 dígitos.", $("#cPhone"));
+  const pay = $("#payCard").checked ? "tarjeta" : "transferencia";
+  const file = $("#receipt").files[0];
+  if (pay === "transferencia") {
+    if (!file) return bad("Sube la foto del comprobante de tu transferencia.", $("#receipt"));
+    if (file.size > 8 * 1024 * 1024) return bad("La foto pesa más de 8 MB. Envía una más liviana.", $("#receipt"));
+  }
+
+  const body = {
+    items: cartItems(), lat: state.loc.lat, lng: state.loc.lng,
+    address: $("#address").value, reference: $("#reference").value,
+    scheduled_for: later ? localToISO($("#schedDate").value, $("#schedTime").value) : null,
+    customer_name: $("#cName").value, customer_phone: $("#cPhone").value,
+    recipient_name: $("#isGift").checked ? $("#rName").value : null,
+    recipient_phone: $("#isGift").checked && $("#rPhone").value ? $("#rPhone").value : null,
+    gift_message: $("#isGift").checked ? $("#giftMsg").value : null,
+    invoice_type: $("#wantInvoice").checked ? "con_datos" : "consumidor_final",
+    invoice_id_number: $("#invId").value, invoice_name: $("#invName").value, invoice_email: $("#invEmail").value,
+    payment_method: pay,
+  };
+  try { localStorage.setItem(PROFILE_KEY, JSON.stringify({ cName: body.customer_name, cPhone: body.customer_phone, address: body.address, reference: body.reference, ...state.loc })); } catch {}
+
+  const btn = $("#payBtn"); btn.disabled = true; btn.textContent = "Creando tu pedido…";
+  try {
+    const res = await api("crear", body);
+    try { localStorage.setItem("tbs_ultimo_pedido", res.tracking_token); localStorage.removeItem(CART_KEY); } catch {}
+    if (pay === "tarjeta") {
+      btn.textContent = `Pagar ${money(res.total)}`; btn.disabled = false;
+      openPayphone(res.payphone, `Pedido ${res.code} · Total ${money(res.total)}`, res.tracking_token);
+    } else {
+      btn.textContent = "Enviando comprobante…";
+      const { error } = await sb.storage.from("comprobantes").uploadToSignedUrl(res.upload.path, res.upload.token, file, { contentType: file.type || "image/jpeg" });
+      if (error) throw new Error("No pudimos subir el comprobante. Tu pedido quedó guardado; súbelo desde el seguimiento.");
+      await api("comprobante", { tracking_token: res.tracking_token, path: res.upload.path, reference: $("#receiptRef").value });
+      location.href = `/pedido?t=${res.tracking_token}`;
+    }
+  } catch (ex) {
+    btn.disabled = false; renderSummary(); err.textContent = ex.message;
+  }
+});
+
+init();

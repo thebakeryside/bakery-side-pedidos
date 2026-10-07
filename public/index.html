@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>The Bakery Side · Pedidos</title>
+<meta name="description" content="Pide postres y bebidas de The Bakery Side con entrega a domicilio en Guayaquil.">
+<meta name="theme-color" content="#1C1714">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Bebas+Neue&display=swap">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="/assets/app.css">
+<link rel="stylesheet" href="/assets/tienda.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="/">The Bakery <span>Side</span></a>
+    <span class="pill" id="openPill"><span class="dot"></span><span id="openTxt">Cargando…</span></span>
+  </div>
+</header>
+
+<main class="wrap shop">
+  <section class="intro">
+    <p class="eyebrow">Pedidos a domicilio · Guayaquil</p>
+    <h1 class="display">Pide directo a nuestra cocina</h1>
+    <p class="muted">Elige, marca tu ubicación y paga en línea. Te mostramos el envío exacto y la hora de llegada antes de pagar. Pedidos de <span id="hoursTxt">9:00 a 21:00</span>.</p>
+  </section>
+
+  <div class="layout">
+    <section aria-labelledby="menuTitle">
+      <h2 id="menuTitle" class="sr">Menú</h2>
+      <nav class="cats" id="cats" aria-label="Categorías"></nav>
+      <div id="menu" class="menu"><p class="muted">Cargando el menú…</p></div>
+    </section>
+
+    <aside class="cart panel" id="cart" aria-labelledby="cartTitle">
+      <div class="cart-head">
+        <h2 id="cartTitle" class="display">Tu pedido</h2>
+        <button class="btn ghost small mobile-only" id="closeCart" type="button">Cerrar</button>
+      </div>
+      <div id="cartLines" class="lines"></div>
+      <button class="btn primary block" id="goCheckout" type="button" disabled>Continuar</button>
+    </aside>
+  </div>
+
+  <!-- CHECKOUT -->
+  <section id="checkout" class="checkout" hidden>
+    <button class="btn ghost small" id="backToMenu" type="button">← Volver al menú</button>
+
+    <form id="orderForm" novalidate>
+      <div class="panel">
+        <div class="step-title"><span class="n">1</span><h2>¿Cuándo lo quieres?</h2></div>
+        <div class="choices">
+          <label class="choice"><input type="radio" name="when" value="now" id="whenNow"><div><b>Lo antes posible</b><span id="nowHint">Te mostramos la hora estimada</span></div></label>
+          <label class="choice"><input type="radio" name="when" value="later" id="whenLater"><div><b>Agendar</b><span>Elige día y hora de entrega</span></div></label>
+        </div>
+        <div class="row2" id="scheduleBox" hidden>
+          <div><label class="f" for="schedDate">Día</label><select class="in" id="schedDate"></select></div>
+          <div><label class="f" for="schedTime">Hora de entrega</label><select class="in" id="schedTime"></select></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="step-title"><span class="n">2</span><h2>¿Dónde lo entregamos?</h2></div>
+        <p class="muted small">Toca el mapa o arrastra el pin hasta la puerta exacta. Con eso calculamos el envío.</p>
+        <div class="map-tools">
+          <button class="btn small" type="button" id="locateMe">Usar mi ubicación</button>
+          <div class="search">
+            <input class="in" id="searchQ" type="search" placeholder="Buscar: Urdesa, calle Guayacanes" aria-label="Buscar dirección">
+            <button class="btn small" type="button" id="searchBtn">Buscar</button>
+          </div>
+        </div>
+        <div id="map" class="map" role="application" aria-label="Mapa para elegir la ubicación de entrega"></div>
+        <div id="quoteBox" class="quote muted small">Marca tu ubicación para ver el costo de envío.</div>
+        <label class="f" for="address">Dirección</label>
+        <input class="in" id="address" autocomplete="street-address" placeholder="Ciudadela, manzana y villa o calle y número">
+        <label class="f" for="reference">Referencia <span class="hint">(color de casa, garita, local cercano)</span></label>
+        <input class="in" id="reference" placeholder="Casa blanca frente al parque, timbre 2">
+      </div>
+
+      <div class="panel">
+        <div class="step-title"><span class="n">3</span><h2>Tus datos</h2></div>
+        <div class="row2">
+          <div><label class="f" for="cName">Nombre</label><input class="in" id="cName" autocomplete="name"></div>
+          <div><label class="f" for="cPhone">WhatsApp</label><input class="in" id="cPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="0991234567"></div>
+        </div>
+        <label class="check"><input type="checkbox" id="isGift"> Es un regalo para otra persona</label>
+        <div id="giftBox" hidden>
+          <div class="row2">
+            <div><label class="f" for="rName">Nombre de quien recibe</label><input class="in" id="rName"></div>
+            <div><label class="f" for="rPhone">Su teléfono <span class="hint">(opcional)</span></label><input class="in" id="rPhone" type="tel" inputmode="tel"></div>
+          </div>
+          <label class="f" for="giftMsg">Mensaje para la tarjeta <span class="hint">(opcional)</span></label>
+          <textarea class="in" id="giftMsg" maxlength="300" placeholder="¡Feliz cumpleaños! Con cariño, Ana"></textarea>
+        </div>
+        <label class="check"><input type="checkbox" id="wantInvoice"> Quiero factura con mis datos</label>
+        <div id="invoiceBox" hidden>
+          <div class="row2">
+            <div><label class="f" for="invId">Cédula o RUC</label><input class="in" id="invId" inputmode="numeric" maxlength="13"></div>
+            <div><label class="f" for="invName">Nombre o razón social</label><input class="in" id="invName"></div>
+          </div>
+          <label class="f" for="invEmail">Correo para la factura</label>
+          <input class="in" id="invEmail" type="email" autocomplete="email">
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="step-title"><span class="n">4</span><h2>Pago</h2></div>
+        <div class="choices">
+          <label class="choice"><input type="radio" name="pay" value="tarjeta" id="payCard"><div><b>Tarjeta de débito o crédito</b><span id="cardHint">Pago seguro con Payphone</span></div></label>
+          <label class="choice"><input type="radio" name="pay" value="transferencia" id="payTransfer"><div><b>Transferencia o De Una</b><span>Subes la foto del comprobante</span></div></label>
+        </div>
+        <div id="transferBox" hidden>
+          <div class="note" id="bankInfo">Los datos bancarios aparecen al confirmar.</div>
+          <label class="f" for="receipt">Foto del comprobante</label>
+          <input class="in" id="receipt" type="file" accept="image/*,application/pdf">
+          <label class="f" for="receiptRef">Número de comprobante <span class="hint">(opcional)</span></label>
+          <input class="in" id="receiptRef" inputmode="numeric">
+        </div>
+
+        <div class="summary" id="summary"></div>
+        <button class="btn primary block big" type="submit" id="payBtn">Pagar</button>
+        <p class="err" id="formErr" role="alert"></p>
+        <p class="muted small">Todo pedido se paga por adelantado. El envío va completo para el motorizado.</p>
+      </div>
+    </form>
+  </section>
+</main>
+
+<div class="mobilebar" id="mobileBar" hidden>
+  <span><b id="mbCount">0</b> productos · <span id="mbTotal" class="tabnum">$0.00</span></span>
+  <button class="btn primary" type="button" id="mbOpen">Ver pedido</button>
+</div>
+
+<!-- Ventana de pago con tarjeta -->
+<div class="modal" id="payModal" hidden role="dialog" aria-modal="true" aria-labelledby="payTitle">
+  <div class="modal-card">
+    <div class="cart-head"><h2 id="payTitle" class="display">Pagar pedido</h2><button class="btn ghost small" type="button" id="closePay">Cerrar</button></div>
+    <p class="muted small" id="payInfo"></p>
+    <div id="pp-button"></div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script type="module" src="/assets/tienda.js"></script>
+</body>
+</html>

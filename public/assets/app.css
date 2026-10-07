@@ -1,0 +1,93 @@
+/* The Bakery Side — paleta y tipografía del manual de marca */
+:root {
+  --tinta: #1C1714;     /* Café tinta: fondo */
+  --tinta-2: #251E1A;   /* superficie */
+  --tinta-3: #2F2621;   /* superficie elevada */
+  --cacao: #554741;     /* bloques secundarios y bordes */
+  --crema: #F6F7DE;     /* texto principal */
+  --crema-2: #CFC9B6;   /* texto secundario */
+  --tostado: #C68A4E;   /* acento */
+  --tostado-2: #D9A06A;
+  --ok: #9CC48A;
+  --aviso: #E7B95F;
+  --error: #E58A7A;
+  --display: "Bebas Neue", Impact, "Arial Narrow", sans-serif;
+  --body: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --r: 14px;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--tinta); color: var(--crema); font: 400 16px/1.5 var(--body); -webkit-font-smoothing: antialiased; }
+img { max-width: 100%; display: block; }
+a { color: var(--tostado-2); }
+button, input, select, textarea { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--tostado); outline-offset: 2px; }
+[hidden] { display: none !important; }
+
+.wrap { max-width: 1080px; margin: 0 auto; padding-inline: 16px; }
+.display { font-family: var(--display); letter-spacing: .03em; font-weight: 400; line-height: 1; text-transform: uppercase; }
+h1, h2, h3 { margin: 0; }
+.muted { color: var(--crema-2); }
+.small { font-size: 13.5px; }
+.eyebrow { font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: var(--tostado); font-weight: 600; }
+.tabnum { font-variant-numeric: tabular-nums; }
+
+/* barra superior */
+.topbar { position: sticky; top: 0; z-index: 20; background: rgb(28 23 20 / .94); backdrop-filter: blur(8px); border-bottom: 1px solid var(--cacao); padding-top: env(safe-area-inset-top, 0px); }
+.topbar .wrap { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 60px; }
+.brand { font-family: var(--display); font-size: 28px; letter-spacing: .06em; text-decoration: none; color: var(--crema); }
+.brand span { color: var(--tostado); }
+.pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--cacao); color: var(--crema-2); white-space: nowrap; }
+.pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+.pill.closed .dot { background: var(--aviso); }
+
+/* botones y campos */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid var(--cacao); background: var(--tinta-3); color: var(--crema); border-radius: 12px; padding: 11px 16px; font-weight: 600; cursor: pointer; text-decoration: none; min-height: 44px; }
+.btn:hover { border-color: var(--crema-2); }
+.btn.primary { background: var(--tostado); border-color: var(--tostado); color: var(--tinta); }
+.btn.primary:hover { background: var(--tostado-2); }
+.btn.ghost { background: transparent; }
+.btn.small { padding: 7px 12px; min-height: 36px; font-size: 14px; border-radius: 10px; }
+.btn.block { width: 100%; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+label.f { display: block; font-size: 13.5px; font-weight: 600; margin: 14px 0 6px; }
+label.f .hint { font-weight: 400; color: var(--crema-2); }
+input.in, select.in, textarea.in { width: 100%; background: var(--tinta); border: 1px solid var(--cacao); border-radius: 10px; padding: 11px 12px; min-height: 44px; }
+textarea.in { min-height: 76px; resize: vertical; }
+input.in:focus, select.in:focus, textarea.in:focus { border-color: var(--tostado); outline: none; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 460px) { .row2 { grid-template-columns: 1fr; } }
+.check { display: flex; gap: 10px; align-items: center; margin-top: 12px; cursor: pointer; }
+.check input { width: 20px; height: 20px; accent-color: var(--tostado); }
+
+/* elecciones tipo tarjeta */
+.choices { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.choice { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--cacao); border-radius: 12px; padding: 12px; cursor: pointer; background: var(--tinta); }
+.choice input { margin-top: 3px; accent-color: var(--tostado); }
+.choice:has(input:checked) { border-color: var(--tostado); background: rgb(198 138 78 / .1); }
+.choice:has(input:disabled) { opacity: .5; cursor: not-allowed; }
+.choice b { display: block; }
+.choice span { font-size: 13.5px; color: var(--crema-2); }
+
+/* paneles */
+.panel { background: var(--tinta-2); border: 1px solid var(--cacao); border-radius: var(--r); padding: 18px; }
+.step-title { display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px; }
+.step-title .n { font-family: var(--display); font-size: 26px; color: var(--tostado); }
+.step-title h2 { font-family: var(--display); font-size: 26px; letter-spacing: .04em; font-weight: 400; }
+
+.err { color: var(--error); font-size: 14px; min-height: 1.2em; margin-top: 10px; }
+.note { background: var(--tinta-3); border-radius: 10px; padding: 10px 12px; font-size: 14px; color: var(--crema-2); }
+
+.toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--crema); color: var(--tinta); font-weight: 600; padding: 11px 18px; border-radius: 12px; z-index: 100; max-width: calc(100% - 32px); box-shadow: 0 8px 24px rgb(0 0 0 / .4); }
+
+/* estados */
+.st { display: inline-block; font-size: 11.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; padding: 3px 9px; border-radius: 999px; white-space: nowrap; background: var(--tinta-3); color: var(--crema-2); }
+.st-por_confirmar, .st-pendiente_pago { background: rgb(231 185 95 / .16); color: var(--aviso); }
+.st-confirmado { background: rgb(198 138 78 / .18); color: var(--tostado-2); }
+.st-preparando { background: rgb(198 138 78 / .18); color: var(--tostado-2); }
+.st-listo, .st-en_camino { background: rgb(160 190 230 / .16); color: #B8CCEA; }
+.st-entregado { background: rgb(156 196 138 / .16); color: var(--ok); }
+.st-cancelado { background: rgb(229 138 122 / .16); color: var(--error); }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }

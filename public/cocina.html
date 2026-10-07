@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cocina · The Bakery Side</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#1C1714">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700&family=Bebas+Neue&display=swap">
+<link rel="stylesheet" href="/assets/app.css">
+<link rel="stylesheet" href="/assets/panel.css">
+</head>
+<body>
+<header class="topbar panel-top">
+  <div class="wrap">
+    <a class="brand" href="/cocina">Cocina <span>·</span> Bakery Side</a>
+    <div class="who"><span id="whoami"></span><button class="btn small ghost" id="sound" type="button">Activar sonido</button><button class="btn small ghost" id="logout" type="button">Salir</button></div>
+  </div>
+</header>
+<div id="loginSlot"></div>
+<main id="app" class="wrap" hidden style="padding-bottom:60px">
+  <nav class="tabs" role="tablist" aria-label="Secciones">
+    <button role="tab" aria-selected="true" data-tab="pedidos">Pedidos <span class="count" id="cntActive" hidden></span></button>
+    <button role="tab" aria-selected="false" data-tab="agenda">Agenda <span class="count" id="cntAgenda" hidden></span></button>
+    <button role="tab" aria-selected="false" data-tab="historial">Historial</button>
+    <button role="tab" aria-selected="false" data-tab="motorizados">Motorizados</button>
+    <button role="tab" aria-selected="false" data-tab="menu">Menú</button>
+    <button role="tab" aria-selected="false" data-tab="ajustes">Ajustes</button>
+  </nav>
+  <section id="view"></section>
+</main>
+<script type="module" src="/assets/cocina.js"></script>
+</body>
+</html>

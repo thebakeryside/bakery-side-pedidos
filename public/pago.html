@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Confirmando pago · The Bakery Side</title>
+<meta name="robots" content="noindex">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700&family=Bebas+Neue&display=swap">
+<link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+<header class="topbar"><div class="wrap"><a class="brand" href="/">The Bakery <span>Side</span></a></div></header>
+<main class="wrap" style="padding-block:48px">
+  <div class="panel" style="max-width:520px;margin:0 auto;display:grid;gap:12px">
+    <h1 class="display" id="title" style="font-size:40px">Confirmando tu pago…</h1>
+    <p class="muted" id="msg">No cierres esta página. Tarda unos segundos.</p>
+    <a class="btn primary" id="go" href="/" hidden>Ver mi pedido</a>
+  </div>
+</main>
+<script type="module">
+import { api, $ } from "/assets/common.js";
+const q = new URLSearchParams(location.search);
+const id = q.get("id"), tx = q.get("clientTransactionId");
+(async () => {
+  if (!id || !tx) {
+    $("#title").textContent = "Pago no completado";
+    $("#msg").textContent = "No recibimos la confirmación del pago. Si se descontó dinero de tu tarjeta, escríbenos por WhatsApp con el número de tu pedido.";
+    const t = localStorage.getItem("tbs_ultimo_pedido");
+    if (t) { $("#go").href = `/pedido?t=${t}`; $("#go").hidden = false; }
+    return;
+  }
+  try {
+    const r = await api("confirmar", { id, clientTransactionId: tx });
+    $("#go").href = `/pedido?t=${r.tracking_token}`; $("#go").hidden = false;
+    if (r.ok) {
+      $("#title").textContent = "¡Pago aprobado!";
+      $("#msg").textContent = `Tu pedido ${r.code} ya está en nuestra cocina.`;
+      setTimeout(() => (location.href = `/pedido?t=${r.tracking_token}`), 2000);
+    } else {
+      $("#title").textContent = "El pago no se aprobó";
+      $("#msg").textContent = `${r.message} Tu pedido ${r.code} sigue guardado y puedes intentar de nuevo.`;
+      $("#go").textContent = "Intentar de nuevo";
+    }
+  } catch (e) {
+    $("#title").textContent = "No pudimos confirmar el pago";
+    $("#msg").textContent = `${e.message} Si se descontó dinero, escríbenos por WhatsApp.`;
+  }
+})();
+</script>
+</body>
+</html>
