@@ -1,7 +1,10 @@
 import { sb, api, $, $$, money, esc, hhmm, dayLabel, localToISO, todayLocal, toast } from "./common.js";
 import { openPayphone } from "./payphone.js";
+import { captureRef, storedRef, currentUser, loadAccount, signInWithGoogle, stampCard, stampsFor, googleButton } from "./account.js";
 
-const state = { cfg: null, cats: [], products: [], cart: new Map(), filter: "Todo", loc: null, quote: null };
+captureRef();
+
+const state = { cfg: null, cats: [], products: [], cart: new Map(), filter: "Todo", loc: null, quote: null, acct: null, guest: false };
 const CART_KEY = "tbs_cart";
 const PROFILE_KEY = "tbs_cliente";
 
@@ -26,6 +29,17 @@ async function init() {
   $("#openPill").classList.toggle("closed", !c.open_now);
   try { JSON.parse(localStorage.getItem(CART_KEY) || "[]").forEach(([id, q]) => state.products.some((p) => p.id === id) && state.cart.set(id, q)); } catch {}
   renderCats(); renderMenu(); renderCart();
+  await refreshAccount();
+  if (new URLSearchParams(location.search).get("checkout") === "1" && state.cart.size) {
+    history.replaceState(null, "", "/"); openCheckout();
+  }
+}
+
+async function refreshAccount() {
+  try { state.acct = (await currentUser()) ? await loadAccount() : null; } catch { state.acct = null; }
+  const b = $("#acctBtn");
+  b.innerHTML = state.acct ? `Mis sellos <span class="mini tabnum">${state.acct.stamps}/8</span>` : "Mis sellos";
+  if (!$("#checkout").hidden) { renderAcctBox(); renderPerks(); renderSummary(); }
 }
 
 // ---------- menú ----------
@@ -117,7 +131,54 @@ function openCheckout() {
   // datos guardados del cliente
   try { const p = JSON.parse(localStorage.getItem(PROFILE_KEY) || "{}"); for (const k of ["cName", "cPhone", "address", "reference"]) if (p[k] && !$("#" + k).value) $("#" + k).value = p[k]; if (p.lat && !state.loc) state.loc = { lat: p.lat, lng: p.lng }; } catch {}
   setupMap();
+  renderAcctBox(); renderPerks();
   renderSummary();
+}
+
+function renderAcctBox() {
+  const box = $("#acctBox"), a = state.acct;
+  if (a) {
+    const c = a.customer;
+    if (c.full_name && !$("#cName").value) $("#cName").value = c.full_name;
+    if (c.phone && !$("#cPhone").value) $("#cPhone").value = c.phone;
+    if (c.address && !$("#address").value) $("#address").value = c.address;
+    if (c.reference && !$("#reference").value) $("#reference").value = c.reference;
+    if (c.lat && !state.loc && map) { map.setView([c.lat, c.lng], 17); setLoc(c.lat, c.lng, false); }
+    box.innerHTML = `<p class="muted small" style="margin:6px 0 0">Pedido con tu cuenta de Google (${esc(c.email || "")}). Este pedido suma sellos a tu tarjeta.</p>`;
+    return;
+  }
+  if (state.guest) {
+    box.innerHTML = `<p class="muted small" style="margin:6px 0 0">Pedido como invitado. <a href="#" id="wantGoogle">Entrar con Google y sumar sellos</a></p>`;
+    $("#wantGoogle").onclick = (e) => { e.preventDefault(); state.guest = false; renderAcctBox(); };
+    return;
+  }
+  box.innerHTML = `<div class="guest-or">
+      <p><b>Entra con Google y empieza con 2 sellos de regalo.</b> <span class="muted small">Ganas 1 sello por cada $10, una cookie gratis al llegar a 8, y guardamos tus datos para la próxima.</span></p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">${googleButton()}<button class="btn ghost" type="button" id="asGuest">Seguir como invitado</button></div>
+    </div>`;
+  box.querySelector("[data-google]").onclick = async () => {
+    try { localStorage.setItem(CART_KEY, JSON.stringify([...state.cart])); } catch {}
+    try { await signInWithGoogle(location.origin + "/?checkout=1"); } catch (e) { toast(e.message); }
+  };
+  $("#asGuest").onclick = () => { state.guest = true; renderAcctBox(); renderPerks(); };
+}
+
+function renderPerks() {
+  const box = $("#perksBox"), a = state.acct;
+  if (!a) { box.innerHTML = ""; return; }
+  const cookies = state.products.filter((p) => a.cookies.includes(p.name));
+  let h = `<div style="margin-top:14px">${stampCard(a.stamps, { compact: true })}</div>`;
+  if (a.rewards_available && cookies.length) {
+    h += `<div class="perk ready" style="margin-top:10px"><div style="flex:1"><b>Tienes una cookie gratis</b>
+      <label class="f" for="rewardPick" style="margin-top:6px">Elige tu cookie <span class="hint">(opcional)</span></label>
+      <select class="in" id="rewardPick"><option value="">Guardarla para otro pedido</option>${cookies.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("")}</select></div></div>`;
+  }
+  if (a.birthday_available) {
+    h += `<label class="perk ready check" style="margin-top:10px"><input type="checkbox" id="useBday"><div><b>Usar mi regalo de cumpleaños: −$4</b><span class="muted small">Disponible una vez durante tu mes.</span></div></label>`;
+  }
+  box.innerHTML = h;
+  $("#rewardPick")?.addEventListener("change", renderSummary);
+  $("#useBday")?.addEventListener("change", renderSummary);
 }
 
 function syncWhen() { $("#scheduleBox").hidden = !$("#whenLater").checked; renderSummary(); }
@@ -222,15 +283,21 @@ function renderSummary() {
   if (!state.cfg) return;
   const fee = state.quote?.delivery_fee;
   const sub = subtotal();
+  const disc = $("#useBday")?.checked ? Math.min(4, sub) : 0;
+  const freeId = Number($("#rewardPick")?.value || 0);
+  const free = freeId ? product(freeId) : null;
   let whenTxt = "";
   if ($("#whenLater").checked && $("#schedTime").value) whenTxt = `Entrega ${dayLabel(localToISO($("#schedDate").value, $("#schedTime").value))} a las ${$("#schedTime").value}`;
   else if (state.quote?.eta_if_now) whenTxt = `Llega aprox. a las ${hhmm(state.quote.eta_if_now)}`;
   $("#summary").innerHTML =
     [...state.cart].map(([id, q]) => `<div class="line"><span>${q} × ${esc(product(id).name)}</span><span class="tabnum">${money(product(id).price * q)}</span></div>`).join("") +
+    (free ? `<div class="line"><span>1 × ${esc(free.name)} (regalo)</span><span class="tabnum">$0.00</span></div>` : "") +
+    (disc ? `<div class="line"><span>Regalo de cumpleaños</span><span class="tabnum">−${money(disc)}</span></div>` : "") +
     `<div class="line"><span>Envío</span><span class="tabnum">${fee != null ? money(fee) : "—"}</span></div>` +
-    `<div class="line total"><span>Total</span><span class="tabnum">${fee != null ? money(sub + fee) : money(sub) + " + envío"}</span></div>` +
-    (whenTxt ? `<p class="muted small">${whenTxt}</p>` : "");
-  $("#payBtn").textContent = fee != null ? `Pagar ${money(sub + fee)}` : "Pagar";
+    `<div class="line total"><span>Total</span><span class="tabnum">${fee != null ? money(sub - disc + fee) : money(sub - disc) + " + envío"}</span></div>` +
+    (whenTxt ? `<p class="muted small">${whenTxt}</p>` : "") +
+    (state.acct ? `<p class="small" style="color:var(--tostado-2);margin:0">Este pedido te da ${stampsFor(sub - disc)} ${stampsFor(sub - disc) === 1 ? "sello" : "sellos"}.</p>` : "");
+  $("#payBtn").textContent = fee != null ? `Pagar ${money(sub - disc + fee)}` : "Pagar";
 }
 
 // ---------- extras del formulario ----------
@@ -270,6 +337,9 @@ $("#orderForm").addEventListener("submit", async (e) => {
     invoice_type: $("#wantInvoice").checked ? "con_datos" : "consumidor_final",
     invoice_id_number: $("#invId").value, invoice_name: $("#invName").value, invoice_email: $("#invEmail").value,
     payment_method: pay,
+    use_birthday: Boolean($("#useBday")?.checked),
+    reward_product_id: Number($("#rewardPick")?.value || 0) || null,
+    ref: storedRef(),
   };
   try { localStorage.setItem(PROFILE_KEY, JSON.stringify({ cName: body.customer_name, cPhone: body.customer_phone, address: body.address, reference: body.reference, ...state.loc })); } catch {}
 

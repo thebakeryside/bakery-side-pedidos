@@ -1,5 +1,5 @@
 // The Bakery Side — API pública de la tienda
-// Acciones: config, cotizar, crear, pagar, confirmar, subir, comprobante
+// Acciones: config, cotizar, crear, pagar, confirmar, subir, comprobante, perfil, guardar_perfil
 // El seguimiento usa la función de base de datos track_order(token).
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -174,8 +174,77 @@ function payphoneParams(o: Record<string, any>, attempt: number) {
   };
 }
 
+// ---------- clientes con cuenta ----------
+type User = { id: string; email?: string; user_metadata?: Record<string, any> } | null;
+async function userFrom(req: Request): Promise<User> {
+  const t = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+  if (!t || t.startsWith("sb_") || t.split(".").length !== 3) return null;
+  const { data } = await db.auth.getUser(t);
+  return data?.user ?? null;
+}
+const COOKIES = ["Midnight Cookies", "Snowlemon Cookies", "Snowchocolate Cookies", "Chocochip Cookies"];
+const nowLocal = () => toLocal(new Date());
+
+async function ensureCustomer(u: NonNullable<User>, ref?: string) {
+  const { data: c } = await db.from("customers").select("*").eq("user_id", u.id).maybeSingle();
+  if (c) return c;
+  let referred_by: string | null = null;
+  const code = String(ref ?? "").trim().toUpperCase();
+  if (/^[A-Z0-9]{6}$/.test(code)) {
+    const { data: r } = await db.from("customers").select("user_id").eq("referral_code", code).maybeSingle();
+    if (r && r.user_id !== u.id) referred_by = r.user_id;
+  }
+  for (let i = 0; i < 5; i++) {
+    const referral_code = Array.from(crypto.getRandomValues(new Uint8Array(6)), (b) => "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[b % 32]).join("");
+    const { data, error } = await db.from("customers").insert({
+      user_id: u.id, email: u.email ?? null, referral_code, referred_by,
+      full_name: String(u.user_metadata?.full_name ?? u.user_metadata?.name ?? "").slice(0, 80),
+    }).select().single();
+    if (error?.code === "23505") {
+      const { data: again } = await db.from("customers").select("*").eq("user_id", u.id).maybeSingle();
+      if (again) return again; // otra pestaña la creó al mismo tiempo
+      continue; // código repetido: probar otro
+    }
+    if (error) throw error;
+    const welcome = [{ user_id: u.id, delta: 2, reason: "bienvenida" }];
+    if (referred_by) welcome.push({ user_id: u.id, delta: 1, reason: "referido_nuevo" });
+    await db.from("stamp_ledger").insert(welcome);
+    return data;
+  }
+  throw new Error("No se pudo crear el código de referido");
+}
+async function birthdayEligible(c: Record<string, any>) {
+  if (!c.birthday) return false;
+  const l = nowLocal();
+  if (Number(String(c.birthday).slice(5, 7)) !== l.getUTCMonth() + 1) return false;
+  const yearStart = new Date(Date.UTC(l.getUTCFullYear(), 0, 1, 5)).toISOString();
+  const { count } = await db.from("orders").select("id", { count: "exact", head: true })
+    .eq("user_id", c.user_id).eq("birthday_discount", true).in("payment_status", ["pagado", "en_revision"]).gte("created_at", yearStart);
+  return (count ?? 0) === 0;
+}
+async function availableReward(uid: string) {
+  const { data } = await db.from("rewards").select("id,status,order_id, orders:order_id(payment_status,status)")
+    .eq("user_id", uid).in("status", ["disponible", "reservado"]).order("id");
+  return (data ?? []).find((r: any) => r.status === "disponible" || (r.orders && r.orders.payment_status !== "pagado")) ?? null;
+}
+async function accountSummary(c: Record<string, any>) {
+  const [{ data: led }, reward, bday, { count: rewardsCount }] = await Promise.all([
+    db.from("stamp_ledger").select("delta").eq("user_id", c.user_id),
+    availableReward(c.user_id),
+    birthdayEligible(c),
+    db.from("rewards").select("id", { count: "exact", head: true }).eq("user_id", c.user_id).in("status", ["disponible", "reservado"]),
+  ]);
+  return {
+    customer: c,
+    stamps: (led ?? []).reduce((s: number, r: any) => s + r.delta, 0),
+    rewards_available: reward ? (rewardsCount ?? 1) : 0,
+    birthday_available: bday,
+    cookies: COOKIES,
+  };
+}
+
 // ---------- acciones ----------
-const actions: Record<string, (b: any) => Promise<unknown>> = {
+const actions: Record<string, (b: any, user: User) => Promise<unknown>> = {
   async config() {
     const s = await getSettings();
     return {
@@ -199,9 +268,22 @@ const actions: Record<string, (b: any) => Promise<unknown>> = {
     return { distance_km: q.km, delivery_fee: q.fee, travel_min: q.travel_min, eta_if_now: eta };
   },
 
-  async crear(b) {
+  async crear(b, user) {
     const s = await getSettings();
     const cart = await priceCart(b.items);
+    const cust = user ? await ensureCustomer(user, b.ref) : null;
+    let discount = 0, useBday = false, reward: any = null;
+    if (cust && b.use_birthday) {
+      if (!(await birthdayEligible(cust))) fail("El regalo de cumpleaños no está disponible en este pedido.");
+      useBday = true; discount = Math.min(4, cart.subtotal);
+    }
+    if (cust && b.reward_product_id) {
+      reward = await availableReward(cust.user_id);
+      if (!reward) fail("No tienes una cookie de regalo disponible.");
+      const { data: ck } = await db.from("products").select("id,name,active").eq("id", Number(b.reward_product_id)).maybeSingle();
+      if (!ck || !ck.active || !COOKIES.includes(ck.name)) fail("Elige una de las cookies de regalo.");
+      cart.lines.push({ product_id: ck!.id, name: `${ck!.name} (regalo de tu tarjeta)`, unit_price: 0, quantity: 1, line_total: 0 });
+    }
     const q = await quote(s, Number(b.lat), Number(b.lng));
     const sched = await validateSchedule(s, b.scheduled_for || null, cart.prep, cart.lead, q.travel_min);
     const method = b.payment_method === "tarjeta" ? "tarjeta" : b.payment_method === "transferencia" ? "transferencia" : fail("Elige cómo pagar.");
@@ -209,9 +291,10 @@ const actions: Record<string, (b: any) => Promise<unknown>> = {
     const address = clean(b.address, 200) || fail("Escribe la dirección de entrega.");
     const invoiceWith = b.invoice_type === "con_datos";
     if (invoiceWith && !/^\d{10}(\d{3})?$/.test(clean(b.invoice_id_number, 13))) fail("La cédula debe tener 10 dígitos o el RUC 13.");
-    const total = Math.round((cart.subtotal + q.fee) * 100) / 100;
+    const total = Math.round((cart.subtotal - discount + q.fee) * 100) / 100;
 
     const { data: o, error } = await db.from("orders").insert({
+      user_id: cust?.user_id ?? null, discount, birthday_discount: useBday, reward_id: reward?.id ?? null,
       customer_name: name,
       customer_phone: normPhone(b.customer_phone),
       recipient_name: clean(b.recipient_name, 80) || null,
@@ -230,8 +313,19 @@ const actions: Record<string, (b: any) => Promise<unknown>> = {
     if (error) throw error;
     const { error: e2 } = await db.from("order_items").insert(cart.lines.map((l) => ({ ...l, order_id: o.id })));
     if (e2) { await db.from("orders").delete().eq("id", o.id); throw e2; }
+    if (reward) {
+      // si estaba apartado en un pedido anterior que nunca se pagó, pasa a este pedido
+      if (reward.order_id) await db.from("orders").update({ reward_id: null }).eq("id", reward.order_id).neq("payment_status", "pagado");
+      await db.from("rewards").update({ status: "reservado", order_id: o.id }).eq("id", reward.id);
+    }
+    if (cust) {
+      await db.from("customers").update({
+        phone: o.customer_phone, address: o.address, reference: o.reference, lat: o.lat, lng: o.lng,
+        full_name: cust.full_name || o.customer_name,
+      }).eq("user_id", cust.user_id);
+    }
 
-    const out: Record<string, unknown> = { code: o.code, tracking_token: o.tracking_token, total, delivery_fee: q.fee, subtotal: cart.subtotal };
+    const out: Record<string, unknown> = { code: o.code, tracking_token: o.tracking_token, total, delivery_fee: q.fee, subtotal: cart.subtotal, discount };
     if (method === "tarjeta") {
       const pp = payphoneParams(o, 1);
       await db.from("orders").update({ payment_ref: pp.clientTransactionId }).eq("id", o.id);
@@ -244,6 +338,29 @@ const actions: Record<string, (b: any) => Promise<unknown>> = {
       out.bank_info = s.bank_info;
     }
     return out;
+  },
+
+  // Cuenta del cliente: la crea la primera vez (con sellos de bienvenida) y devuelve su tarjeta
+  async perfil(b, user) {
+    if (!user) fail("Inicia sesión con Google para ver tu cuenta.");
+    const c = await ensureCustomer(user!, b.ref);
+    return await accountSummary(c);
+  },
+
+  async guardar_perfil(b, user) {
+    if (!user) fail("Inicia sesión con Google.");
+    const c = await ensureCustomer(user!);
+    const patch: Record<string, unknown> = {};
+    if (b.full_name !== undefined) patch.full_name = clean(b.full_name, 80);
+    if (b.phone) patch.phone = normPhone(b.phone);
+    if (b.birthday) {
+      if (c.birthday) fail("Tu fecha de cumpleaños ya está registrada. Si hay un error, escríbenos.");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(b.birthday) || isNaN(Date.parse(b.birthday))) fail("Revisa la fecha de cumpleaños.");
+      patch.birthday = b.birthday;
+    }
+    if (Object.keys(patch).length) await db.from("customers").update(patch).eq("user_id", user!.id);
+    const { data } = await db.from("customers").select("*").eq("user_id", user!.id).single();
+    return await accountSummary(data!);
   },
 
   // Nuevo intento de pago con tarjeta para un pedido no pagado
@@ -318,7 +435,7 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const fn = actions[String(body.action)];
     if (!fn) return json({ error: "Acción desconocida" }, 400);
-    return json(await fn(body));
+    return json(await fn(body, await userFrom(req)));
   } catch (e) {
     if (e instanceof UserError) return json({ error: e.message }, 400);
     console.error(e);

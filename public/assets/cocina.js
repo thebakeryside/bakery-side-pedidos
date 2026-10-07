@@ -135,6 +135,8 @@ function card(o) {
       <span>${esc(o.address)}${o.reference ? " · " + esc(o.reference) : ""}</span>
       <span>${Number(o.distance_km).toFixed(1)} km · envío ${money(o.delivery_fee)} · total <b>${money(o.total)}</b></span>
       <span>${esc(payTxt)}</span>
+      ${Number(o.discount) > 0 ? `<span>Regalo de cumpleaños: −${money(o.discount)}</span>` : ""}
+      ${o.user_id ? `<span>Cliente con cuenta (suma sellos)</span>` : ""}
       ${o.invoice_type === "con_datos" ? `<span>Factura: ${esc(o.invoice_name)} · ${esc(o.invoice_id_number)} · ${esc(o.invoice_email)}</span>` : ""}
       ${o.riders ? `<span>Motorizado: <b>${esc(o.riders.full_name)}</b>${o.rider_accepted_at ? " (aceptó)" : ""}</span>` : ""}
       ${o.cancel_reason ? `<span>Motivo: ${esc(o.cancel_reason)}</span>` : ""}

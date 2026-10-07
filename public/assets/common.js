@@ -5,10 +5,13 @@ export const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 export async function api(action, body = {}) {
   let r;
+  const { data } = await sb.auth.getSession();
+  const headers = { "Content-Type": "application/json", apikey: SUPABASE_KEY };
+  if (data.session?.access_token) headers.Authorization = `Bearer ${data.session.access_token}`;
   try {
     r = await fetch(API_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json", apikey: SUPABASE_KEY },
+      headers,
       body: JSON.stringify({ action, ...body }),
     });
   } catch {

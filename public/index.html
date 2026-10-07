@@ -12,12 +12,16 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="/assets/app.css">
 <link rel="stylesheet" href="/assets/tienda.css">
+<link rel="stylesheet" href="/assets/account.css">
 </head>
 <body>
 <header class="topbar">
   <div class="wrap">
     <a class="brand" href="/">The Bakery <span>Side</span></a>
-    <span class="pill" id="openPill"><span class="dot"></span><span id="openTxt">Cargando…</span></span>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
+      <span class="pill" id="openPill"><span class="dot"></span><span id="openTxt">Cargando…</span></span>
+      <a class="btn small ghost acct-btn" id="acctBtn" href="/cuenta">Mis sellos</a>
+    </div>
   </div>
 </header>
 
@@ -82,6 +86,7 @@
 
       <div class="panel">
         <div class="step-title"><span class="n">3</span><h2>Tus datos</h2></div>
+        <div id="acctBox"></div>
         <div class="row2">
           <div><label class="f" for="cName">Nombre</label><input class="in" id="cName" autocomplete="name"></div>
           <div><label class="f" for="cPhone">WhatsApp</label><input class="in" id="cPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="0991234567"></div>
@@ -120,6 +125,7 @@
           <input class="in" id="receiptRef" inputmode="numeric">
         </div>
 
+        <div id="perksBox"></div>
         <div class="summary" id="summary"></div>
         <button class="btn primary block big" type="submit" id="payBtn">Pagar</button>
         <p class="err" id="formErr" role="alert"></p>

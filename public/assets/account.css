@@ -1,0 +1,41 @@
+/* Cuenta del cliente y tarjeta de sellos */
+.gbtn { background: #fff; color: #1f1f1f; border-color: #fff; gap: 10px; }
+.gbtn:hover { background: #f1f1f1; border-color: #f1f1f1; }
+.acct-btn { display: inline-flex; align-items: center; gap: 8px; }
+.acct-btn .mini { background: var(--tostado); color: var(--tinta); border-radius: 999px; padding: 0 8px; font-size: 12px; font-weight: 700; }
+
+.stampcard { background: var(--crema); color: var(--tinta); border-radius: 18px; padding: 18px; display: grid; gap: 14px; position: relative; overflow: hidden; }
+.stampcard::after { content: "THE BAKERY SIDE"; position: absolute; right: -6px; bottom: -14px; font-family: var(--display); font-size: 64px; letter-spacing: .04em; color: rgb(28 23 20 / .05); pointer-events: none; white-space: nowrap; }
+.stampcard-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.stampcard-head .display { font-size: 28px; letter-spacing: .05em; }
+.stampcount { font-family: var(--display); font-size: 34px; color: var(--tostado); line-height: 1; }
+.stamps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.stamp { aspect-ratio: 1; max-width: 72px; width: 100%; justify-self: center; border-radius: 50%; border: 2px dashed #b9b19c; display: grid; place-items: center; font-weight: 700; font-size: 15px; color: #8d8573; }
+.stamp.on { border: 2px solid var(--tinta); background: var(--tinta); color: var(--crema); font-family: var(--display); font-size: 20px; letter-spacing: .06em; transform: rotate(-8deg); }
+.stamp.goal:not(.on) { border-color: var(--tostado); color: var(--tostado); font-size: 12.5px; text-transform: uppercase; letter-spacing: .06em; }
+@media (prefers-reduced-motion: no-preference) {
+  .stamp.on { animation: stampIn .45s cubic-bezier(.2, 1.4, .4, 1) both; animation-delay: calc(var(--i) * 70ms); }
+  @keyframes stampIn { from { transform: scale(1.8) rotate(-30deg); opacity: 0; } to { transform: scale(1) rotate(-8deg); opacity: 1; } }
+}
+.stampnote { margin: 0; font-size: 14px; color: #4e453f; }
+.stampcard.compact { padding: 14px; gap: 10px; }
+.stampcard.compact .stamps { grid-template-columns: repeat(8, 1fr); gap: 6px; }
+.stampcard.compact .stamp { font-size: 11px; }
+.stampcard.compact .stamp.on { font-size: 12px; }
+.stampcard.compact .stamp.goal:not(.on) { font-size: 8.5px; }
+.stampcard.compact .stampcard-head .display { font-size: 22px; }
+.stampcard.compact .stampcount { font-size: 26px; }
+
+.perk { display: flex; gap: 12px; align-items: flex-start; border: 1px solid var(--cacao); border-radius: 12px; padding: 12px; background: var(--tinta); }
+.perk b { display: block; }
+.perk.ready { border-color: var(--tostado); background: rgb(198 138 78 / .1); }
+.acct-grid { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 860px) { .acct-grid { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); align-items: start; } }
+.reflink { display: flex; gap: 6px; flex-wrap: wrap; }
+.reflink input { flex: 1; min-width: 180px; }
+.hist { display: grid; gap: 8px; }
+.hist a { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; text-decoration: none; color: inherit; border: 1px solid var(--cacao); border-radius: 12px; padding: 12px; }
+.hist a:hover { border-color: var(--crema-2); }
+.hist .when { color: var(--crema-2); font-size: 13.5px; }
+.guest-or { display: grid; gap: 10px; background: var(--tinta); border: 1px solid var(--cacao); border-radius: 12px; padding: 14px; margin-top: 12px; }
+.guest-or p { margin: 0; }
