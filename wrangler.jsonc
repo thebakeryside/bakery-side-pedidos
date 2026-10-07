@@ -2,6 +2,8 @@
   // Cloudflare publica solo la carpeta public/ como sitio estático
   "name": "bakery-side-pedidos",
   "compatibility_date": "2026-10-06",
+  "workers_dev": true,
+  "preview_urls": true,
   "assets": {
     "directory": "./public/",
     "html_handling": "auto-trailing-slash"
