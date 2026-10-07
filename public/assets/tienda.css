@@ -10,6 +10,8 @@
 .cats button[aria-pressed="true"] { background: var(--crema); color: var(--tinta); border-color: var(--crema); }
 .cat-title { font-family: var(--display); font-size: 30px; letter-spacing: .05em; margin: 18px 0 10px; color: var(--tostado); }
 .menu-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.soon { border: 1px dashed var(--cacao); border-radius: var(--r); padding: 22px 18px; display: grid; gap: 4px; }
+.soon .display { font-size: 28px; color: var(--crema); }
 .item { background: var(--tinta-2); border: 1px solid var(--cacao); border-radius: var(--r); overflow: hidden; display: flex; flex-direction: column; }
 .item .ph { aspect-ratio: 4 / 3; background: var(--tinta-3); display: grid; place-items: center; }
 .item .ph img { width: 100%; height: 100%; object-fit: cover; }

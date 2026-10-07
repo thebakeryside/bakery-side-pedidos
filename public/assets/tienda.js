@@ -50,10 +50,11 @@ function itemCard(p) {
 function renderMenu() {
   const groups = state.cats
     .filter((c) => state.filter === "Todo" || c.name === state.filter)
-    .map((c) => ({ c, items: state.products.filter((p) => p.category_id === c.id) }))
-    .filter((g) => g.items.length);
+    .map((c) => ({ c, items: state.products.filter((p) => p.category_id === c.id) }));
   $("#menu").innerHTML = groups.length
-    ? groups.map((g) => `<h3 class="cat-title">${esc(g.c.name)}</h3><div class="menu-grid">${g.items.map(itemCard).join("")}</div>`).join("")
+    ? groups.map((g) => `<h3 class="cat-title">${esc(g.c.name)}</h3>${g.items.length
+        ? `<div class="menu-grid">${g.items.map(itemCard).join("")}</div>`
+        : `<div class="soon"><span class="display">Próximamente</span><span class="muted small">Estamos preparando esta sección.</span></div>`}`).join("")
     : `<p class="muted">Pronto publicaremos el menú.</p>`;
 }
 $("#menu").addEventListener("click", (e) => {
