@@ -26,8 +26,9 @@ async function init() {
   }
   const c = state.cfg;
   $("#hoursTxt").textContent = `${c.open_time} a ${c.close_time}`;
-  $("#openTxt").textContent = c.open_now ? "Abierto ahora" : (c.store_open ? "Fuera de horario · agenda tu pedido" : "Cerrado temporalmente");
-  $("#openPill").classList.toggle("closed", !c.open_now);
+  renderStatus(c);
+  const wa = waLink(c.whatsapp, "Hola The Bakery Side, tengo una consulta 🙂");
+  if (wa) { $("#waFab").href = wa; $("#waFab").hidden = false; }
   try { JSON.parse(localStorage.getItem(CART_KEY) || "[]").forEach(([id, q]) => state.products.some((p) => p.id === id) && state.cart.set(id, q)); } catch {}
   renderCats(); renderMenu(); renderCart();
   await refreshAccount();
@@ -36,10 +37,37 @@ async function init() {
   }
 }
 
+// Horario: aviso amable cuando no estamos abiertos
+function renderStatus(c) {
+  const nowHM = new Date().toLocaleTimeString("en-GB", { timeZone: "America/Guayaquil", hour: "2-digit", minute: "2-digit" });
+  const later = nowHM < c.open_time;
+  $("#openTxt").innerHTML = c.open_now ? `Abierto<span class="long"> hasta ${c.close_time}</span>`
+    : c.store_open ? `Cerrado<span class="long"> · abrimos ${later ? "hoy" : "mañana"} ${c.open_time}</span>` : "Cerrado hoy";
+  $("#openPill").classList.toggle("closed", !c.open_now);
+  $("#closedCard").hidden = c.open_now;
+  if (c.open_now) return;
+  if (c.store_open) {
+    $("#closedTitle").textContent = "Ahora estamos descansando";
+    $("#closedText").textContent = `Abrimos ${later ? "hoy" : "mañana"} a las ${c.open_time}, pero puedes dejar tu pedido agendado desde ya y te lo llevamos el día y la hora que elijas.`;
+  } else {
+    $("#closedTitle").textContent = "Hoy no estamos recibiendo pedidos";
+    $("#closedText").textContent = "Volvemos muy pronto. Si tienes una consulta, escríbenos por WhatsApp.";
+  }
+}
+// wa.me necesita el número internacional sin signos (0991234567 → 593991234567)
+function waLink(num, text) {
+  let d = String(num || "").replace(/\D/g, "");
+  if (!d) return null;
+  if (d.startsWith("0")) d = "593" + d.slice(1);
+  return `https://wa.me/${d}?text=${encodeURIComponent(text)}`;
+}
+
 async function refreshAccount() {
   try { state.acct = (await currentUser()) ? await loadAccount() : null; } catch { state.acct = null; }
   const b = $("#acctBtn");
-  b.innerHTML = state.acct ? `Mis sellos <span class="mini tabnum">${state.acct.stamps}/8</span>` : "Mis sellos";
+  const first = (state.acct?.customer?.full_name || "").split(" ")[0];
+  $("#acctTxt").textContent = first ? `Hola, ${first}` : "Mi cuenta";
+  b.title = state.acct ? `Tu cuenta: ${state.acct.stamps} de 8 sellos` : "Entra a tu cuenta";
   if (!$("#checkout").hidden) { renderAcctBox(); renderPerks(); renderSummary(); }
 }
 
@@ -120,7 +148,7 @@ $("#mbOpen").onclick = () => $("#cart").classList.add("open");
 $("#closeCart").onclick = () => $("#cart").classList.remove("open");
 $("#goCheckout").onclick = openCheckout;
 $("#backToMenu").onclick = () => {
-  $("#checkout").hidden = true; $(".layout").hidden = false; $(".intro").hidden = false; renderCart(); scrollTo(0, 0);
+  $("#checkout").hidden = true; $(".layout").hidden = false; $(".intro").hidden = false; document.body.classList.remove("in-checkout"); renderCart(); scrollTo(0, 0);
 };
 
 // ---------- checkout ----------
@@ -128,6 +156,7 @@ let mapCtl = null;
 function openCheckout() {
   $("#cart").classList.remove("open");
   $(".layout").hidden = true; $(".intro").hidden = true; $("#checkout").hidden = false; $("#mobileBar").hidden = true;
+  document.body.classList.add("in-checkout");
   scrollTo(0, 0);
   const c = state.cfg;
   // cuándo
@@ -144,7 +173,7 @@ function openCheckout() {
   $("#bankInfo").textContent = c.bank_info || "Escríbenos por WhatsApp para recibir los datos de la cuenta.";
   syncPay();
   // datos guardados del cliente
-  try { const p = JSON.parse(localStorage.getItem(PROFILE_KEY) || "{}"); for (const k of ["cName", "cPhone", "address", "reference"]) if (p[k] && !$("#" + k).value) $("#" + k).value = p[k]; if (p.lat && !state.loc) state.loc = { lat: p.lat, lng: p.lng }; } catch {}
+  try { const p = JSON.parse(localStorage.getItem(PROFILE_KEY) || "{}"); for (const k of ["cName", "cPhone", "address", "reference"]) if (p[k] && !$("#" + k).value) $("#" + k).value = k === "address" ? splitAddr(p[k]) : p[k]; if (p.locLabel && !state.locLabel) setLocLabel(p.locLabel); if (p.lat && !state.loc) state.loc = { lat: p.lat, lng: p.lng }; } catch {}
   setupMap();
   renderAcctBox(); renderPerks();
   renderSummary();
@@ -156,7 +185,7 @@ function renderAcctBox() {
     const c = a.customer;
     if (c.full_name && !$("#cName").value) $("#cName").value = c.full_name;
     if (c.phone && !$("#cPhone").value) $("#cPhone").value = c.phone;
-    if (c.address && !$("#address").value) $("#address").value = c.address;
+    if (c.address && !$("#address").value) { const [dir, loc] = String(c.address).split(LOC_SEP); $("#address").value = dir; if (loc && !state.locLabel) setLocLabel(loc); }
     if (c.reference && !$("#reference").value) $("#reference").value = c.reference;
     if (c.lat && !state.loc) { state.loc = { lat: c.lat, lng: c.lng }; if (mapCtl) mapCtl.setView(c.lat, c.lng, 18); else requestQuote(); }
     box.innerHTML = `<p class="muted small" style="margin:6px 0 0">Pedido con tu cuenta de Google (${esc(c.email || "")}). Este pedido suma sellos a tu tarjeta.</p>`;
@@ -233,14 +262,22 @@ async function setupMap() {
     start: state.loc, center: k, searchSlot: $("#searchSlot"),
     onPick: (lat, lng, addr) => {
       state.loc = { lat, lng };
-      // completamos la dirección solo si el cliente no la escribió a mano
-      if (addr && (!$("#address").value.trim() || state.autoAddr)) { $("#address").value = addr; state.autoAddr = true; }
+      // La ubicación del mapa va en su propio campo; la dirección la escribe el cliente
+      setLocLabel(addr || "Ubicación marcada en el mapa");
       requestQuote();
     },
   });
   if (state.loc) { mapCtl.setView(state.loc.lat, state.loc.lng, 18); requestQuote(); }
 }
-$("#address").addEventListener("input", () => (state.autoAddr = false));
+const LOC_SEP = " · Ubicación del mapa: ";
+function setLocLabel(t) { state.locLabel = t; $("#locLabel").textContent = t; $("#locLabel").classList.add("set"); }
+// Al servidor va todo junto para que cocina y motorizado vean ambas cosas
+function fullAddress() {
+  const dir = $("#address").value.trim().slice(0, 130);
+  const loc = state.locLabel && state.locLabel !== "Ubicación marcada en el mapa" ? state.locLabel : "";
+  return loc ? (dir + LOC_SEP + loc).slice(0, 200) : dir;
+}
+const splitAddr = (a) => String(a || "").split(LOC_SEP)[0];
 $("#locateMe").onclick = () => {
   if (!navigator.geolocation) return toast("Tu navegador no permite compartir ubicación. Busca tu dirección o mueve el mapa.");
   $("#locateMe").disabled = true;
@@ -320,7 +357,7 @@ $("#orderForm").addEventListener("submit", async (e) => {
 
   const body = {
     items: cartItems(), lat: state.loc.lat, lng: state.loc.lng,
-    address: $("#address").value, reference: $("#reference").value,
+    address: fullAddress(), reference: $("#reference").value,
     scheduled_for: later ? localToISO($("#schedDate").value, $("#schedTime").value) : null,
     customer_name: $("#cName").value, customer_phone: $("#cPhone").value,
     recipient_name: $("#isGift").checked ? $("#rName").value : null,
@@ -333,7 +370,7 @@ $("#orderForm").addEventListener("submit", async (e) => {
     reward_product_id: Number($("#rewardPick")?.value || 0) || null,
     ref: storedRef(),
   };
-  try { localStorage.setItem(PROFILE_KEY, JSON.stringify({ cName: body.customer_name, cPhone: body.customer_phone, address: body.address, reference: body.reference, ...state.loc })); } catch {}
+  try { localStorage.setItem(PROFILE_KEY, JSON.stringify({ cName: body.customer_name, cPhone: body.customer_phone, address: $("#address").value.trim(), locLabel: state.locLabel, reference: body.reference, ...state.loc })); } catch {}
 
   const btn = $("#payBtn"); btn.disabled = true; btn.textContent = "Creando tu pedido…";
   try {

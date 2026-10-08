@@ -91,3 +91,9 @@ input.in:focus, select.in:focus, textarea.in:focus { border-color: var(--tostado
 .st-cancelado { background: rgb(229 138 122 / .16); color: var(--error); }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* logo */
+.brand.logo { display: inline-flex; align-items: center; padding: 6px 0; }
+.brand.logo img { height: 38px; width: auto; }
+.brand { display: inline-flex; align-items: center; gap: 10px; }
+.brand-s { height: 26px; width: auto; }

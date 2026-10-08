@@ -3,7 +3,10 @@
 import { GOOGLE_MAPS_BROWSER_KEY } from "./config.js";
 
 const GYE = { lat: -2.17, lng: -79.9 };
-const BOUNDS = { south: -2.35, west: -80.15, north: -1.95, east: -79.75 }; // Guayaquil y alrededores
+const BOUNDS = { south: -2.35, west: -80.15, north: -1.85, east: -79.7 }; // Guayaquil, Samborondón, vía a la Costa y La Aurora
+const BIAS = { center: { lat: -2.12, lng: -79.9 }, radius: 30000 };
+// "Cdla. Alborada" → "Alborada": Google suele conocer la ciudadela por su nombre solo
+const PREFIX = /^(cdla\.?|ciudadela|urb\.?|urbanizaci[oó]n|coop\.?|cooperativa|conjunto|mz\.?)\s+/i;
 
 // Estilo sobrio, en tonos cálidos de la marca
 const STYLE = [
@@ -78,29 +81,15 @@ async function googleMap(el, { start, center, searchSlot, onPick }) {
   // Si la clave es rechazada, pasamos al mapa gratuito
   window.__tbsMapsAuthFail = () => { el.innerHTML = ""; leafletMap(el, { start, center, searchSlot, onPick }); };
 
-  // Buscador de direcciones (Places API New)
+  // Buscador propio: sugerencias de Google Places + respaldo con el geocodificador,
+  // para que también aparezcan ciudadelas, urbanizaciones y manzanas.
   if (searchSlot) {
-    try {
-      const { PlaceAutocompleteElement } = await g.importLibrary("places");
-      const ac = new PlaceAutocompleteElement({ includedRegionCodes: ["ec"], locationRestriction: BOUNDS });
-      ac.setAttribute("placeholder", "Busca tu dirección o un lugar cercano");
-      ac.classList.add("gplace");
-      searchSlot.replaceChildren(ac);
-      const onSelect = async (ev) => {
-        const pred = ev.placePrediction;
-        const place = pred ? pred.toPlace() : ev.place;
-        if (!place) return;
-        await place.fetchFields({ fields: ["location", "formattedAddress", "displayName"] });
-        if (!place.location) return;
-        touched = true; el.classList.add("touched");
-        map.setZoom(18); map.panTo(place.location);
-        const addr = (place.formattedAddress || place.displayName || "").replace(/, Ecuador$/, "");
-        quiet = true; // el próximo "idle" no debe repetir la búsqueda inversa
-        onPick(place.location.lat(), place.location.lng(), addr);
-      };
-      ac.addEventListener("gmp-select", onSelect);
-      ac.addEventListener("gmp-placeselect", onSelect); // versiones anteriores
-    } catch { /* sin buscador, el mapa igual sirve */ }
+    try { await mountSearch(g, searchSlot, geocoder, (lat, lng, addr) => {
+      touched = true; el.classList.add("touched");
+      map.setZoom(18); map.panTo({ lat, lng });
+      quiet = true; // el próximo "idle" no debe repetir la búsqueda inversa
+      onPick(lat, lng, addr);
+    }); } catch { /* sin buscador, el mapa igual sirve */ }
   }
 
   return {
@@ -131,11 +120,11 @@ function leafletMap(el, { start, center, searchSlot, onPick }) {
   map.on("moveend", async () => { if (!touched) return; const p = map.getCenter(); onPick(p.lat, p.lng, await reverse(p.lat, p.lng)); });
 
   if (searchSlot) {
-    searchSlot.innerHTML = `<input class="in" id="searchQ" type="search" placeholder="Busca: Urdesa, calle Guayacanes" aria-label="Buscar dirección"><button class="btn small" type="button" id="searchBtn">Buscar</button>`;
+    searchSlot.innerHTML = `<input class="in" id="searchQ" type="search" placeholder="Busca tu ciudadela o calle" aria-label="Buscar dirección"><button class="btn small" type="button" id="searchBtn">Buscar</button>`;
     const go = async () => {
       const q = searchSlot.querySelector("input").value.trim(); if (!q) return;
       try {
-        const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q + ", Guayaquil")}&countrycodes=ec&limit=1&format=json&viewbox=-80.15,-1.95,-79.75,-2.35`);
+        const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q.replace(PREFIX, "") + ", Guayaquil")}&countrycodes=ec&limit=1&format=json&viewbox=-80.15,-1.85,-79.7,-2.35`);
         const j = await r.json(); if (!j?.length) return;
         touched = true; el.classList.add("touched"); map.setView([+j[0].lat, +j[0].lon], 18);
       } catch {}
@@ -150,3 +139,80 @@ function leafletMap(el, { start, center, searchSlot, onPick }) {
     resize() { map.invalidateSize(); },
   };
 }
+
+async function mountSearch(g, slot, geocoder, go) {
+  const places = await g.importLibrary("places");
+  const AS = places.AutocompleteSuggestion;
+  slot.innerHTML = `<div class="ac"><input class="in" type="search" placeholder="Busca tu ciudadela, calle o un lugar" aria-label="Buscar ubicación" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="acList"><ul class="ac-list" id="acList" role="listbox" hidden></ul></div>`;
+  const input = slot.querySelector("input"), list = slot.querySelector("ul");
+  let token = AS ? new places.AutocompleteSessionToken() : null, seq = 0, items = [], active = -1;
+
+  const clean = (t) => String(t || "").replace(/, Ecuador$/, "");
+  const close = () => { list.hidden = true; input.setAttribute("aria-expanded", "false"); active = -1; };
+  const draw = () => {
+    list.innerHTML = items.map((it, i) => `<li role="option" id="ac${i}" data-i="${i}" aria-selected="${i === active}"><b>${esc(it.main)}</b>${it.sub ? `<span>${esc(it.sub)}</span>` : ""}</li>`).join("")
+      || `<li class="none">No encontramos ese lugar. Prueba con la ciudadela o una calle cercana, o mueve el mapa.</li>`;
+    list.hidden = false; input.setAttribute("aria-expanded", "true");
+  };
+
+  async function suggest(q) {
+    const out = [], seen = new Set();
+    const add = (it) => { const k = it.main + "|" + it.sub; if (!seen.has(k)) { seen.add(k); out.push(it); } };
+    if (AS) {
+      const variants = [q]; const bare = q.replace(PREFIX, ""); if (bare !== q && bare.length > 2) variants.push(bare);
+      for (const v of variants) {
+        try {
+          const { suggestions } = await AS.fetchAutocompleteSuggestions({ input: v, sessionToken: token, includedRegionCodes: ["ec"], locationBias: BIAS, language: "es", region: "ec" });
+          for (const sg of suggestions || []) {
+            const pp = sg.placePrediction; if (!pp) continue;
+            add({ main: pp.mainText?.toString() || pp.text.toString(), sub: clean(pp.secondaryText?.toString()), pred: pp });
+          }
+        } catch {}
+        if (out.length >= 5) break;
+      }
+    }
+    // Respaldo: el geocodificador conoce zonas que el autocompletado a veces no muestra
+    if (out.length < 3) {
+      try {
+        const { results } = await geocoder.geocode({ address: `${q}, Guayaquil`, bounds: BOUNDS, componentRestrictions: { country: "EC" }, language: "es" });
+        for (const r of (results || []).slice(0, 3)) {
+          const [main, ...rest] = clean(r.formatted_address).split(", ");
+          add({ main, sub: rest.join(", "), lat: r.geometry.location.lat(), lng: r.geometry.location.lng(), addr: clean(r.formatted_address) });
+        }
+      } catch {}
+    }
+    return out.slice(0, 6);
+  }
+
+  async function choose(it) {
+    close(); input.blur();
+    if (it.pred) {
+      const place = it.pred.toPlace();
+      await place.fetchFields({ fields: ["location", "formattedAddress", "displayName"] });
+      token = new places.AutocompleteSessionToken();
+      if (!place.location) return;
+      input.value = it.main;
+      return go(place.location.lat(), place.location.lng(), [it.main, it.sub].filter(Boolean).join(", "));
+    }
+    input.value = it.main;
+    go(it.lat, it.lng, it.addr);
+  }
+
+  let timer;
+  input.addEventListener("input", () => {
+    clearTimeout(timer);
+    const q = input.value.trim();
+    if (q.length < 3) return close();
+    timer = setTimeout(async () => { const my = ++seq; const r = await suggest(q); if (my !== seq) return; items = r; active = -1; draw(); }, 250);
+  });
+  input.addEventListener("keydown", (e) => {
+    if (list.hidden || !items.length) { if (e.key === "Enter") e.preventDefault(); return; }
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); active = (active + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length; draw(); input.setAttribute("aria-activedescendant", "ac" + active); }
+    else if (e.key === "Enter") { e.preventDefault(); choose(items[Math.max(0, active)]); }
+    else if (e.key === "Escape") close();
+  });
+  list.addEventListener("mousedown", (e) => { const li = e.target.closest("[data-i]"); if (li) { e.preventDefault(); choose(items[+li.dataset.i]); } });
+  input.addEventListener("blur", () => setTimeout(close, 150));
+}
+
+const esc = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
