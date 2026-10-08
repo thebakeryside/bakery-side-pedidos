@@ -85,14 +85,39 @@ async function refreshAccount() {
 }
 
 // ---------- menú ----------
+// Las categorías quedan fijas arriba al bajar; tocar una lleva a su sección y la activa se marca sola
 function renderCats() {
-  const names = ["Todo", ...state.cats.map((c) => c.name)];
-  $("#cats").innerHTML = names.map((n) => `<button type="button" aria-pressed="${n === state.filter}" data-cat="${esc(n)}">${esc(n)}</button>`).join("");
+  $("#cats").innerHTML = state.cats.map((c, i) => `<button type="button" aria-pressed="${i === 0}" data-cat="${c.id}">${esc(c.name)}</button>`).join("");
 }
+const stickyTop = () => $(".topbar").offsetHeight + $("#cats").offsetHeight + 8;
 $("#cats").addEventListener("click", (e) => {
   const b = e.target.closest("[data-cat]"); if (!b) return;
-  state.filter = b.dataset.cat; renderCats(); renderMenu();
+  const sec = document.getElementById(`cat-${b.dataset.cat}`); if (!sec) return;
+  spyLock = Date.now() + 700; setActiveCat(b.dataset.cat);
+  scrollTo({ top: sec.getBoundingClientRect().top + scrollY - stickyTop(), behavior: "smooth" });
 });
+let spyLock = 0;
+const setHdr = () => document.documentElement.style.setProperty("--hdr", `${$(".topbar").offsetHeight}px`);
+setHdr(); addEventListener("resize", setHdr);
+function setActiveCat(id) {
+  $$("#cats [data-cat]").forEach((b) => {
+    const on = b.dataset.cat === String(id);
+    if (on && b.getAttribute("aria-pressed") !== "true") b.scrollIntoView({ inline: "center", block: "nearest" });
+    b.setAttribute("aria-pressed", on);
+  });
+}
+let spyRaf = 0;
+addEventListener("scroll", () => {
+  if (spyRaf || Date.now() < spyLock) return;
+  spyRaf = requestAnimationFrame(() => {
+    spyRaf = 0;
+    const line = stickyTop() + 4;
+    let cur = null;
+    for (const h of $$("#menu .cat-title")) { if (h.getBoundingClientRect().top <= line) cur = h.id.slice(4); }
+    setActiveCat(cur ?? state.cats[0]?.id);
+  });
+}, { passive: true });
+
 
 // Porciones recomendadas (dulces enteros): van como etiqueta aparte, no en la descripción
 const servChip = (p) => (p.servings ? `<span class="serv"><svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="17" cy="9" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 19c.8-3 3.2-4.6 6-4.6s5.2 1.6 6 4.6M15 14.6c2.6-.3 4.9 1 5.8 3.9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>${esc(p.servings)}</span>` : "");
@@ -123,10 +148,9 @@ const byName = (a, b) => a.name.localeCompare(b.name, "es", { numeric: true, sen
 const menuOrder = (c) => (/dulces enteros/i.test(c.name) ? (a, b) => Number(b.price) - Number(a.price) || byName(a, b) : byName);
 function renderMenu() {
   const groups = state.cats
-    .filter((c) => state.filter === "Todo" || c.name === state.filter)
     .map((c) => ({ c, items: state.products.filter((p) => p.category_id === c.id).sort(menuOrder(c)) }));
   $("#menu").innerHTML = groups.length
-    ? groups.map((g) => `<h3 class="cat-title">${esc(g.c.name)}</h3>${g.items.length
+    ? groups.map((g) => `<h3 class="cat-title" id="cat-${g.c.id}">${esc(g.c.name)}</h3>${g.items.length
         ? `<div class="menu-grid">${g.items.map(itemCard).join("")}</div>`
         : `<div class="soon"><span class="display">Próximamente</span><span class="muted small">Estamos preparando esta sección.</span></div>`}`).join("")
     : `<p class="muted">Pronto publicaremos el menú.</p>`;

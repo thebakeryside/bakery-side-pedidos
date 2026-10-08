@@ -168,3 +168,9 @@ body.light .wrap { max-width: 1260px; }
   .item .foot .btn.small { min-height: 34px; padding: 6px 12px; }
   .cat-title { margin: 20px 0 4px; font-size: 26px; }
 }
+
+/* categorías fijas al bajar (como en las apps de delivery) */
+.cats { position: sticky; top: var(--hdr, 61px); z-index: 15; background: var(--bg); margin: 0 -16px 6px; padding: 10px 16px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; box-shadow: 0 1px 0 var(--line); }
+.cats::-webkit-scrollbar { display: none; }
+.cats button { flex: none; white-space: nowrap; }
+@media (min-width: 900px) { .cats { margin-inline: 0; padding-inline: 0; } }
