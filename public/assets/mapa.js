@@ -193,7 +193,12 @@ async function mountSearch(g, slot, geocoder, go) {
         if (out.length >= 5) break;
       }
     }
-    // Respaldo: el geocodificador conoce zonas que el autocompletado a veces no muestra
+    // Respaldo 1: lugares de OpenStreetMap (universidades, centros comerciales, ciudadelas), gratis
+    if (out.length < 3) {
+      for (const it of await osmPlaces(q)) add(it);
+      if (out.length < 2) { const bare = q.replace(PREFIX, ""); if (bare !== q && bare.length > 2) for (const it of await osmPlaces(bare)) add(it); }
+    }
+    // Respaldo 2: el geocodificador de Google conoce calles y zonas
     if (out.length < 3) {
       try {
         const { results } = await geocoder.geocode({ address: `${q}, Guayaquil`, bounds: BOUNDS, componentRestrictions: { country: "EC" }, language: "es" });
@@ -235,6 +240,20 @@ async function mountSearch(g, slot, geocoder, go) {
   });
   list.addEventListener("mousedown", (e) => { const li = e.target.closest("[data-i]"); if (li) { e.preventDefault(); choose(items[+li.dataset.i]); } });
   input.addEventListener("blur", () => setTimeout(close, 150));
+}
+
+// Búsqueda de lugares en OpenStreetMap (Photon), limitada a Guayaquil y Samborondón
+async function osmPlaces(q) {
+  try {
+    const u = `https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&lat=${BIAS.center.lat}&lon=${BIAS.center.lng}&limit=6&bbox=${BOUNDS.west},${BOUNDS.south},${BOUNDS.east},${BOUNDS.north}`;
+    const r = await fetch(u); if (!r.ok) return [];
+    const { features } = await r.json();
+    return (features || []).filter((f) => f.properties?.name).slice(0, 5).map((f) => {
+      const p = f.properties, [lng, lat] = f.geometry.coordinates;
+      const sub = [p.street && (p.street + (p.housenumber ? " " + p.housenumber : "")), p.district || p.locality, p.city].filter((x, i, a) => x && x !== p.name && a.indexOf(x) === i).join(", ");
+      return { main: p.name, sub, lat, lng, addr: [p.name, sub].filter(Boolean).join(", ") };
+    });
+  } catch { return []; }
 }
 
 const esc = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
