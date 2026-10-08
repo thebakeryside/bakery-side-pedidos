@@ -9,8 +9,9 @@ const AGENDA_HOURS = 3; // los agendados aparecen en "Pedidos" desde 3 horas ant
 
 // ---------- arranque ----------
 requireLogin(async (user) => {
-  const { data: prof } = await sb.from("profiles").select("role").eq("user_id", user.id).maybeSingle();
-  if (prof?.role !== "admin") {
+  const { data: prof } = await sb.from("profiles").select("role,is_master").eq("user_id", user.id).maybeSingle();
+  $("#toMaster").hidden = !prof?.is_master;
+  if (prof?.role !== "admin" && !prof?.is_master) {
     $("#view").innerHTML = `<div class="panel"><h2 class="display" style="font-size:32px">Sin acceso a cocina</h2><p class="muted">Tu correo ${esc(user.email)} no está autorizado como administrador. Si eres motorizado, entra en <a href="/moto">/moto</a>.</p></div>`;
     $(".tabs").hidden = true; return;
   }
