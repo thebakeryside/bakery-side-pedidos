@@ -1,5 +1,5 @@
 import { sb, api, $, money, esc, when, toast, STATUS } from "./common.js";
-import { captureRef, currentUser, loadAccount, setAccount, signInWithGoogle, signOut, stampCard, googleButton } from "./account.js";
+import { captureRef, currentUser, loadAccount, setAccount, signOut, stampCard, googleButton, mountGoogle } from "./account.js";
 
 captureRef();
 const root = $("#root");
@@ -68,12 +68,12 @@ function renderGuest() {
       <div style="display:grid;gap:14px">
         <div><p class="eyebrow">Recompensas The Bakery Side</p><h1 class="display" style="font-size:clamp(40px,8vw,60px)">Empieza con 2 sellos de regalo</h1></div>
         <p class="muted">Crea tu cuenta con Google en un toque. Ganas 1 sello por cada $10, una cookie gratis al completar 8 sellos y $4 en tu mes de cumpleaños.</p>
-        <div>${googleButton("Crear cuenta con Google")}</div>
+        <div>${googleButton()}</div>
         <p class="muted small">¿Prefieres no crear cuenta? Puedes <a href="/">pedir como invitado</a>, pero no acumularás sellos.</p>
       </div>
       ${stampCard(2)}
     </div>`;
-  root.querySelector("[data-google]").onclick = () => signInWithGoogle(location.origin + "/cuenta").catch((e) => toast(e.message));
+  mountGoogle(root, () => render(), (e) => toast(e.message));
 }
 
 let started = false;

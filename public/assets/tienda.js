@@ -1,6 +1,6 @@
 import { sb, api, $, $$, money, esc, hhmm, dayLabel, localToISO, todayLocal, toast } from "./common.js";
 import { openPayphone } from "./payphone.js";
-import { captureRef, storedRef, currentUser, loadAccount, signInWithGoogle, stampCard, stampsFor, googleButton } from "./account.js";
+import { captureRef, storedRef, currentUser, loadAccount, stampCard, stampsFor, googleButton, mountGoogle } from "./account.js";
 
 captureRef();
 
@@ -156,10 +156,8 @@ function renderAcctBox() {
       <p><b>Entra con Google y empieza con 2 sellos de regalo.</b> <span class="muted small">Ganas 1 sello por cada $10, una cookie gratis al llegar a 8, y guardamos tus datos para la próxima.</span></p>
       <div style="display:flex;gap:8px;flex-wrap:wrap">${googleButton()}<button class="btn ghost" type="button" id="asGuest">Seguir como invitado</button></div>
     </div>`;
-  box.querySelector("[data-google]").onclick = async () => {
-    try { localStorage.setItem(CART_KEY, JSON.stringify([...state.cart])); } catch {}
-    try { await signInWithGoogle(location.origin + "/?checkout=1"); } catch (e) { toast(e.message); }
-  };
+  try { localStorage.setItem(CART_KEY, JSON.stringify([...state.cart])); } catch {}
+  mountGoogle(box, async () => { await refreshAccount(); toast("¡Listo! Ya sumas sellos con este pedido."); }, (e) => toast(e.message));
   $("#asGuest").onclick = () => { state.guest = true; renderAcctBox(); renderPerks(); };
 }
 

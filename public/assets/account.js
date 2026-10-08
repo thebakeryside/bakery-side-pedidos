@@ -1,5 +1,6 @@
 // Cuenta del cliente (Google), tarjeta de sellos y referidos
 import { sb, api, esc } from "./common.js";
+import { GOOGLE_CLIENT_ID } from "./config.js";
 
 export const STAMPS_TOTAL = 8;
 const REF_KEY = "tbs_ref";
@@ -54,8 +55,53 @@ export function stampCard(stamps, { compact = false } = {}) {
 // Cuántos sellos da un pedido (1 por cada $10 en productos, sin envío)
 export const stampsFor = (subtotal) => Math.floor(Math.max(0, subtotal) / 10);
 
-export function googleButton(label = "Continuar con Google") {
-  return `<button class="btn gbtn" type="button" data-google>
-    <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>
-    <span>${esc(label)}</span></button>`;
+// Botón oficial de Google: el ingreso ocurre en esta página, así Google muestra thebakeryside.com
+export const googleButton = () => `<div class="gsi-slot" data-gsi></div>`;
+
+let gsiLoading;
+function loadGsi() {
+  if (window.google?.accounts?.id) return Promise.resolve();
+  gsiLoading ||= new Promise((ok, fail) => {
+    const s = document.createElement("script");
+    s.src = "https://accounts.google.com/gsi/client"; s.async = true;
+    s.onload = ok; s.onerror = () => fail(new Error("No pudimos cargar el ingreso con Google."));
+    document.head.append(s);
+  });
+  return gsiLoading;
+}
+async function sha256Hex(text) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+// Dibuja el botón dentro de cada [data-gsi] de `root` y llama onSignedIn() al entrar
+export async function mountGoogle(root, onSignedIn, onError = () => {}) {
+  const slots = [...root.querySelectorAll("[data-gsi]")];
+  if (!slots.length) return;
+  try {
+    await loadGsi();
+    const raw = crypto.randomUUID() + crypto.randomUUID();
+    const hashed = await sha256Hex(raw);
+    window.google.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      nonce: hashed,
+      use_fedcm_for_button: true,
+      callback: async ({ credential }) => {
+        const { error } = await sb.auth.signInWithIdToken({ provider: "google", token: credential, nonce: raw });
+        if (error) return onError(new Error("No pudimos iniciar sesión con Google. Intenta de nuevo."));
+        cache = null;
+        onSignedIn();
+      },
+    });
+    for (const el of slots) {
+      el.innerHTML = "";
+      window.google.accounts.id.renderButton(el, { theme: "filled_black", size: "large", shape: "pill", text: "continue_with", locale: "es", width: Math.min(320, Math.max(220, el.clientWidth || 300)) });
+    }
+  } catch (e) {
+    // Respaldo: el ingreso por redirección de siempre
+    for (const el of slots) {
+      el.innerHTML = `<button class="btn gbtn" type="button">Continuar con Google</button>`;
+      el.querySelector("button").onclick = () => signInWithGoogle().catch(onError);
+    }
+  }
 }
