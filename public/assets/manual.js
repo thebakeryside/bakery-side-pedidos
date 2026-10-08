@@ -4,9 +4,9 @@ import { createMap } from "./mapa.js";
 
 const SITE = "https://thebakeryside.com";
 const QUICK = [
-  ["Saludo y menú", "¡Hola! 🧁 Gracias por escribir a The Bakery Side. Este es nuestro menú: " + SITE + "\n\nCuéntame qué te gustaría y te tomo el pedido por aquí mismo."],
-  ["Pedir datos", "¡Perfecto! Para tu pedido necesito:\n1️⃣ Tu nombre\n2️⃣ Tu ubicación (📎 → Ubicación → Enviar mi ubicación actual)\n3️⃣ Dirección y una referencia (ej.: Urdesa, Calle 5 #214, casa blanca)\n4️⃣ ¿Lo quieres ahora o para qué día y hora?\n5️⃣ ¿Es un regalo? Dime quién lo recibe y el mensaje para la tarjeta 💌"],
-  ["Pago recibido", "¡Recibimos tu pago, gracias! 🙌 Ya estamos con tu pedido."],
+  ["/hola · Saludo y menú", "¡Hola! 🧁 Gracias por escribir a The Bakery Side. Este es nuestro menú: " + SITE + "\n\nCuéntame qué te gustaría y te tomo el pedido por aquí mismo."],
+  ["/datos · Pedir datos", "¡Perfecto! Para tu pedido necesito:\n1️⃣ Tu nombre\n2️⃣ Tu ubicación (📎 → Ubicación → Enviar mi ubicación actual)\n3️⃣ Dirección y una referencia (ej.: Urdesa, Calle 5 #214, casa blanca)\n4️⃣ ¿Lo quieres ahora o para qué día y hora?\n5️⃣ ¿Es un regalo? Dime quién lo recibe y el mensaje para la tarjeta 💌"],
+  ["/recibido · Pago recibido", "¡Recibimos tu pago, gracias! 🙌 Ya estamos con tu pedido."],
 ];
 
 let st = null;
@@ -25,7 +25,7 @@ export async function renderManual(view) {
     <details class="panel quick">
       <summary><b>Mensajes rápidos para WhatsApp</b> <span class="muted small">— cópialos y pégalos en el chat</span></summary>
       <div class="quick-list">${QUICK.map(([t, m], i) => `<div class="quick-item"><b>${esc(t)}</b><p>${esc(m).replace(/\n/g, "<br>")}</p><button class="btn small" type="button" data-copy="${i}">Copiar</button></div>`).join("")}</div>
-      <p class="muted small" style="margin:10px 0 0">Tip: guárdalos en WhatsApp Business como respuestas rápidas (Herramientas → Respuestas rápidas).</p>
+      <p class="muted small" style="margin:10px 0 0">Guárdalos en WhatsApp Business como respuestas rápidas con estos atajos; la lista completa está en la guía de WhatsApp Business.</p>
     </details>
 
     <form class="manual" id="mForm" novalidate>
