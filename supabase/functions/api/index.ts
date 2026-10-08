@@ -100,7 +100,7 @@ async function priceCart(items: Item[]) {
   if (!Array.isArray(items) || items.length === 0) fail("Tu carrito está vacío.");
   if (items.length > 30) fail("Demasiados productos distintos en un solo pedido.");
   const ids = items.map((i) => Number(i.product_id));
-  const { data: prods, error } = await db.from("products").select("id,name,price,prep_minutes,lead_hours,active").in("id", ids);
+  const { data: prods, error } = await db.from("products").select("*").in("id", ids);
   if (error) throw error;
   let subtotal = 0, prep = 0, lead = 0;
   const lines = items.map((i) => {
@@ -115,7 +115,7 @@ async function priceCart(items: Item[]) {
     lead = Math.max(lead, p!.lead_hours);
     return { product_id: p!.id, name: p!.name, unit_price: unit, quantity: q, line_total: line };
   });
-  return { lines, subtotal: Math.round(subtotal * 100) / 100, prep, lead };
+  return { lines, subtotal: Math.round(subtotal * 100) / 100, prep, lead, prods: prods! };
 }
 
 async function validateSchedule(s: Settings, scheduled: string | null, prep: number, lead: number, travel: number) {
@@ -184,6 +184,26 @@ async function userFrom(req: Request): Promise<User> {
 }
 const COOKIES = ["Midnight Cookies", "Snowlemon Cookies", "Snowchocolate Cookies", "Chocochip Cookies"];
 const nowLocal = () => toLocal(new Date());
+const localDay = (d: Date) => toLocal(d).toISOString().slice(0, 10);
+
+// Agotados y porciones del día: solo aplican a pedidos que se entregan hoy
+function checkStock(cart: Awaited<ReturnType<typeof priceCart>>, deliveryDay: string) {
+  const today = localDay(new Date());
+  if (deliveryDay !== today) return [];
+  const qty: Record<number, number> = {};
+  for (const l of cart.lines) qty[l.product_id] = (qty[l.product_id] ?? 0) + l.quantity;
+  const limited: { id: number; q: number }[] = [];
+  for (const p of cart.prods) {
+    const q = qty[p.id] ?? 0;
+    if (!q) continue;
+    if (p.sold_out_day === today) fail(`${p.name} está agotado por hoy. Quítalo del carrito o agenda para otro día.`);
+    if (p.stock_day === today && p.stock_left !== null) {
+      if (q > p.stock_left) fail(p.stock_left === 0 ? `${p.name} está agotado por hoy.` : `Solo quedan ${p.stock_left} de ${p.name} por hoy.`);
+      limited.push({ id: p.id, q });
+    }
+  }
+  return limited;
+}
 
 async function ensureCustomer(u: NonNullable<User>, ref?: string) {
   const { data: c } = await db.from("customers").select("*").eq("user_id", u.id).maybeSingle();
@@ -286,6 +306,7 @@ const actions: Record<string, (b: any, user: User) => Promise<unknown>> = {
     }
     const q = await quote(s, Number(b.lat), Number(b.lng));
     const sched = await validateSchedule(s, b.scheduled_for || null, cart.prep, cart.lead, q.travel_min);
+    const limited = checkStock(cart, localDay(sched.scheduled_for ? new Date(sched.scheduled_for) : new Date()));
     const method = b.payment_method === "tarjeta" ? "tarjeta" : b.payment_method === "transferencia" ? "transferencia" : fail("Elige cómo pagar.");
     const name = clean(b.customer_name, 80) || fail("Escribe tu nombre.");
     const address = clean(b.address, 200) || fail("Escribe la dirección de entrega.");
@@ -313,6 +334,11 @@ const actions: Record<string, (b: any, user: User) => Promise<unknown>> = {
     if (error) throw error;
     const { error: e2 } = await db.from("order_items").insert(cart.lines.map((l) => ({ ...l, order_id: o.id })));
     if (e2) { await db.from("orders").delete().eq("id", o.id); throw e2; }
+    const today = localDay(new Date());
+    for (const l of limited) {
+      const p = cart.prods.find((x) => x.id === l.id)!;
+      await db.from("products").update({ stock_left: Math.max(0, (p.stock_left ?? 0) - l.q) }).eq("id", l.id).eq("stock_day", today);
+    }
     if (reward) {
       // si estaba apartado en un pedido anterior que nunca se pagó, pasa a este pedido
       if (reward.order_id) await db.from("orders").update({ reward_id: null }).eq("id", reward.order_id).neq("payment_status", "pagado");

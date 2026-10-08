@@ -1,4 +1,4 @@
-import { sb, $, $$, money, esc, hhmm, when, toast, waLink, STATUS } from "./common.js";
+import { sb, $, $$, money, esc, hhmm, when, toast, waLink, STATUS, todayLocal } from "./common.js";
 import { requireLogin, loginHTML } from "./auth.js";
 
 $("#loginSlot").innerHTML = loginHTML("Panel de cocina");
@@ -192,122 +192,77 @@ document.addEventListener("change", (e) => {
   upd(o.id, { rider_id: s.value ? Number(s.value) : null, rider_accepted_at: null }, s.value ? `${o.code} asignado` : `${o.code} sin motorizado`);
 });
 
-// ---------- motorizados ----------
+// ---------- motorizados (solo consulta) ----------
 function renderRiders() {
+  const active = S.riders.filter((r) => r.active);
   $("#view").innerHTML = `
     <div class="panel">
       <h2 class="display" style="font-size:30px">Motorizados</h2>
-      <p class="muted small">Cada motorizado entra en <b>${location.origin}/moto</b> con el correo que registres aquí.</p>
-      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Nombre</th><th>Teléfono</th><th>Placa</th><th>Correo</th><th>Estado</th><th></th></tr></thead><tbody>
-      ${S.riders.map((r) => `<tr><td>${esc(r.full_name)}</td><td>${esc(r.phone)}</td><td>${esc(r.plate || "")}</td><td>${esc(r.email || "")}</td>
-        <td>${r.user_id ? "Ya entró" : "Aún no entra"} · ${r.active ? "Activo" : "Inactivo"}</td>
-        <td><button class="btn small ghost" data-rider-toggle="${r.id}">${r.active ? "Desactivar" : "Activar"}</button></td></tr>`).join("") || `<tr><td colspan="6" class="muted">Aún no hay motorizados.</td></tr>`}
+      <p class="muted small">${active.length} ${active.length === 1 ? "motorizado activo" : "motorizados activos"}. Para agregar o quitar motorizados, habla con el master.</p>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Nombre</th><th>WhatsApp</th><th>Placa</th><th>Estado</th></tr></thead><tbody>
+      ${S.riders.map((r) => `<tr><td>${esc(r.full_name)}</td><td><a href="${waLink(r.phone, "")}" target="_blank" rel="noopener">${esc(r.phone)}</a></td><td>${esc(r.plate || "")}</td>
+        <td>${r.active ? `<span class="st st-entregado">Activo</span>` : `<span class="st">Inactivo</span>`}</td></tr>`).join("") || `<tr><td colspan="4" class="muted">Aún no hay motorizados.</td></tr>`}
       </tbody></table></div>
-      <form id="riderForm" class="form-grid" style="margin-top:12px" novalidate>
-        <div><label class="f" for="rfName">Nombre</label><input class="in" id="rfName" required></div>
-        <div><label class="f" for="rfPhone">WhatsApp</label><input class="in" id="rfPhone" type="tel" required></div>
-        <div><label class="f" for="rfPlate">Placa</label><input class="in" id="rfPlate"></div>
-        <div><label class="f" for="rfEmail">Correo</label><input class="in" id="rfEmail" type="email" required></div>
-        <div style="align-self:end;padding-top:14px"><button class="btn primary block">Agregar motorizado</button></div>
-      </form>
     </div>`;
-  $("#riderForm").onsubmit = async (e) => {
-    e.preventDefault();
-    const row = { full_name: $("#rfName").value.trim(), phone: $("#rfPhone").value.trim(), plate: $("#rfPlate").value.trim() || null, email: $("#rfEmail").value.trim().toLowerCase() };
-    if (!row.full_name || !row.phone || !row.email) return toast("Completa nombre, WhatsApp y correo.");
-    const { error } = await sb.from("riders").insert(row);
-    if (error) return toast("No se pudo agregar: " + error.message);
-    toast("Motorizado agregado"); await loadRiders(); renderRiders();
-  };
-  $$("[data-rider-toggle]").forEach((b) => (b.onclick = async () => {
-    const r = S.riders.find((x) => x.id === Number(b.dataset.riderToggle));
-    const { error } = await sb.from("riders").update({ active: !r.active }).eq("id", r.id);
-    if (error) return toast(error.message); await loadRiders(); renderRiders();
-  }));
 }
 
-// ---------- menú ----------
+// ---------- stock del día ----------
 function renderMenu() {
-  const catOpts = (sel) => S.cats.map((c) => `<option value="${c.id}" ${c.id === sel ? "selected" : ""}>${esc(c.name)}</option>`).join("");
+  const today = todayLocal();
+  const isOut = (p) => p.sold_out_day === today || (p.stock_day === today && p.stock_left === 0);
+  const left = (p) => (p.stock_day === today && p.stock_left !== null ? p.stock_left : "");
+  const groups = S.cats.map((c) => ({ c, items: S.products.filter((p) => p.category_id === c.id && p.active) })).filter((g) => g.items.length);
   $("#view").innerHTML = `
     <div class="panel">
-      <h2 class="display" style="font-size:30px">Menú</h2>
-      <p class="muted small">Los cambios se ven en la tienda al instante. «Anticipación» es cuántas horas antes hay que agendar ese producto (0 = se puede pedir para ya).</p>
-      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Foto</th><th>Producto</th><th>Categoría</th><th>Precio $</th><th>Prep. min</th><th>Anticipación h</th><th>Visible</th><th></th></tr></thead><tbody>
-      ${S.products.map((p) => `<tr data-pid="${p.id}">
-        <td><label class="btn small ghost" style="cursor:pointer">${p.image_url ? "Cambiar" : "Subir"}<input type="file" accept="image/*" data-photo="${p.id}" hidden></label></td>
-        <td><input class="in" data-f="name" value="${esc(p.name)}" style="min-width:160px"><input class="in" data-f="description" value="${esc(p.description)}" placeholder="Descripción" style="margin-top:4px;min-width:160px"></td>
-        <td><select class="in" data-f="category_id">${catOpts(p.category_id)}</select></td>
-        <td><input class="in" data-f="price" type="number" step="0.01" min="0" value="${p.price}" style="width:90px"></td>
-        <td><input class="in" data-f="prep_minutes" type="number" min="0" value="${p.prep_minutes}" style="width:80px"></td>
-        <td><input class="in" data-f="lead_hours" type="number" min="0" value="${p.lead_hours}" style="width:80px"></td>
-        <td><input type="checkbox" data-f="active" ${p.active ? "checked" : ""} style="width:20px;height:20px;accent-color:var(--tostado)"></td>
-        <td><button class="btn small" data-save="${p.id}">Guardar</button></td></tr>`).join("")}
-      </tbody></table></div>
-      <form id="prodForm" class="form-grid" style="margin-top:12px" novalidate>
-        <div><label class="f" for="pfName">Nuevo producto</label><input class="in" id="pfName" placeholder="Nombre"></div>
-        <div><label class="f" for="pfCat">Categoría</label><select class="in" id="pfCat">${catOpts()}</select></div>
-        <div><label class="f" for="pfPrice">Precio $</label><input class="in" id="pfPrice" type="number" step="0.01" min="0"></div>
-        <div style="align-self:end;padding-top:14px"><button class="btn primary block">Agregar producto</button></div>
-      </form>
+      <h2 class="display" style="font-size:30px">Stock de hoy</h2>
+      <p class="muted small">Marca lo que se agotó o cuántas porciones quedan hoy. Mañana todo vuelve a estar disponible solo. Las porciones se descuentan con cada pedido. Para cambiar precios o productos, habla con el master.</p>
+      ${groups.map((g) => `<h3 class="group-title">${esc(g.c.name)}</h3>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Producto</th><th>Porciones hoy</th><th>Estado</th></tr></thead><tbody>
+      ${g.items.map((p) => `<tr data-pid="${p.id}">
+        <td><b>${esc(p.name)}</b></td>
+        <td><div style="display:flex;gap:6px;align-items:center"><input class="in" type="number" min="0" inputmode="numeric" data-stock="${p.id}" value="${left(p)}" placeholder="Sin límite" style="width:110px" aria-label="Porciones que quedan hoy de ${esc(p.name)}">
+          <button class="btn small" data-savestock="${p.id}">Guardar</button></div></td>
+        <td><button class="btn small ${isOut(p) ? "primary" : "ghost"}" data-out="${p.id}" aria-pressed="${isOut(p)}">${isOut(p) ? "Agotado hoy · reactivar" : "Marcar agotado"}</button></td></tr>`).join("")}
+      </tbody></table></div>`).join("") || `<p class="muted">No hay productos visibles en el menú.</p>`}
     </div>`;
-  $$("[data-save]").forEach((b) => (b.onclick = async () => {
-    const tr = b.closest("tr"), v = (f) => tr.querySelector(`[data-f="${f}"]`);
-    const patch = { name: v("name").value.trim(), description: v("description").value.trim(), category_id: Number(v("category_id").value), price: Number(v("price").value), prep_minutes: Number(v("prep_minutes").value), lead_hours: Number(v("lead_hours").value), active: v("active").checked };
-    const { error } = await sb.from("products").update(patch).eq("id", Number(b.dataset.save));
-    if (error) return toast(error.message); toast("Producto guardado"); await loadMenu();
+  $$("[data-savestock]").forEach((b) => (b.onclick = async () => {
+    const id = Number(b.dataset.savestock), v = $(`[data-stock="${id}"]`).value.trim();
+    const patch = v === "" ? { stock_left: null, stock_day: null } : { stock_left: Math.max(0, Math.floor(Number(v))), stock_day: today };
+    if (v !== "" && !Number.isFinite(Number(v))) return toast("Escribe un número de porciones.");
+    const { error } = await sb.from("products").update(patch).eq("id", id);
+    if (error) return toast(error.message);
+    toast(v === "" ? "Sin límite de porciones hoy" : `Quedan ${patch.stock_left} hoy`); await loadMenu(); renderMenu();
   }));
-  $$("[data-photo]").forEach((inp) => (inp.onchange = async () => {
-    const f = inp.files[0]; if (!f) return;
-    const id = Number(inp.dataset.photo), path = `${id}-${Date.now()}.${(f.name.split(".").pop() || "jpg").toLowerCase()}`;
-    const { error } = await sb.storage.from("productos").upload(path, f, { contentType: f.type });
-    if (error) return toast("No se pudo subir la foto: " + error.message);
-    const url = sb.storage.from("productos").getPublicUrl(path).data.publicUrl;
-    await sb.from("products").update({ image_url: url }).eq("id", id);
-    toast("Foto actualizada"); await loadMenu(); renderMenu();
+  $$("[data-out]").forEach((b) => (b.onclick = async () => {
+    const p = S.products.find((x) => x.id === Number(b.dataset.out));
+    const out = isOut(p);
+    const patch = out ? { sold_out_day: null, ...(p.stock_day === today && p.stock_left === 0 ? { stock_left: null, stock_day: null } : {}) } : { sold_out_day: today };
+    const { error } = await sb.from("products").update(patch).eq("id", p.id);
+    if (error) return toast(error.message);
+    toast(out ? `${p.name} disponible de nuevo` : `${p.name} marcado agotado por hoy`); await loadMenu(); renderMenu();
   }));
-  $("#prodForm").onsubmit = async (e) => {
-    e.preventDefault();
-    const row = { name: $("#pfName").value.trim(), category_id: Number($("#pfCat").value), price: Number($("#pfPrice").value), prep_minutes: 10 };
-    if (!row.name || !(row.price >= 0)) return toast("Escribe nombre y precio.");
-    const { error } = await sb.from("products").insert(row);
-    if (error) return toast(error.message); toast("Producto agregado"); await loadMenu(); renderMenu();
-  };
 }
 
-// ---------- ajustes ----------
+// ---------- ajustes (solo horario y apertura) ----------
 function renderSettings() {
   const s = S.settings;
-  const f = (id, label, val, type = "text", extra = "") => `<div><label class="f" for="${id}">${label}</label><input class="in" id="${id}" type="${type}" value="${esc(val ?? "")}" ${extra}></div>`;
   $("#view").innerHTML = `
     <form class="panel" id="setForm" novalidate>
-      <h2 class="display" style="font-size:30px">Ajustes</h2>
+      <h2 class="display" style="font-size:30px">Horario</h2>
       <label class="check"><input type="checkbox" id="sOpen" ${s.store_open ? "checked" : ""}> Tienda abierta (desmárcalo para pausar pedidos)</label>
       <div class="form-grid">
-        ${f("sOpenT", "Abre a las", s.open_time.slice(0, 5), "time")}
-        ${f("sCloseT", "Cierra a las", s.close_time.slice(0, 5), "time")}
-        ${f("sSlotCap", "Pedidos máximos por franja de 30 min", s.slot_capacity, "number", 'min="1"')}
-        ${f("sBase", "Envío base $", s.fee_base, "number", 'step="0.05" min="0"')}
-        ${f("sIncl", "Km incluidos en la base", s.fee_included_km, "number", 'step="0.5" min="0"')}
-        ${f("sPerKm", "Precio por km adicional $", s.fee_per_km, "number", 'step="0.05" min="0"')}
-        ${f("sMaxKm", "Distancia máxima (km)", s.max_km, "number", 'step="1" min="1"')}
-        ${f("sWa", "WhatsApp del negocio", s.whatsapp_number, "tel")}
+        <div><label class="f" for="sOpenT">Abre a las</label><input class="in" id="sOpenT" type="time" value="${s.open_time.slice(0, 5)}"></div>
+        <div><label class="f" for="sCloseT">Cierra a las</label><input class="in" id="sCloseT" type="time" value="${s.close_time.slice(0, 5)}"></div>
       </div>
-      <label class="f" for="sBank">Datos para transferencia <span class="hint">(se muestran al cliente)</span></label>
-      <textarea class="in" id="sBank" placeholder="Banco, tipo y número de cuenta, nombre y cédula/RUC">${esc(s.bank_info ?? "")}</textarea>
-      <p class="muted small">Ubicación de la cocina: ${esc(s.kitchen_address || "sin configurar")}. Mapa: ${s.map_provider === "google" ? "Google Maps" : "OpenStreetMap (gratis, distancia aproximada)"}.</p>
-      <button class="btn primary" style="margin-top:8px">Guardar ajustes</button>
+      <p class="muted small">Envíos, datos de transferencia y WhatsApp los cambia el master.</p>
+      <button class="btn primary" style="margin-top:8px">Guardar</button>
     </form>`;
   $("#setForm").onsubmit = async (e) => {
     e.preventDefault();
-    const patch = {
-      store_open: $("#sOpen").checked, open_time: $("#sOpenT").value, close_time: $("#sCloseT").value,
-      slot_capacity: Number($("#sSlotCap").value), fee_base: Number($("#sBase").value), fee_included_km: Number($("#sIncl").value),
-      fee_per_km: Number($("#sPerKm").value), max_km: Number($("#sMaxKm").value),
-      whatsapp_number: $("#sWa").value.trim() || null, bank_info: $("#sBank").value.trim() || null, updated_at: new Date().toISOString(),
-    };
+    const patch = { store_open: $("#sOpen").checked, open_time: $("#sOpenT").value, close_time: $("#sCloseT").value, updated_at: new Date().toISOString() };
+    if (!patch.open_time || !patch.close_time || patch.open_time >= patch.close_time) return toast("La hora de apertura debe ser antes del cierre.");
     const { error } = await sb.from("settings").update(patch).eq("id", true);
     if (error) return toast("No se pudo guardar: " + error.message);
-    toast("Ajustes guardados"); await loadSettings();
+    toast("Horario guardado"); await loadSettings();
   };
 }

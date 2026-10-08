@@ -61,3 +61,4 @@
 .modal-card .muted { color: #5b514b; }
 .modal-card .btn.ghost { color: var(--tinta); border-color: #bdb6a4; }
 .leaflet-container { font: inherit; background: var(--tinta-3); }
+.item.soldout .ph { filter: grayscale(1); opacity: .6; }

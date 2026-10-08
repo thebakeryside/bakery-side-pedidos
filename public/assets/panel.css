@@ -40,3 +40,6 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
 .pwd .in { padding-right: 88px; }
 .pwd-toggle { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); border: 0; background: var(--tinta-3); color: var(--crema); font-weight: 600; font-size: 13px; padding: 7px 12px; border-radius: 8px; cursor: pointer; }
 .pwd-toggle:hover { background: var(--cacao); }
+.who { flex-wrap: wrap; justify-content: flex-end; }
+.clock { font-family: "Bebas Neue", sans-serif; font-size: 22px; letter-spacing: .04em; color: var(--crema, #F3E9DC); margin-right: 6px; white-space: nowrap; }
+@media (max-width: 560px) { #whoami { display: none; } .clock { font-size: 20px; } }

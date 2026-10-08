@@ -1,7 +1,20 @@
 import { sb, $, toast } from "./common.js";
 
 // Muestra el ingreso (contraseña o enlace por correo) hasta que haya sesión; luego llama a onReady(user)
+// Reloj en vivo (hora de Guayaquil) en la barra superior de los paneles
+export function mountClock() {
+  const who = document.querySelector(".who");
+  if (!who || who.querySelector(".clock")) return;
+  const el = document.createElement("span");
+  el.className = "clock tabnum"; el.setAttribute("aria-label", "Hora actual");
+  who.prepend(el);
+  const fmt = new Intl.DateTimeFormat("es-EC", { timeZone: "America/Guayaquil", weekday: "short", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+  const tick = () => (el.textContent = fmt.format(new Date()).replace(",", " ·"));
+  tick(); setInterval(tick, 1000);
+}
+
 export async function requireLogin(onReady) {
+  mountClock();
   const box = $("#login"), app = $("#app");
   const show = async (session) => {
     if (session?.user) { box.hidden = true; app.hidden = false; $("#whoami").textContent = session.user.email; $("#setPass").hidden = false; await onReady(session.user); }

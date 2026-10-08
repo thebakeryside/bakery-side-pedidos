@@ -15,7 +15,7 @@ async function init() {
     const [cfg, cats, prods] = await Promise.all([
       api("config"),
       sb.from("categories").select("id,name,sort").eq("active", true).order("sort"),
-      sb.from("products").select("id,category_id,name,description,price,prep_minutes,lead_hours,image_url,sort").eq("active", true).order("sort"),
+      sb.from("products").select("*").eq("active", true).order("sort"),
     ]);
     if (cats.error) throw cats.error;
     if (prods.error) throw prods.error;
@@ -53,14 +53,26 @@ $("#cats").addEventListener("click", (e) => {
   state.filter = b.dataset.cat; renderCats(); renderMenu();
 });
 
+// Stock del día: null = sin límite, 0 = agotado hoy, N = quedan N hoy
+function leftToday(p) {
+  const today = todayLocal();
+  if (p.sold_out_day === today) return 0;
+  if (p.stock_day === today && p.stock_left != null) return p.stock_left;
+  return null;
+}
 function itemCard(p) {
   const q = state.cart.get(p.id) || 0;
+  const left = leftToday(p);
   const img = p.image_url ? `<img src="${esc(p.image_url)}" alt="${esc(p.name)}" loading="lazy">` : `<span class="can" aria-hidden="true">${esc(p.name.split(" ").map((w) => w[0]).join("").slice(0, 2))}</span>`;
-  const ctrl = q
-    ? `<div class="qty"><button type="button" data-a="-" data-id="${p.id}" aria-label="Quitar uno">−</button><span>${q}</span><button type="button" data-a="+" data-id="${p.id}" aria-label="Agregar uno">+</button></div>`
+  const ctrl = left === 0 && !q
+    ? `<button class="btn small" type="button" disabled>Agotado hoy</button>`
+    : q
+    ? `<div class="qty"><button type="button" data-a="-" data-id="${p.id}" aria-label="Quitar uno">−</button><span>${q}</span><button type="button" data-a="+" data-id="${p.id}" aria-label="Agregar uno"${left != null && q >= left ? " disabled" : ""}>+</button></div>`
     : `<button class="btn small" type="button" data-a="+" data-id="${p.id}">Agregar</button>`;
   const lead = p.lead_hours ? `<span class="small" style="color:var(--aviso)">Pedir con ${p.lead_hours} h de anticipación</span>` : "";
-  return `<article class="item"><div class="ph">${img}</div><div class="body"><h3>${esc(p.name)}</h3><p>${esc(p.description)}</p>${lead}<div class="foot"><span class="price">${money(p.price)}</span>${ctrl}</div></div></article>`;
+  const stock = left === 0 ? `<span class="small" style="color:var(--aviso)">Agotado por hoy · vuelve mañana</span>`
+    : left != null ? `<span class="small" style="color:var(--aviso)">Quedan ${left} hoy</span>` : "";
+  return `<article class="item${left === 0 ? " soldout" : ""}"><div class="ph">${img}</div><div class="body"><h3>${esc(p.name)}</h3><p>${esc(p.description)}</p>${lead}${stock}<div class="foot"><span class="price">${money(p.price)}</span>${ctrl}</div></div></article>`;
 }
 function renderMenu() {
   const groups = state.cats
@@ -78,6 +90,8 @@ $("#menu").addEventListener("click", (e) => {
 });
 function changeQty(id, d) {
   const q = (state.cart.get(id) || 0) + d;
+  const left = leftToday(product(id));
+  if (d > 0 && left != null && q > left) { toast(left ? `Solo quedan ${left} hoy` : "Agotado por hoy"); return; }
   if (q <= 0) state.cart.delete(id); else state.cart.set(id, Math.min(q, 50));
   try { localStorage.setItem(CART_KEY, JSON.stringify([...state.cart])); } catch {}
   renderMenu(); renderCart(); if (state.loc) requestQuote();

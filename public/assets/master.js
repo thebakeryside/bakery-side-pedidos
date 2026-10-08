@@ -19,7 +19,7 @@ $$(".tabs [data-tab]").forEach((b) => b.addEventListener("click", () => { S.tab 
 
 function render() {
   $$(".tabs [data-tab]").forEach((b) => b.setAttribute("aria-selected", b.dataset.tab === S.tab));
-  ({ ventas, motorizados, accesos, menu, clientes })[S.tab]();
+  ({ ventas, motorizados, accesos, menu, clientes, ajustes })[S.tab]();
 }
 
 // Confirmación dentro de la página (el navegador no muestra ventanas de confirmar aquí)
@@ -99,8 +99,30 @@ async function motorizados() {
       <td>${r.archived_at ? `<span class="st st-cancelado">Archivado</span><br><span class="muted small">${fmtDate(r.archived_at)}</span>` : r.active ? `<span class="st st-entregado">Activo</span>` : `<span class="st">Inactivo</span>`}</td>
       <td>${r.archived_at
         ? `<button class="btn small ghost" data-unarchive="${r.id}">Reactivar</button>`
-        : `<button class="btn small ghost" data-del="${r.id}" data-orders="${n[r.id] || 0}">${n[r.id] ? "Archivar" : "Eliminar"}</button>`}</td></tr>`).join("") || `<tr><td colspan="5" class="muted">No hay motorizados.</td></tr>`}
-    </tbody></table></div></div>`;
+        : `<div style="display:flex;gap:4px;flex-wrap:wrap"><button class="btn small ghost" data-toggle-active="${r.id}" data-on="${r.active ? 1 : 0}">${r.active ? "Pausar" : "Activar"}</button><button class="btn small ghost" data-del="${r.id}" data-orders="${n[r.id] || 0}">${n[r.id] ? "Archivar" : "Eliminar"}</button></div>`}</td></tr>`).join("") || `<tr><td colspan="5" class="muted">No hay motorizados.</td></tr>`}
+    </tbody></table></div>
+    <h3 class="group-title">Agregar motorizado</h3>
+    <form id="riderForm" class="form-grid" novalidate>
+      <div><label class="f" for="rfName">Nombre</label><input class="in" id="rfName" required></div>
+      <div><label class="f" for="rfPhone">WhatsApp</label><input class="in" id="rfPhone" type="tel" required></div>
+      <div><label class="f" for="rfPlate">Placa</label><input class="in" id="rfPlate"></div>
+      <div><label class="f" for="rfEmail">Correo para entrar</label><input class="in" id="rfEmail" type="email" required></div>
+      <div style="align-self:end;padding-top:14px"><button class="btn primary block">Agregar</button></div>
+    </form>
+    <p class="muted small">El motorizado entra en <b>thebakeryside.com/moto</b> con ese correo. La primera vez pide un enlace y luego crea su contraseña.</p></div>`;
+  $("#riderForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const row = { full_name: $("#rfName").value.trim(), phone: $("#rfPhone").value.trim(), plate: $("#rfPlate").value.trim() || null, email: $("#rfEmail").value.trim().toLowerCase() };
+    if (!row.full_name || !row.phone || !/^\S+@\S+\.\S+$/.test(row.email)) return toast("Completa nombre, WhatsApp y un correo válido.");
+    const { error } = await sb.from("riders").insert(row);
+    if (error) return toast(/duplicate|unique/i.test(error.message) ? "Ese correo ya está registrado como motorizado." : error.message);
+    toast("Motorizado agregado"); motorizados();
+  };
+  $$("[data-toggle-active]").forEach((b) => (b.onclick = async () => {
+    const { error } = await sb.from("riders").update({ active: b.dataset.on !== "1" }).eq("id", Number(b.dataset.toggleActive));
+    if (error) return rpcErr(error);
+    toast(b.dataset.on === "1" ? "Motorizado pausado" : "Motorizado activo"); motorizados();
+  }));
   $$("[data-del]").forEach((b) => (b.onclick = () => {
     const has = Number(b.dataset.orders) > 0;
     confirmRow(b, has ? "Se archivará: no podrá entrar ni recibir pedidos. Su historial se conserva." : "Se eliminará del todo. No tiene entregas registradas.", async () => {
@@ -149,30 +171,135 @@ async function accesos() {
 // ---------- menú ----------
 async function menu() {
   const [{ data: cats }, { data: prods }] = await Promise.all([
-    sb.from("categories").select("*").order("sort"), sb.from("products").select("id,name,price,active,category_id").order("sort"),
+    sb.from("categories").select("*").order("sort"), sb.from("products").select("*").order("sort"),
   ]);
+  const catOpts = (sel) => (cats || []).map((c) => `<option value="${c.id}" ${c.id === sel ? "selected" : ""}>${esc(c.name)}</option>`).join("");
   $("#view").innerHTML = `<div class="panel">
-    <h2 class="display" style="font-size:30px">Eliminar del menú</h2>
-    <p class="muted small">Cocina puede ocultar productos. Aquí se eliminan del todo; los pedidos anteriores conservan el nombre y el precio. Si una categoría se elimina, sus productos quedan sin categoría y no se muestran hasta que les asignes otra en cocina.</p>
-    ${(cats || []).map((c) => `<div class="confirm-host" style="border-top:1px solid var(--cacao);padding-top:12px;margin-top:12px">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h3 class="group-title" style="margin:0">${esc(c.name)}</h3>
-      <button class="btn small ghost" data-delcat="${c.id}">Eliminar categoría</button></div>
-      <div class="tbl-wrap"><table class="tbl"><tbody>
-      ${(prods || []).filter((p) => p.category_id === c.id).map((p) => `<tr><td>${esc(p.name)}${p.active ? "" : ` <span class="muted small">(oculto)</span>`}</td><td class="tabnum">${money(p.price)}</td>
-        <td style="text-align:right"><button class="btn small ghost" data-delprod="${p.id}" data-name="${esc(p.name)}">Eliminar</button></td></tr>`).join("") || `<tr><td class="muted">Sin productos.</td></tr>`}
-      </tbody></table></div></div>`).join("")}
-    ${(prods || []).some((p) => !p.category_id) ? `<p class="muted small" style="margin-top:12px">Hay productos sin categoría. Asígnales una en cocina → Menú.</p>` : ""}
+    <h2 class="display" style="font-size:30px">Menú</h2>
+    <p class="muted small">Los cambios se ven en la tienda al instante. <b>Anticipación</b> = horas antes que hay que agendar ese producto (0 = se puede pedir para ya). <b>Visible</b> lo oculta o muestra en la tienda. Eliminar es definitivo; los pedidos anteriores conservan nombre y precio.</p>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Foto</th><th>Producto</th><th>Categoría</th><th>Precio $</th><th>Prep. min</th><th>Anticip. h</th><th>Visible</th><th></th></tr></thead><tbody>
+    ${(prods || []).map((p) => `<tr data-pid="${p.id}">
+      <td>${p.image_url ? `<img src="${esc(p.image_url)}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:8px;margin-bottom:4px">` : ""}<label class="btn small ghost" style="cursor:pointer">${p.image_url ? "Cambiar" : "Subir"}<input type="file" accept="image/*" data-photo="${p.id}" hidden></label></td>
+      <td><input class="in" data-f="name" value="${esc(p.name)}" style="min-width:170px" aria-label="Nombre"><input class="in" data-f="description" value="${esc(p.description)}" placeholder="Descripción" style="margin-top:4px;min-width:170px" aria-label="Descripción"></td>
+      <td><select class="in" data-f="category_id" aria-label="Categoría">${catOpts(p.category_id)}</select></td>
+      <td><input class="in" data-f="price" type="number" step="0.01" min="0" value="${p.price}" style="width:90px" aria-label="Precio"></td>
+      <td><input class="in" data-f="prep_minutes" type="number" min="0" value="${p.prep_minutes}" style="width:76px" aria-label="Minutos de preparación"></td>
+      <td><input class="in" data-f="lead_hours" type="number" min="0" value="${p.lead_hours}" style="width:76px" aria-label="Horas de anticipación"></td>
+      <td><input type="checkbox" data-f="active" ${p.active ? "checked" : ""} style="width:20px;height:20px;accent-color:var(--tostado)" aria-label="Visible"></td>
+      <td><div style="display:flex;gap:4px;flex-wrap:wrap"><button class="btn small" data-save="${p.id}">Guardar</button><button class="btn small ghost" data-delprod="${p.id}" data-name="${esc(p.name)}">Eliminar</button></div></td></tr>`).join("")}
+    </tbody></table></div>
+    <h3 class="group-title">Nuevo producto</h3>
+    <form id="prodForm" class="form-grid" novalidate>
+      <div><label class="f" for="pfName">Nombre</label><input class="in" id="pfName"></div>
+      <div><label class="f" for="pfCat">Categoría</label><select class="in" id="pfCat">${catOpts()}</select></div>
+      <div><label class="f" for="pfPrice">Precio $</label><input class="in" id="pfPrice" type="number" step="0.01" min="0"></div>
+      <div style="align-self:end;padding-top:14px"><button class="btn primary block">Agregar producto</button></div>
+    </form>
+    <h3 class="group-title">Categorías</h3>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Nombre</th><th>Orden</th><th></th></tr></thead><tbody>
+    ${(cats || []).map((c) => `<tr><td><input class="in" data-cname="${c.id}" value="${esc(c.name)}" aria-label="Nombre de categoría"></td><td><input class="in" type="number" data-csort="${c.id}" value="${c.sort}" style="width:70px" aria-label="Orden"></td>
+      <td><div style="display:flex;gap:4px;flex-wrap:wrap"><button class="btn small" data-csave="${c.id}">Guardar</button><button class="btn small ghost" data-delcat="${c.id}">Eliminar</button></div></td></tr>`).join("")}
+    </tbody></table></div>
+    <form id="catForm" class="reflink" style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap" novalidate>
+      <input class="in" id="newCat" placeholder="Nueva categoría" aria-label="Nueva categoría" style="flex:1;min-width:200px"><button class="btn">Agregar categoría</button>
+    </form>
   </div>`;
-  $$("[data-delprod]").forEach((b) => (b.onclick = () => confirmRow(b, `Eliminar «${b.dataset.name}» del menú.`, async () => {
+  $$("[data-save]").forEach((b) => (b.onclick = async () => {
+    const tr = b.closest("tr"), v = (f) => tr.querySelector(`[data-f="${f}"]`);
+    const patch = { name: v("name").value.trim(), description: v("description").value.trim(), category_id: Number(v("category_id").value), price: Number(v("price").value), prep_minutes: Number(v("prep_minutes").value), lead_hours: Number(v("lead_hours").value), active: v("active").checked };
+    if (!patch.name || !(patch.price >= 0)) return toast("Revisa nombre y precio.");
+    const { error } = await sb.from("products").update(patch).eq("id", Number(b.dataset.save));
+    if (error) return rpcErr(error); toast("Producto guardado");
+  }));
+  $$("[data-photo]").forEach((inp) => (inp.onchange = async () => {
+    const f = inp.files[0]; if (!f) return;
+    if (f.size > 5 * 1024 * 1024) return toast("La foto pesa más de 5 MB. Usa una más liviana.");
+    const id = Number(inp.dataset.photo), path = `${id}-${Date.now()}.${(f.name.split(".").pop() || "jpg").toLowerCase()}`;
+    const { error } = await sb.storage.from("productos").upload(path, f, { contentType: f.type });
+    if (error) return toast("No se pudo subir la foto: " + error.message);
+    const url = sb.storage.from("productos").getPublicUrl(path).data.publicUrl;
+    const { error: e2 } = await sb.from("products").update({ image_url: url }).eq("id", id);
+    if (e2) return rpcErr(e2);
+    toast("Foto actualizada"); menu();
+  }));
+  $$("[data-delprod]").forEach((b) => (b.onclick = () => confirmRow(b, `Eliminar «${b.dataset.name}» del menú para siempre.`, async () => {
     const { error } = await sb.from("products").delete().eq("id", Number(b.dataset.delprod));
     if (error) return rpcErr(error);
     toast("Producto eliminado"); menu();
   })));
-  $$("[data-delcat]").forEach((b) => (b.onclick = () => confirmRow(b, "Eliminar la categoría. Sus productos quedarán sin categoría.", async () => {
+  $("#prodForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const row = { name: $("#pfName").value.trim(), category_id: Number($("#pfCat").value), price: Number($("#pfPrice").value), prep_minutes: 10 };
+    if (!row.name || !($("#pfPrice").value !== "" && row.price >= 0)) return toast("Escribe nombre y precio.");
+    const { error } = await sb.from("products").insert(row);
+    if (error) return rpcErr(error); toast("Producto agregado"); menu();
+  };
+  $$("[data-csave]").forEach((b) => (b.onclick = async () => {
+    const id = Number(b.dataset.csave);
+    const { error } = await sb.from("categories").update({ name: $(`[data-cname="${id}"]`).value.trim(), sort: Number($(`[data-csort="${id}"]`).value) }).eq("id", id);
+    if (error) return rpcErr(error); toast("Categoría guardada"); menu();
+  }));
+  $$("[data-delcat]").forEach((b) => (b.onclick = () => confirmRow(b, "Eliminar la categoría. Sus productos quedarán sin categoría y no se verán en la tienda hasta asignarles otra.", async () => {
     const { error } = await sb.from("categories").delete().eq("id", Number(b.dataset.delcat));
     if (error) return rpcErr(error);
     toast("Categoría eliminada"); menu();
   })));
+  $("#catForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const name = $("#newCat").value.trim(); if (!name) return toast("Escribe el nombre de la categoría.");
+    const { error } = await sb.from("categories").insert({ name, sort: (cats?.length || 0) + 1 });
+    if (error) return rpcErr(error); toast("Categoría agregada"); menu();
+  };
+}
+
+// ---------- ajustes ----------
+async function ajustes() {
+  const { data: s, error } = await sb.from("settings").select("*").single();
+  if (error) return ($("#view").innerHTML = `<p class="err">${esc(error.message)}</p>`);
+  const f = (id, label, val, type = "text", extra = "") => `<div><label class="f" for="${id}">${label}</label><input class="in" id="${id}" type="${type}" value="${esc(val ?? "")}" ${extra}></div>`;
+  $("#view").innerHTML = `
+    <form class="panel" id="setForm" novalidate>
+      <h2 class="display" style="font-size:30px">Ajustes del negocio</h2>
+      <h3 class="group-title">Horario</h3>
+      <label class="check"><input type="checkbox" id="sOpen" ${s.store_open ? "checked" : ""}> Tienda abierta</label>
+      <div class="form-grid">
+        ${f("sOpenT", "Abre a las", s.open_time.slice(0, 5), "time")}
+        ${f("sCloseT", "Cierra a las", s.close_time.slice(0, 5), "time")}
+        ${f("sSlotCap", "Pedidos máximos por franja de 30 min", s.slot_capacity, "number", 'min="1"')}
+      </div>
+      <h3 class="group-title">Envío</h3>
+      <div class="form-grid">
+        ${f("sBase", "Envío base $", s.fee_base, "number", 'step="0.05" min="0"')}
+        ${f("sIncl", "Km incluidos en la base", s.fee_included_km, "number", 'step="0.5" min="0"')}
+        ${f("sPerKm", "Precio por km adicional $", s.fee_per_km, "number", 'step="0.05" min="0"')}
+        ${f("sMaxKm", "Distancia máxima (km)", s.max_km, "number", 'step="1" min="1"')}
+      </div>
+      <p class="muted small">Ejemplo con estos valores: 5 km = <b id="feeEx"></b>. La distancia se mide ${s.map_provider === "google" ? "por calles con Google" : "en línea recta × 1,4"} desde la cocina (${esc(s.kitchen_address || "sin ubicación")}).</p>
+      <h3 class="group-title">Pagos y contacto</h3>
+      ${f("sWa", "WhatsApp del negocio", s.whatsapp_number, "tel")}
+      <label class="f" for="sBank">Datos para transferencia <span class="hint">(se muestran al cliente)</span></label>
+      <textarea class="in" id="sBank" placeholder="Banco, tipo y número de cuenta, nombre y cédula/RUC">${esc(s.bank_info ?? "")}</textarea>
+      <button class="btn primary" style="margin-top:14px">Guardar ajustes</button>
+    </form>`;
+  const ex = () => {
+    const base = Number($("#sBase").value), inc = Number($("#sIncl").value), per = Number($("#sPerKm").value);
+    const raw = Math.max(base, base + per * Math.max(5 - inc, 0));
+    $("#feeEx").textContent = money(Math.ceil(raw / 0.25 - 1e-9) * 0.25);
+  };
+  ["#sBase", "#sIncl", "#sPerKm"].forEach((k) => $(k).addEventListener("input", ex)); ex();
+  $("#setForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const patch = {
+      store_open: $("#sOpen").checked, open_time: $("#sOpenT").value, close_time: $("#sCloseT").value,
+      slot_capacity: Number($("#sSlotCap").value), fee_base: Number($("#sBase").value), fee_included_km: Number($("#sIncl").value),
+      fee_per_km: Number($("#sPerKm").value), max_km: Number($("#sMaxKm").value),
+      whatsapp_number: $("#sWa").value.trim() || null, bank_info: $("#sBank").value.trim() || null, updated_at: new Date().toISOString(),
+    };
+    if (patch.open_time >= patch.close_time) return toast("La hora de apertura debe ser antes del cierre.");
+    const { error } = await sb.from("settings").update(patch).eq("id", true);
+    if (error) return rpcErr(error);
+    toast("Ajustes guardados");
+  };
 }
 
 // ---------- clientes y sellos ----------
