@@ -181,7 +181,7 @@ async function menu() {
     <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Foto</th><th>Producto</th><th>Categoría</th><th>Precio $</th><th>Prep. min</th><th>Anticip. h</th><th>Visible</th><th></th></tr></thead><tbody>
     ${(prods || []).map((p) => `<tr data-pid="${p.id}">
       <td>${p.image_url ? `<img src="${esc(p.image_url)}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:8px;margin-bottom:4px">` : ""}<label class="btn small ghost" style="cursor:pointer">${p.image_url ? "Cambiar" : "Subir"}<input type="file" accept="image/*" data-photo="${p.id}" hidden></label></td>
-      <td><input class="in" data-f="name" value="${esc(p.name)}" style="min-width:170px" aria-label="Nombre"><input class="in" data-f="description" value="${esc(p.description)}" placeholder="Descripción" style="margin-top:4px;min-width:170px" aria-label="Descripción"></td>
+      <td><input class="in" data-f="name" value="${esc(p.name)}" style="min-width:170px" aria-label="Nombre"><input class="in" data-f="description" value="${esc(p.description)}" placeholder="Descripción" style="margin-top:4px;min-width:170px" aria-label="Descripción"><input class="in" data-f="servings" value="${esc(p.servings ?? "")}" placeholder="Porciones (ej.: 8 a 12 porciones)" style="margin-top:4px;min-width:170px" aria-label="Porciones"></td>
       <td><select class="in" data-f="category_id" aria-label="Categoría">${catOpts(p.category_id)}</select></td>
       <td><input class="in" data-f="price" type="number" step="0.01" min="0" value="${p.price}" style="width:90px" aria-label="Precio"></td>
       <td><input class="in" data-f="prep_minutes" type="number" min="0" value="${p.prep_minutes}" style="width:76px" aria-label="Minutos de preparación"></td>
@@ -209,7 +209,7 @@ async function menu() {
   optionsAdmin(prods || []);
   $$("[data-save]").forEach((b) => (b.onclick = async () => {
     const tr = b.closest("tr"), v = (f) => tr.querySelector(`[data-f="${f}"]`);
-    const patch = { name: v("name").value.trim(), description: v("description").value.trim(), category_id: Number(v("category_id").value), price: Number(v("price").value), prep_minutes: Number(v("prep_minutes").value), lead_hours: Number(v("lead_hours").value), active: v("active").checked };
+    const patch = { name: v("name").value.trim(), description: v("description").value.trim(), servings: v("servings").value.trim() || null, category_id: Number(v("category_id").value), price: Number(v("price").value), prep_minutes: Number(v("prep_minutes").value), lead_hours: Number(v("lead_hours").value), active: v("active").checked };
     if (!patch.name || !(patch.price >= 0)) return toast("Revisa nombre y precio.");
     const { error } = await sb.from("products").update(patch).eq("id", Number(b.dataset.save));
     if (error) return rpcErr(error); toast("Producto guardado");

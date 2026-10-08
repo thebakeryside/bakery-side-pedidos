@@ -139,3 +139,4 @@ body.in-checkout .how, body.in-checkout .closed-bar, body.in-checkout .wa-fab { 
 .optchoice:has(input:checked) { border-color: var(--tinta); background: var(--crema); }
 .optchoice .free { font-size: 12.5px; font-weight: 700; color: var(--ok); background: rgb(62 122 52 / .1); padding: 2px 8px; border-radius: 999px; }
 .freenote { margin: 2px 0 0; font-size: 13.5px; color: var(--ok); font-weight: 600; }
+.serv { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; font-size: 12.5px; font-weight: 600; color: var(--tinta); background: var(--crema); border-radius: 999px; padding: 3px 10px; }

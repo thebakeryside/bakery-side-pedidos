@@ -55,7 +55,7 @@ body.light {
   --on-primary: var(--crema);
   --inverse: var(--tinta);
   --on-inverse: var(--crema);
-  --header-bg: rgb(255 255 255 / .94);
+  --header-bg: #FFFFFF;
   --shadow: 0 10px 28px rgb(28 23 20 / .10);
   --ok: #3E7A34;
   --aviso: #8C5E0E;

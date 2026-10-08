@@ -94,6 +94,8 @@ $("#cats").addEventListener("click", (e) => {
   state.filter = b.dataset.cat; renderCats(); renderMenu();
 });
 
+// Porciones recomendadas (dulces enteros): van como etiqueta aparte, no en la descripción
+const servChip = (p) => (p.servings ? `<span class="serv"><svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="17" cy="9" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 19c.8-3 3.2-4.6 6-4.6s5.2 1.6 6 4.6M15 14.6c2.6-.3 4.9 1 5.8 3.9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>${esc(p.servings)}</span>` : "");
 // Stock del día: null = sin límite, 0 = agotado hoy, N = quedan N hoy
 function leftToday(p) {
   const today = todayLocal();
@@ -114,7 +116,7 @@ function itemCard(p) {
   const lead = p.lead_hours ? `<span class="tag">Pedir con ${p.lead_hours} h de anticipación</span>` : "";
   const stock = left === 0 ? `<span class="tag">Agotado por hoy · vuelve mañana</span>`
     : left != null ? `<span class="tag">Quedan ${left} hoy</span>` : "";
-  return `<article class="item${left === 0 ? " soldout" : ""}"><div class="ph">${img}</div><div class="body"><h3>${esc(p.name)}</h3><p>${esc(p.description)}</p>${lead}${stock}<div class="foot"><span class="price">${money(p.price)}</span>${ctrl}</div></div></article>`;
+  return `<article class="item${left === 0 ? " soldout" : ""}"><div class="ph">${img}</div><div class="body"><h3>${esc(p.name)}</h3>${servChip(p)}<p>${esc(p.description)}</p>${lead}${stock}<div class="foot"><span class="price">${money(p.price)}</span>${ctrl}</div></div></article>`;
 }
 function renderMenu() {
   const groups = state.cats
@@ -167,7 +169,7 @@ function itemCardOpts(p, q) {
     : `<button class="btn small" type="button" data-a="pick" data-id="${p.id}"${left != null && q >= left ? " disabled" : ""}>${q ? `Agregar otra <span class="incart">${q}</span>` : "Agregar"}</button>`;
   const stock = left === 0 ? `<span class="tag">Agotado por hoy · vuelve mañana</span>` : left != null ? `<span class="tag">Quedan ${left} hoy</span>` : "";
   const hint = `<span class="optnote">Eliges ${groupsOf(p.id).map((g) => g.name.toLowerCase()).join(" y ")} al agregar</span>`;
-  return `<article class="item${left === 0 ? " soldout" : ""}"><div class="ph">${img}</div><div class="body"><h3>${esc(p.name)}</h3><p>${esc(p.description)}</p>${hint}${stock}<div class="foot"><span class="price">${money(p.price)}</span>${ctrl}</div></div></article>`;
+  return `<article class="item${left === 0 ? " soldout" : ""}"><div class="ph">${img}</div><div class="body"><h3>${esc(p.name)}</h3>${servChip(p)}<p>${esc(p.description)}</p>${hint}${stock}<div class="foot"><span class="price">${money(p.price)}</span>${ctrl}</div></div></article>`;
 }
 function openPicker(p) {
   const gs = groupsOf(p.id);
