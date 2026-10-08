@@ -1,5 +1,5 @@
 // The Bakery Side — API pública de la tienda
-// Acciones: config, cotizar, crear, pagar, confirmar, pago_info, subir, comprobante, perfil, guardar_perfil
+// Acciones: config, cotizar, crear, crear_manual, ubicar, pagar, confirmar, pago_info, subir, comprobante, perfil, guardar_perfil
 // El seguimiento usa la función de base de datos track_order(token).
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -326,6 +326,112 @@ async function payQrs() {
   return out;
 }
 
+// Crea un pedido (tienda o WhatsApp). staff = { paid, by } cuando lo registra cocina o master.
+async function makeOrder(b: any, cust: Record<string, any> | null, staff: { paid: boolean; by: string } | null) {
+    const s = await getSettings();
+    const cart = await priceCart(b.items);
+    let discount = 0, useBday = false, reward: any = null;
+    if (cust && b.use_birthday) {
+      if (!(await birthdayEligible(cust))) fail("El regalo de cumpleaños no está disponible en este pedido.");
+      useBday = true; discount = Math.min(4, cart.subtotal);
+    }
+    if (cust && b.reward_product_id) {
+      reward = await availableReward(cust.user_id);
+      if (!reward) fail("No tienes una cookie de regalo disponible.");
+      const { data: ck } = await db.from("products").select("id,name,active").eq("id", Number(b.reward_product_id)).maybeSingle();
+      if (!ck || !ck.active || !COOKIES.includes(ck.name)) fail("Elige una de las cookies de regalo.");
+      cart.lines.push({ product_id: ck!.id, name: `${ck!.name} (regalo de tu tarjeta)`, unit_price: 0, quantity: 1, line_total: 0 });
+    }
+    const q = await quote(s, Number(b.lat), Number(b.lng));
+    const sched = await validateSchedule(s, b.scheduled_for || null, cart.prep, cart.lead, q.travel_min);
+    const limited = checkStock(cart, localDay(sched.scheduled_for ? new Date(sched.scheduled_for) : new Date()));
+    const method = staff ? "transferencia" : b.payment_method === "tarjeta" ? "tarjeta" : b.payment_method === "transferencia" ? "transferencia" : fail("Elige cómo pagar.");
+    const name = clean(b.customer_name, 80) || fail("Escribe tu nombre.");
+    const address = clean(b.address, 200) || fail("Escribe la dirección de entrega.");
+    const invoiceWith = b.invoice_type === "con_datos";
+    if (invoiceWith && !/^\d{10}(\d{3})?$/.test(clean(b.invoice_id_number, 13))) fail("La cédula debe tener 10 dígitos o el RUC 13.");
+    const total = Math.round((cart.subtotal - discount + q.fee) * 100) / 100;
+
+    const row: Record<string, unknown> = {
+      user_id: cust?.user_id ?? null, discount, birthday_discount: useBday, reward_id: reward?.id ?? null,
+      customer_name: name,
+      customer_phone: normPhone(b.customer_phone),
+      recipient_name: clean(b.recipient_name, 80) || null,
+      recipient_phone: b.recipient_phone ? normPhone(b.recipient_phone) : null,
+      gift_message: clean(b.gift_message, 300) || null,
+      address, reference: clean(b.reference, 200) || null,
+      lat: Number(b.lat), lng: Number(b.lng), distance_km: q.km,
+      scheduled_for: sched.scheduled_for, eta: sched.eta.toISOString(), prep_minutes: cart.prep,
+      subtotal: cart.subtotal, delivery_fee: q.fee, total,
+      payment_method: method, payment_status: "pendiente", status: "pendiente_pago",
+      invoice_type: invoiceWith ? "con_datos" : "consumidor_final",
+      invoice_id_number: invoiceWith ? clean(b.invoice_id_number, 13) : null,
+      invoice_name: invoiceWith ? clean(b.invoice_name, 120) : null,
+      invoice_email: invoiceWith ? clean(b.invoice_email, 120) : null,
+    };
+    if (staff) {
+      row.channel = "whatsapp";
+      row.payment_ref = `Pedido por WhatsApp · registrado por ${staff.by}`;
+    }
+    let ins = await db.from("orders").insert(row).select().single();
+    if (ins.error && /channel/.test(ins.error.message)) { delete row.channel; ins = await db.from("orders").insert(row).select().single(); }
+    if (ins.error) throw ins.error;
+    const o = ins.data;
+    const { error: e2 } = await db.from("order_items").insert(cart.lines.map((l) => ({ ...l, order_id: o.id })));
+    if (e2) { await db.from("orders").delete().eq("id", o.id); throw e2; }
+    if (staff?.paid) {
+      // se marca pagado como un paso aparte, para que sumen los sellos y lleguen los avisos igual que en la tienda
+      await db.from("orders").update({ payment_status: "pagado", status: "confirmado", paid_at: new Date().toISOString(), payment_ref: `Pagado por WhatsApp · registrado por ${staff.by}` }).eq("id", o.id);
+    }
+    const today = localDay(new Date());
+    for (const l of limited) {
+      const p = cart.prods.find((x) => x.id === l.id)!;
+      await db.from("products").update({ stock_left: Math.max(0, (p.stock_left ?? 0) - l.q) }).eq("id", l.id).eq("stock_day", today);
+    }
+    if (reward) {
+      // si estaba apartado en un pedido anterior que nunca se pagó, pasa a este pedido
+      if (reward.order_id) await db.from("orders").update({ reward_id: null }).eq("id", reward.order_id).neq("payment_status", "pagado");
+      await db.from("rewards").update({ status: "reservado", order_id: o.id }).eq("id", reward.id);
+    }
+    if (cust && !staff) {
+      await db.from("customers").update({
+        phone: o.customer_phone, address: o.address, reference: o.reference, lat: o.lat, lng: o.lng,
+        full_name: cust.full_name || o.customer_name,
+      }).eq("user_id", cust.user_id);
+    }
+
+    const out: Record<string, unknown> = { code: o.code, tracking_token: o.tracking_token, total, delivery_fee: q.fee, subtotal: cart.subtotal, discount };
+    if (staff) {
+      // nada más: cocina manda el enlace por WhatsApp o ya está pagado
+    } else if (method === "tarjeta") {
+      const pp = payphoneParams(o, 1);
+      await db.from("orders").update({ payment_ref: pp.clientTransactionId }).eq("id", o.id);
+      out.payphone = pp;
+    } else {
+      const path = `${o.id}/${crypto.randomUUID()}`;
+      const { data: up, error: e3 } = await db.storage.from("comprobantes").createSignedUploadUrl(path);
+      if (e3) throw e3;
+      out.upload = { path, token: up.token };
+    }
+    return out;
+}
+
+async function staffName(user: User) {
+  if (!user) fail("Inicia sesión.");
+  const { data: p } = await db.from("profiles").select("role,is_master,full_name").eq("user_id", user!.id).maybeSingle();
+  if (!p || (p.role !== "admin" && !p.is_master)) fail("Solo cocina o master pueden registrar pedidos.");
+  return String(p!.full_name || user!.email || "cocina");
+}
+// Busca "lat,lng" en un enlace o texto de Google Maps / WhatsApp
+function coordsIn(t: string) {
+  const pats = [/@(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)/, /[?&](?:q|query|ll|destination|center)=(-?\d{1,2}\.\d+)(?:%2C|,)\s*(-?\d{1,3}\.\d+)/i, /!3d(-?\d{1,2}\.\d+)!4d(-?\d{1,3}\.\d+)/, /(-?\d{1,2}\.\d{3,})\s*,\s*(-?\d{1,3}\.\d{3,})/];
+  for (const re of pats) {
+    const m = t.match(re);
+    if (m) { const lat = Number(m[1]), lng = Number(m[2]); if (Math.abs(lat) <= 90 && Math.abs(lng) <= 180) return { lat, lng }; }
+  }
+  return null;
+}
+
 // ---------- acciones ----------
 const actions: Record<string, (b: any, user: User) => Promise<unknown>> = {
   async config() {
@@ -355,80 +461,36 @@ const actions: Record<string, (b: any, user: User) => Promise<unknown>> = {
   },
 
   async crear(b, user) {
-    const s = await getSettings();
-    const cart = await priceCart(b.items);
     const cust = user ? await ensureCustomer(user, b.ref) : null;
-    let discount = 0, useBday = false, reward: any = null;
-    if (cust && b.use_birthday) {
-      if (!(await birthdayEligible(cust))) fail("El regalo de cumpleaños no está disponible en este pedido.");
-      useBday = true; discount = Math.min(4, cart.subtotal);
-    }
-    if (cust && b.reward_product_id) {
-      reward = await availableReward(cust.user_id);
-      if (!reward) fail("No tienes una cookie de regalo disponible.");
-      const { data: ck } = await db.from("products").select("id,name,active").eq("id", Number(b.reward_product_id)).maybeSingle();
-      if (!ck || !ck.active || !COOKIES.includes(ck.name)) fail("Elige una de las cookies de regalo.");
-      cart.lines.push({ product_id: ck!.id, name: `${ck!.name} (regalo de tu tarjeta)`, unit_price: 0, quantity: 1, line_total: 0 });
-    }
-    const q = await quote(s, Number(b.lat), Number(b.lng));
-    const sched = await validateSchedule(s, b.scheduled_for || null, cart.prep, cart.lead, q.travel_min);
-    const limited = checkStock(cart, localDay(sched.scheduled_for ? new Date(sched.scheduled_for) : new Date()));
-    const method = b.payment_method === "tarjeta" ? "tarjeta" : b.payment_method === "transferencia" ? "transferencia" : fail("Elige cómo pagar.");
-    const name = clean(b.customer_name, 80) || fail("Escribe tu nombre.");
-    const address = clean(b.address, 200) || fail("Escribe la dirección de entrega.");
-    const invoiceWith = b.invoice_type === "con_datos";
-    if (invoiceWith && !/^\d{10}(\d{3})?$/.test(clean(b.invoice_id_number, 13))) fail("La cédula debe tener 10 dígitos o el RUC 13.");
-    const total = Math.round((cart.subtotal - discount + q.fee) * 100) / 100;
+    return await makeOrder(b, cust, null);
+  },
 
-    const { data: o, error } = await db.from("orders").insert({
-      user_id: cust?.user_id ?? null, discount, birthday_discount: useBday, reward_id: reward?.id ?? null,
-      customer_name: name,
-      customer_phone: normPhone(b.customer_phone),
-      recipient_name: clean(b.recipient_name, 80) || null,
-      recipient_phone: b.recipient_phone ? normPhone(b.recipient_phone) : null,
-      gift_message: clean(b.gift_message, 300) || null,
-      address, reference: clean(b.reference, 200) || null,
-      lat: Number(b.lat), lng: Number(b.lng), distance_km: q.km,
-      scheduled_for: sched.scheduled_for, eta: sched.eta.toISOString(), prep_minutes: cart.prep,
-      subtotal: cart.subtotal, delivery_fee: q.fee, total,
-      payment_method: method, payment_status: "pendiente", status: "pendiente_pago",
-      invoice_type: invoiceWith ? "con_datos" : "consumidor_final",
-      invoice_id_number: invoiceWith ? clean(b.invoice_id_number, 13) : null,
-      invoice_name: invoiceWith ? clean(b.invoice_name, 120) : null,
-      invoice_email: invoiceWith ? clean(b.invoice_email, 120) : null,
-    }).select().single();
-    if (error) throw error;
-    const { error: e2 } = await db.from("order_items").insert(cart.lines.map((l) => ({ ...l, order_id: o.id })));
-    if (e2) { await db.from("orders").delete().eq("id", o.id); throw e2; }
-    const today = localDay(new Date());
-    for (const l of limited) {
-      const p = cart.prods.find((x) => x.id === l.id)!;
-      await db.from("products").update({ stock_left: Math.max(0, (p.stock_left ?? 0) - l.q) }).eq("id", l.id).eq("stock_day", today);
-    }
-    if (reward) {
-      // si estaba apartado en un pedido anterior que nunca se pagó, pasa a este pedido
-      if (reward.order_id) await db.from("orders").update({ reward_id: null }).eq("id", reward.order_id).neq("payment_status", "pagado");
-      await db.from("rewards").update({ status: "reservado", order_id: o.id }).eq("id", reward.id);
-    }
-    if (cust) {
-      await db.from("customers").update({
-        phone: o.customer_phone, address: o.address, reference: o.reference, lat: o.lat, lng: o.lng,
-        full_name: cust.full_name || o.customer_name,
-      }).eq("user_id", cust.user_id);
-    }
+  // Pedido que cocina o master registra por WhatsApp (datos mínimos)
+  async crear_manual(b, user) {
+    const by = await staffName(user);
+    // si el WhatsApp ya tiene cuenta, el pedido suma sellos a esa cuenta
+    const phone = normPhone(b.customer_phone);
+    const { data: cust } = await db.from("customers").select("*").eq("phone", phone).limit(1).maybeSingle();
+    const res = await makeOrder({ ...b, customer_phone: phone, invoice_type: "consumidor_final", use_birthday: false, reward_product_id: null }, cust ?? null, { paid: Boolean(b.paid), by });
+    return res;
+  },
 
-    const out: Record<string, unknown> = { code: o.code, tracking_token: o.tracking_token, total, delivery_fee: q.fee, subtotal: cart.subtotal, discount };
-    if (method === "tarjeta") {
-      const pp = payphoneParams(o, 1);
-      await db.from("orders").update({ payment_ref: pp.clientTransactionId }).eq("id", o.id);
-      out.payphone = pp;
-    } else {
-      const path = `${o.id}/${crypto.randomUUID()}`;
-      const { data: up, error: e3 } = await db.storage.from("comprobantes").createSignedUploadUrl(path);
-      if (e3) throw e3;
-      out.upload = { path, token: up.token };
+  // Convierte un enlace de ubicación de WhatsApp/Google Maps (incluidos los cortos) en coordenadas
+  async ubicar(b, user) {
+    await staffName(user);
+    let url = clean(b.url, 500);
+    const direct = coordsIn(url);
+    if (direct) return direct;
+    const googleHost = (u: string) => { try { return /(^|\.)(google\.[a-z.]+|goo\.gl)$/i.test(new URL(u).hostname); } catch { return false; } };
+    for (let i = 0; i < 5 && /^https?:\/\//.test(url); i++) {
+      if (!googleHost(url)) fail("Pega un enlace de Google Maps o la ubicación que te mandaron por WhatsApp.");
+      const r = await fetch(url, { redirect: "manual" });
+      const next = r.headers.get("location");
+      if (!next) { const html = await r.text(); return coordsIn(html) ?? fail("No encontramos coordenadas en ese enlace. Marca el punto en el mapa."); }
+      url = new URL(next, url).href;
+      const c = coordsIn(url); if (c) return c;
     }
-    return out;
+    return fail("No encontramos coordenadas en ese enlace. Marca el punto en el mapa.");
   },
 
   // Cuenta del cliente: la crea la primera vez (con sellos de bienvenida) y devuelve su tarjeta

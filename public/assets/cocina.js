@@ -1,5 +1,6 @@
 import { sb, $, $$, money, esc, hhmm, when, toast, waLink, STATUS, todayLocal } from "./common.js";
 import { requireLogin, loginHTML } from "./auth.js";
+import { renderManual } from "./manual.js";
 
 $("#loginSlot").innerHTML = loginHTML("Panel de cocina");
 
@@ -65,6 +66,9 @@ function render() {
   const cg = $("#cntAgenda"); const agPaid = agenda.filter((o) => o.status !== "pendiente_pago").length; cg.hidden = !agPaid; cg.textContent = agPaid;
 
   const v = $("#view");
+  // el formulario de pedido por WhatsApp no se redibuja con cada actualización
+  if (S.tab === "nuevo") { if (v.dataset.on !== "nuevo") { v.dataset.on = "nuevo"; renderManual(v); } return; }
+  v.dataset.on = S.tab;
   if (S.tab === "pedidos") {
     const today = new Date().toLocaleDateString("es-EC", { timeZone: "America/Guayaquil" });
     const isToday = (d) => d && new Date(d).toLocaleDateString("es-EC", { timeZone: "America/Guayaquil" }) === today;
@@ -128,7 +132,7 @@ function card(o) {
   if (o.status === "en_camino") acts += `<button class="btn small" data-act="deliver" data-id="${o.id}">Marcar entregado</button>`;
   const canCancel = !["entregado", "cancelado"].includes(o.status);
   return `<article class="ocard" data-s="${o.status}">
-    <div class="ohead"><span class="oid">${esc(o.code)}</span><span class="st st-${o.status}">${STATUS[o.status]}</span></div>
+    <div class="ohead"><span class="oid">${esc(o.code)}${o.channel === "whatsapp" || /WhatsApp/.test(o.payment_ref || "") ? ` <span class="wa-tag">WhatsApp</span>` : ""}</span><span class="st st-${o.status}">${STATUS[o.status]}</span></div>
     <div class="owhen tabnum">${esc(t)}</div>
     <div class="meta">
       <span><b>${esc(o.customer_name)}</b> · ${esc(o.customer_phone)}</span>
