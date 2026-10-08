@@ -36,3 +36,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
 .tbl input.in { min-height: 36px; padding: 6px 8px; }
 .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0 12px; }
 .confirm-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; width: 100%; }
+.pwd { position: relative; }
+.pwd .in { padding-right: 88px; }
+.pwd-toggle { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); border: 0; background: var(--tinta-3); color: var(--crema); font-weight: 600; font-size: 13px; padding: 7px 12px; border-radius: 8px; cursor: pointer; }
+.pwd-toggle:hover { background: var(--cacao); }

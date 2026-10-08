@@ -39,6 +39,17 @@ export async function requireLogin(onReady) {
   });
   $("#logout").onclick = async () => { await sb.auth.signOut(); location.reload(); };
 
+  // Mostrar u ocultar lo que se escribe en los campos de contraseña
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-toggle]"); if (!b) return;
+    const inp = document.getElementById(b.dataset.toggle);
+    const show = inp.type === "password";
+    inp.type = show ? "text" : "password";
+    b.textContent = show ? "Ocultar" : "Mostrar";
+    b.setAttribute("aria-pressed", String(show));
+    b.setAttribute("aria-label", show ? "Ocultar contraseña" : "Mostrar contraseña");
+  });
+
   // Crear o cambiar la contraseña estando dentro
   $("#setPass").onclick = () => { $("#passBox").hidden = !$("#passBox").hidden; $("#newPass").focus(); };
   $("#passForm").addEventListener("submit", async (e) => {
@@ -49,6 +60,8 @@ export async function requireLogin(onReady) {
     const { error } = await sb.auth.updateUser({ password: p1 });
     if (error) return toast("No se pudo guardar: " + error.message);
     $("#passForm").reset(); $("#passBox").hidden = true;
+    for (const id of ["newPass", "newPass2"]) $("#" + id).type = "password";
+    document.querySelectorAll('#passForm [data-toggle]').forEach((b) => { b.textContent = "Mostrar"; b.setAttribute("aria-pressed", "false"); });
     toast("Contraseña guardada. La próxima vez entra con tu correo y contraseña.");
   });
 }
@@ -60,7 +73,7 @@ export const loginHTML = (title) => `
       <label class="f" for="loginEmail">Correo</label>
       <input class="in" id="loginEmail" type="email" autocomplete="email" required>
       <label class="f" for="loginPass">Contraseña</label>
-      <input class="in" id="loginPass" type="password" autocomplete="current-password">
+      <div class="pwd"><input class="in" id="loginPass" type="password" autocomplete="current-password"><button class="pwd-toggle" type="button" data-toggle="loginPass" aria-label="Mostrar contraseña" aria-pressed="false">Mostrar</button></div>
       <button class="btn primary" id="loginBtn" style="margin-top:12px">Entrar</button>
       <button class="btn ghost" id="magicBtn" type="button">Primera vez u olvidé mi contraseña: enviarme un enlace</button>
       <p class="muted small" id="loginMsg" role="status"></p>
@@ -70,9 +83,9 @@ export const loginHTML = (title) => `
     <form id="passForm" class="panel" style="max-width:420px;display:grid;gap:6px" novalidate>
       <h2 class="display" style="font-size:28px">Crear o cambiar contraseña</h2>
       <label class="f" for="newPass">Nueva contraseña <span class="hint">(mínimo 8 caracteres)</span></label>
-      <input class="in" id="newPass" type="password" autocomplete="new-password">
+      <div class="pwd"><input class="in" id="newPass" type="password" autocomplete="new-password"><button class="pwd-toggle" type="button" data-toggle="newPass" aria-label="Mostrar contraseña" aria-pressed="false">Mostrar</button></div>
       <label class="f" for="newPass2">Repite la contraseña</label>
-      <input class="in" id="newPass2" type="password" autocomplete="new-password">
+      <div class="pwd"><input class="in" id="newPass2" type="password" autocomplete="new-password"><button class="pwd-toggle" type="button" data-toggle="newPass2" aria-label="Mostrar contraseña" aria-pressed="false">Mostrar</button></div>
       <button class="btn primary" style="margin-top:10px">Guardar contraseña</button>
     </form>
   </section>`;
