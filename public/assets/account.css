@@ -4,7 +4,7 @@
 .acct-btn { display: inline-flex; align-items: center; gap: 8px; }
 .acct-btn .mini { background: var(--tostado); color: var(--tinta); border-radius: 999px; padding: 0 8px; font-size: 12px; font-weight: 700; }
 
-.stampcard { background: var(--crema); color: var(--tinta); border-radius: 18px; padding: 18px 18px 16px; display: grid; gap: 14px; position: relative; overflow: hidden; box-shadow: 0 10px 30px rgb(0 0 0 / .25); }
+.stampcard { background: #FFFFF6; color: var(--tinta); border: 1px solid #DED8C2; border-radius: 18px; padding: 18px 18px 16px; display: grid; gap: 14px; position: relative; overflow: hidden; box-shadow: var(--shadow); }
 .stampcard::before { content: ""; position: absolute; inset: 7px; border: 1.5px dashed rgb(28 23 20 / .18); border-radius: 13px; pointer-events: none; }
 .stampcard-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .sc-logo { height: 26px; width: auto; }
@@ -35,16 +35,34 @@
 .stampcard.compact .sc-logo { height: 20px; }
 .stampcard.compact .stampnote { font-size: 14px; }
 
-.perk { display: flex; gap: 12px; align-items: flex-start; border: 1px solid var(--cacao); border-radius: 12px; padding: 12px; background: var(--tinta); }
+.perk { display: flex; gap: 12px; align-items: flex-start; border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: var(--surface); }
 .perk b { display: block; }
-.perk.ready { border-color: var(--tostado); background: rgb(198 138 78 / .1); }
+.perk.ready { border-color: var(--accent); background: var(--accent-soft); }
 .acct-grid { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
 @media (min-width: 860px) { .acct-grid { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); align-items: start; } }
 .reflink { display: flex; gap: 6px; flex-wrap: wrap; }
 .reflink input { flex: 1; min-width: 180px; }
 .hist { display: grid; gap: 8px; }
-.hist a { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; text-decoration: none; color: inherit; border: 1px solid var(--cacao); border-radius: 12px; padding: 12px; }
-.hist a:hover { border-color: var(--crema-2); }
-.hist .when { color: var(--crema-2); font-size: 13.5px; }
-.guest-or { display: grid; gap: 10px; background: var(--tinta); border: 1px solid var(--cacao); border-radius: 12px; padding: 14px; margin-top: 12px; }
+.hist a { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; text-decoration: none; color: inherit; border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: var(--surface); }
+.hist a:hover { border-color: var(--line-strong); }
+.hist .when { color: var(--text-2); font-size: 13.5px; }
+.guest-or { display: grid; gap: 10px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-top: 12px; }
 .guest-or p { margin: 0; }
+
+/* Mi cuenta: perfil */
+.acct-top { display: flex; justify-content: space-between; align-items: end; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.acct-top h1 { font-size: clamp(40px, 8vw, 60px); }
+.acct-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+.acct-tabs button { border: 1px solid var(--line); background: var(--surface); color: var(--text); border-radius: 999px; padding: 8px 16px; font-weight: 600; cursor: pointer; }
+.acct-tabs button[aria-selected="true"] { background: var(--inverse); color: var(--on-inverse); border-color: var(--inverse); }
+.mini-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.mini-stats div { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+.mini-stats b { display: block; font-family: var(--display); font-size: 30px; letter-spacing: .03em; line-height: 1; }
+.mini-stats span { font-size: 13px; color: var(--text-2); }
+.order-card { display: grid; gap: 8px; border: 1px solid var(--line); border-radius: 14px; padding: 14px; background: var(--surface); }
+.order-card .row { display: flex; justify-content: space-between; gap: 10px; align-items: center; flex-wrap: wrap; }
+.order-card .items { font-size: 14px; color: var(--text-2); }
+.order-card .acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.form-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 560px) { .form-grid2 { grid-template-columns: 1fr; } .mini-stats b { font-size: 26px; } }
+@media (max-width: 420px) { .acct-tabs { flex-wrap: nowrap; gap: 4px; } .acct-tabs button { padding: 8px 12px; font-size: 14.5px; white-space: nowrap; } }

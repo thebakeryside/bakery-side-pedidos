@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Mi pedido · The Bakery Side</title>
 <meta name="robots" content="noindex">
-<meta name="theme-color" content="#1C1714">
+<meta name="theme-color" content="#F6F7DE">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="/icon-32.png" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="/icon-180.png">
@@ -17,18 +17,18 @@
   .big { font-family: var(--display); font-size: 64px; line-height: 1; letter-spacing: .03em; }
   .steps { list-style: none; margin: 8px 0 0; padding: 0; }
   .steps li { display: grid; grid-template-columns: 22px 1fr auto; gap: 12px; padding-bottom: 18px; position: relative; }
-  .steps li::before { content: ""; position: absolute; left: 10px; top: 22px; bottom: 0; width: 2px; background: var(--cacao); }
+  .steps li::before { content: ""; position: absolute; left: 10px; top: 22px; bottom: 0; width: 2px; background: var(--line); }
   .steps li:last-child::before { display: none; }
-  .dot { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--cacao); background: var(--tinta); position: relative; z-index: 1; }
+  .dot { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line-strong); background: var(--surface); position: relative; z-index: 1; }
   .steps li.done .dot { background: var(--tostado); border-color: var(--tostado); }
   .steps li.done::before { background: var(--tostado); }
   .steps li.now .dot { border-color: var(--tostado); box-shadow: 0 0 0 5px rgb(198 138 78 / .2); }
-  .steps small { display: block; color: var(--crema-2); }
-  .steps .t { color: var(--crema-2); font-size: 13.5px; font-variant-numeric: tabular-nums; }
+  .steps small { display: block; color: var(--text-2); }
+  .steps .t { color: var(--text-2); font-size: 13.5px; font-variant-numeric: tabular-nums; }
 </style>
 </head>
-<body>
-<header class="topbar"><div class="wrap"><a class="brand logo" href="/" aria-label="The Bakery Side, inicio"><img src="/assets/brand/tbs-crema.svg" alt="The Bakery Side" width="84" height="45"></a><a class="btn small ghost" href="/">Hacer otro pedido</a></div></header>
+<body class="light">
+<header class="topbar"><div class="wrap"><a class="brand logo" href="/" aria-label="The Bakery Side, inicio"><img src="/assets/brand/tbs-tinta.svg" alt="The Bakery Side" width="84" height="45"></a><a class="btn small ghost" href="/">Hacer otro pedido</a></div></header>
 <main class="wrap">
   <div class="track" id="root"><p class="muted">Cargando tu pedido…</p></div>
 </main>

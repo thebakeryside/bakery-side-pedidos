@@ -17,7 +17,9 @@ export async function requireLogin(onReady) {
   mountClock();
   const box = $("#login"), app = $("#app");
   const show = async (session) => {
-    if (session?.user) { box.hidden = true; app.hidden = false; $("#whoami").textContent = session.user.email; $("#setPass").hidden = false; await onReady(session.user); }
+    if (session?.user) { box.hidden = true; app.hidden = false; $("#whoami").textContent = session.user.email; $("#setPass").hidden = false; await onReady(session.user);
+      const panel = location.pathname.replace(/^\//, "").split(/[/.]/)[0];
+      if (["cocina", "moto", "master"].includes(panel)) import("./push.js").then((m) => m.setupApp(panel, session.user)).catch(() => {}); }
     else { box.hidden = false; app.hidden = true; $("#setPass").hidden = true; }
   };
   const { data } = await sb.auth.getSession();

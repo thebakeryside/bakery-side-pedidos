@@ -44,13 +44,33 @@ function loadGoogle() {
  *  searchSlot: elemento donde va el buscador
  *  onPick(lat, lng, address|null) — el cliente fijó una ubicación
  */
+const TOUCH = matchMedia("(pointer: coarse)").matches;
+
 export async function createMap(el, opts) {
+  let ctl;
   try {
     await loadGoogle();
-    return await googleMap(el, opts);
+    ctl = await googleMap(el, opts);
   } catch {
-    return leafletMap(el, opts);
+    ctl = leafletMap(el, opts);
   }
+  if (TOUCH && ctl.kind !== "none") addTouchLock(el, ctl);
+  return ctl;
+}
+
+// En el celular el mapa queda quieto mientras haces scroll; se mueve solo después de tocar "Ajustar ubicación"
+function addTouchLock(el, ctl) {
+  const wrap = el.parentElement;
+  const lock = document.createElement("button");
+  lock.type = "button"; lock.className = "map-lock";
+  lock.innerHTML = `<span><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9 11V5a2 2 0 1 1 4 0v5h1V7a2 2 0 1 1 4 0v8a6 6 0 0 1-6 6h-1a6 6 0 0 1-5.2-3l-2.3-4a1.6 1.6 0 0 1 2.6-1.8L9 14z"/></svg>Toca para ajustar tu ubicación</span>`;
+  const done = document.createElement("button");
+  done.type = "button"; done.className = "btn small primary map-done"; done.textContent = "Listo"; done.hidden = true;
+  wrap.append(lock, done);
+  const set = (locked) => { ctl.setLocked(locked); lock.hidden = !locked; done.hidden = locked; };
+  lock.onclick = () => set(false);
+  done.onclick = () => set(true);
+  set(true);
 }
 
 async function googleMap(el, { start, center, searchSlot, onPick }) {
@@ -58,7 +78,7 @@ async function googleMap(el, { start, center, searchSlot, onPick }) {
   el.innerHTML = "";
   const map = new g.Map(el, {
     center: start || center || GYE, zoom: start ? 18 : 13,
-    disableDefaultUI: true, zoomControl: true, gestureHandling: "greedy", clickableIcons: false, styles: STYLE,
+    disableDefaultUI: true, zoomControl: true, gestureHandling: TOUCH ? "none" : "cooperative", clickableIcons: false, styles: STYLE,
   });
   const geocoder = new g.Geocoder();
   let touched = Boolean(start), quiet = false;
@@ -94,6 +114,7 @@ async function googleMap(el, { start, center, searchSlot, onPick }) {
 
   return {
     kind: "google",
+    setLocked(l) { map.setOptions({ gestureHandling: l ? "none" : "greedy", zoomControl: !l }); },
     setView(lat, lng, zoom = 18) { touched = true; el.classList.add("touched"); map.setZoom(zoom); map.setCenter({ lat, lng }); },
     resize() { g.event.trigger(map, "resize"); },
   };
@@ -101,9 +122,9 @@ async function googleMap(el, { start, center, searchSlot, onPick }) {
 
 function leafletMap(el, { start, center, searchSlot, onPick }) {
   const L = window.L;
-  if (!L) { el.innerHTML = `<p class="muted small" style="padding:12px">No pudimos cargar el mapa. Escribe tu dirección y referencia con detalle.</p>`; return { kind: "none", setView() {}, resize() {} }; }
+  if (!L) { el.innerHTML = `<p class="muted small" style="padding:12px">No pudimos cargar el mapa. Escribe tu dirección y referencia con detalle.</p>`; return { kind: "none", setLocked() {}, setView() {}, resize() {} }; }
   const c = start || center || GYE;
-  const map = L.map(el, { zoomControl: true }).setView([c.lat, c.lng], start ? 18 : 13);
+  const map = L.map(el, { zoomControl: true, scrollWheelZoom: false }).setView([c.lat, c.lng], start ? 18 : 13);
   L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
     maxZoom: 20, subdomains: "abcd", attribution: "© OpenStreetMap · © CARTO",
   }).addTo(map);
@@ -135,6 +156,7 @@ function leafletMap(el, { start, center, searchSlot, onPick }) {
   setTimeout(() => map.invalidateSize(), 60);
   return {
     kind: "osm",
+    setLocked(l) { for (const h of [map.dragging, map.touchZoom, map.doubleClickZoom]) l ? h.disable() : h.enable(); },
     setView(lat, lng, zoom = 18) { touched = true; el.classList.add("touched"); map.setView([lat, lng], zoom); },
     resize() { map.invalidateSize(); },
   };

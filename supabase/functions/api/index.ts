@@ -433,6 +433,8 @@ const actions: Record<string, (b: any, user: User) => Promise<unknown>> = {
     const patch: Record<string, unknown> = {};
     if (b.full_name !== undefined) patch.full_name = clean(b.full_name, 80);
     if (b.phone) patch.phone = normPhone(b.phone);
+    if (b.address !== undefined) patch.address = clean(b.address, 200) || null;
+    if (b.reference !== undefined) patch.reference = clean(b.reference, 200) || null;
     if (b.birthday) {
       if (c.birthday) fail("Tu fecha de cumpleaños ya está registrada. Si hay un error, escríbenos.");
       if (!/^\d{4}-\d{2}-\d{2}$/.test(b.birthday) || isNaN(Date.parse(b.birthday))) fail("Revisa la fecha de cumpleaños.");

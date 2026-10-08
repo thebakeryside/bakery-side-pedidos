@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>The Bakery Side · Pedidos</title>
 <meta name="description" content="Postres hechos con cariño por The Bakery Side, con entrega a domicilio en Guayaquil y Samborondón.">
-<meta name="theme-color" content="#1C1714">
+<meta name="theme-color" content="#F6F7DE">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="/icon-32.png" sizes="32x32" type="image/png">
 <link rel="apple-touch-icon" href="/icon-180.png">
@@ -17,13 +17,14 @@
 <link rel="stylesheet" href="/assets/tienda.css">
 <link rel="stylesheet" href="/assets/account.css">
 </head>
-<body>
+<body class="light">
 <header class="topbar">
   <div class="wrap">
-    <a class="brand logo" href="/" aria-label="The Bakery Side, inicio"><img src="/assets/brand/tbs-crema.svg" alt="The Bakery Side" width="84" height="45"></a>
+    <a class="brand logo" href="/" aria-label="The Bakery Side, inicio"><img src="/assets/brand/tbs-tinta.svg" alt="The Bakery Side" width="84" height="45"></a>
     <div class="top-actions">
       <span class="pill" id="openPill"><span class="dot"></span><span id="openTxt">Cargando…</span></span>
-      <a class="btn small ghost acct-btn" id="acctBtn" href="/cuenta"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4 20c1.5-4 4.5-6 8-6s6.5 2 8 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span id="acctTxt">Mi cuenta</span></a>
+      <button class="btn small icon-btn" id="cartBtn" type="button" aria-label="Ver tu pedido"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h14l-1.2 11.2a2 2 0 0 1-2 1.8H8.2a2 2 0 0 1-2-1.8L5 8z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M9 8V6a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="2"/></svg><span class="cart-count tabnum" id="cartCount" hidden>0</span></button>
+      <a class="btn small acct-btn icon-btn" id="acctBtn" href="/cuenta"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4 20c1.5-4 4.5-6 8-6s6.5 2 8 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span class="lbl" id="acctTxt">Mi cuenta</span></a>
     </div>
   </div>
 </header>
@@ -31,16 +32,13 @@
 <main class="wrap shop">
   <section class="intro">
     <p class="eyebrow">A domicilio en Guayaquil y Samborondón</p>
-    <h1 class="display">Postres hechos con cariño, directo a tu puerta</h1>
-    <p class="muted lead">Somos una cocina pequeña: preparamos cada pedido a mano, para darte un gusto o para sorprender a alguien especial.</p>
+    <h1 class="display">Dulces hechos con cariño, directo a ti</h1>
+    <p class="lead">Pequeños antojos, grandes detalles.</p>
   </section>
 
-  <div class="closed-card" id="closedCard" hidden>
-    <svg class="closed-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" fill="currentColor"/></svg>
-    <div>
-      <b id="closedTitle">Ahora estamos descansando</b>
-      <p id="closedText" class="muted small"></p>
-    </div>
+  <div class="closed-bar" id="closedCard" hidden role="status">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" fill="currentColor"/></svg>
+    <span><b id="closedTitle">Estamos descansando</b> · <span id="closedText"></span></span>
   </div>
 
   <ol class="how" aria-label="Cómo pedir">
@@ -157,12 +155,13 @@
   </section>
 </main>
 
-<footer class="wrap" style="padding-block:24px 110px;border-top:1px solid var(--cacao);margin-top:24px">
+<footer class="wrap" style="padding-block:24px 110px;border-top:1px solid var(--line);margin-top:24px">
   <p class="muted small">The Bakery Side · Guayaquil y Samborondón · Horario: <span id="hoursTxt">hoy de 09:00 a 21:00</span> · <a href="/privacidad">Política de privacidad</a></p>
 </footer>
 
 <a class="wa-fab" id="waFab" hidden target="_blank" rel="noopener" aria-label="Escríbenos por WhatsApp"><svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2c-1.5 0-3-.4-4.3-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.7.8-.8 1-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.3-.4.8-1.4.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.8 11.9 11.9 0 0 0 4.6 4c1.7.7 2.4.8 3.2.7.5-.1 1.5-.6 1.8-1.2s.2-1.1.1-1.2l-.5-.3z"/></svg><span>¿Dudas? Escríbenos</span></a>
 
+<div class="cart-scrim" id="cartScrim" hidden></div>
 <div class="mobilebar" id="mobileBar" hidden>
   <span><b id="mbCount">0</b> productos · <span id="mbTotal" class="tabnum">$0.00</span></span>
   <button class="btn primary" type="button" id="mbOpen">Ver pedido</button>

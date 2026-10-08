@@ -31,6 +31,7 @@ async function init() {
   try { JSON.parse(localStorage.getItem(CART_KEY) || "[]").forEach(([id, q]) => state.products.some((p) => p.id === id) && state.cart.set(id, q)); } catch {}
   renderCats(); renderMenu(); renderCart();
   await refreshAccount();
+  if (new URLSearchParams(location.search).get("carrito") === "1") { history.replaceState(null, "", "/"); if (state.cart.size) openCart(); }
   if (new URLSearchParams(location.search).get("checkout") === "1" && state.cart.size) {
     history.replaceState(null, "", "/"); openCheckout();
   }
@@ -51,11 +52,11 @@ function renderStatus(c) {
   $("#hoursTxt").textContent = c.open_now || today?.open ? `hoy de ${c.open_time} a ${c.close_time}` : "según el día";
   if (c.open_now) return;
   if (c.store_open) {
-    $("#closedTitle").textContent = today?.closed && today.note ? `Hoy no abrimos por ${today.note.toLowerCase()}` : "Ahora estamos descansando";
-    $("#closedText").textContent = `Abrimos ${nextTxt}, pero puedes dejar tu pedido agendado desde ya y te lo llevamos el día y la hora que elijas.`;
+    $("#closedTitle").textContent = today?.closed && today.note ? `Hoy cerramos por ${today.note}` : "Estamos descansando";
+    $("#closedText").innerHTML = `<span class="sub">Abrimos ${esc(nextTxt)}. Ya puedes agendar tu pedido.</span>`;
   } else {
-    $("#closedTitle").textContent = "Hoy no estamos recibiendo pedidos";
-    $("#closedText").textContent = "Volvemos muy pronto. Si tienes una consulta, escríbenos por WhatsApp.";
+    $("#closedTitle").textContent = "Hoy no recibimos pedidos";
+    $("#closedText").innerHTML = `<span class="sub">Volvemos pronto. ¿Dudas? Escríbenos por WhatsApp.</span>`;
   }
 }
 // wa.me necesita el número internacional sin signos (0991234567 → 593991234567)
@@ -101,9 +102,9 @@ function itemCard(p) {
     : q
     ? `<div class="qty"><button type="button" data-a="-" data-id="${p.id}" aria-label="Quitar uno">−</button><span>${q}</span><button type="button" data-a="+" data-id="${p.id}" aria-label="Agregar uno"${left != null && q >= left ? " disabled" : ""}>+</button></div>`
     : `<button class="btn small" type="button" data-a="+" data-id="${p.id}">Agregar</button>`;
-  const lead = p.lead_hours ? `<span class="small" style="color:var(--aviso)">Pedir con ${p.lead_hours} h de anticipación</span>` : "";
-  const stock = left === 0 ? `<span class="small" style="color:var(--aviso)">Agotado por hoy · vuelve mañana</span>`
-    : left != null ? `<span class="small" style="color:var(--aviso)">Quedan ${left} hoy</span>` : "";
+  const lead = p.lead_hours ? `<span class="tag">Pedir con ${p.lead_hours} h de anticipación</span>` : "";
+  const stock = left === 0 ? `<span class="tag">Agotado por hoy · vuelve mañana</span>`
+    : left != null ? `<span class="tag">Quedan ${left} hoy</span>` : "";
   return `<article class="item${left === 0 ? " soldout" : ""}"><div class="ph">${img}</div><div class="body"><h3>${esc(p.name)}</h3><p>${esc(p.description)}</p>${lead}${stock}<div class="foot"><span class="price">${money(p.price)}</span>${ctrl}</div></div></article>`;
 }
 function renderMenu() {
@@ -135,25 +136,43 @@ const product = (id) => state.products.find((p) => p.id === id);
 const subtotal = () => [...state.cart].reduce((s, [id, q]) => s + Number(product(id).price) * q, 0);
 
 function renderCart() {
-  const lines = [...state.cart].map(([id, q]) => {
-    const p = product(id);
-    return `<div class="line"><span>${q} × ${esc(p.name)}</span><span class="tabnum">${money(p.price * q)}</span></div>`;
-  });
   const n = [...state.cart.values()].reduce((a, b) => a + b, 0);
+  const lines = [...state.cart].map(([id, q]) => {
+    const p = product(id), left = leftToday(p);
+    return `<div class="cline"><span class="nm">${esc(p.name)}</span><span class="tabnum">${money(p.price * q)}</span>
+      <div class="qty"><button type="button" data-c="-" data-id="${id}" aria-label="Quitar uno de ${esc(p.name)}">−</button><span>${q}</span><button type="button" data-c="+" data-id="${id}" aria-label="Agregar uno de ${esc(p.name)}"${left != null && q >= left ? " disabled" : ""}>+</button></div>
+      <button class="rm" type="button" data-c="x" data-id="${id}">Quitar</button></div>`;
+  });
   $("#cartLines").innerHTML = lines.length
-    ? lines.join("") + `<div class="line total"><span>Subtotal</span><span class="tabnum">${money(subtotal())}</span></div><p class="muted small">El envío se calcula con tu ubicación.</p>`
-    : `<p class="muted">Agrega productos del menú para empezar.</p>`;
+    ? lines.join("") + `<div class="line total"><span>Subtotal</span><span class="tabnum">${money(subtotal())}</span></div><p class="muted small" style="margin:0">El envío se calcula con tu ubicación.</p>`
+    : `<div class="cart-empty"><b>Tu pedido está vacío</b><span class="muted small">Agrega algo rico del menú para empezar.</span></div>`;
   $("#goCheckout").disabled = !n;
   $("#mbCount").textContent = n; $("#mbTotal").textContent = money(subtotal());
+  $("#cartCount").textContent = n; $("#cartCount").hidden = !n;
   $("#mobileBar").hidden = !n || !$("#checkout").hidden;
   renderSummary();
 }
-$("#mbOpen").onclick = () => $("#cart").classList.add("open");
-$("#closeCart").onclick = () => $("#cart").classList.remove("open");
-$("#goCheckout").onclick = openCheckout;
-$("#backToMenu").onclick = () => {
+$("#cartLines").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-c]"); if (!b) return;
+  const id = Number(b.dataset.id);
+  changeQty(id, b.dataset.c === "+" ? 1 : b.dataset.c === "-" ? -1 : -(state.cart.get(id) || 0));
+});
+const isMobile = () => matchMedia("(max-width: 899px)").matches;
+function openCart() {
+  if (!$("#checkout").hidden) backToMenu();
+  if (isMobile()) { $("#cart").classList.add("open"); $("#cartScrim").hidden = false; }
+  else { $("#cart").scrollIntoView({ behavior: "smooth", block: "start" }); $("#cart").animate([{ boxShadow: "0 0 0 4px rgb(198 138 78 / .5)" }, { boxShadow: "0 0 0 0 transparent" }], 900); }
+}
+function closeCart() { $("#cart").classList.remove("open"); $("#cartScrim").hidden = true; }
+function backToMenu() {
   $("#checkout").hidden = true; $(".layout").hidden = false; $(".intro").hidden = false; document.body.classList.remove("in-checkout"); renderCart(); scrollTo(0, 0);
-};
+}
+$("#mbOpen").onclick = openCart;
+$("#cartBtn").onclick = openCart;
+$("#closeCart").onclick = closeCart;
+$("#cartScrim").onclick = closeCart;
+$("#goCheckout").onclick = () => { closeCart(); openCheckout(); };
+$("#backToMenu").onclick = backToMenu;
 
 // ---------- checkout ----------
 let mapCtl = null;
@@ -336,7 +355,7 @@ function renderSummary() {
     `<div class="line"><span>Envío</span><span class="tabnum">${fee != null ? money(fee) : "—"}</span></div>` +
     `<div class="line total"><span>Total</span><span class="tabnum">${fee != null ? money(sub - disc + fee) : money(sub - disc) + " + envío"}</span></div>` +
     (whenTxt ? `<p class="muted small">${whenTxt}</p>` : "") +
-    (state.acct ? `<p class="small" style="color:var(--tostado-2);margin:0">Este pedido te da ${stampsFor(sub - disc)} ${stampsFor(sub - disc) === 1 ? "sello" : "sellos"}.</p>` : "");
+    (state.acct ? `<p class="small" style="color:var(--accent-ink);margin:0;font-weight:600">Este pedido te da ${stampsFor(sub - disc)} ${stampsFor(sub - disc) === 1 ? "sello" : "sellos"}.</p>` : "");
   $("#payBtn").textContent = fee != null ? `Pagar ${money(sub - disc + fee)}` : "Pagar";
 }
 
