@@ -73,8 +73,20 @@ function card(o) {
 document.addEventListener("click", async (e) => {
   const b = e.target.closest("button[data-a]"); if (!b) return;
   b.disabled = true;
-  const { error } = await sb.rpc("rider_action", { p_order: b.dataset.id, p_action: b.dataset.a });
-  if (error) { b.disabled = false; return toast(error.message); }
+  const call = () => sb.rpc("rider_action", { p_order: b.dataset.id, p_action: b.dataset.a });
+  let { error } = await call();
+  // Si la sesión venció (por ejemplo, con cocina abierta en otra pestaña), la renovamos y reintentamos una vez
+  if (error && /permission denied|motorizado activo|JWT/i.test(error.message)) {
+    const { error: re } = await sb.auth.refreshSession();
+    if (!re) ({ error } = await call());
+  }
+  if (error) {
+    b.disabled = false;
+    if (/motorizado activo|permission denied|JWT/i.test(error.message)) return toast("Tu sesión venció. Toca «Salir» y vuelve a entrar.");
+    if (/no asignado/i.test(error.message)) { await load(); return toast("Este pedido ya no está asignado a ti."); }
+    if (/estado actual/i.test(error.message)) { await load(); return toast("El pedido cambió de estado. Revisa la tarjeta."); }
+    return toast("No se pudo guardar. Revisa tu conexión e intenta de nuevo.");
+  }
   toast({ aceptar: "Entrega aceptada", rechazar: "Avisamos a cocina", recoger: "¡Buen viaje!", entregar: "Entrega registrada" }[b.dataset.a]);
   await load();
 });
