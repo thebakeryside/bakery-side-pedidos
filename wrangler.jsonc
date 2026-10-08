@@ -4,6 +4,11 @@
   "compatibility_date": "2026-10-06",
   "workers_dev": true,
   "preview_urls": true,
+  // Dominio propio de la tienda
+  "routes": [
+    { "pattern": "thebakeryside.com", "custom_domain": true },
+    { "pattern": "www.thebakeryside.com", "custom_domain": true }
+  ],
   "assets": {
     "directory": "./public/",
     "html_handling": "auto-trailing-slash"
