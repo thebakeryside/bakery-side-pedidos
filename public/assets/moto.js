@@ -7,7 +7,7 @@ let rider = null, orders = [];
 requireLogin(async (user) => {
   const { data } = await sb.from("riders").select("*").eq("user_id", user.id).maybeSingle();
   rider = data;
-  if (!rider || !rider.active) {
+  if (!rider || !rider.active || rider.archived_at) {
     $("#view").innerHTML = `<div class="panel"><h2 class="display" style="font-size:32px">Sin entregas asignadas</h2><p class="muted">Tu correo ${esc(user.email)} no está registrado como motorizado activo. Pide a la cocina que te agregue con este correo.</p></div>`;
     return;
   }

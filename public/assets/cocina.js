@@ -38,7 +38,7 @@ async function loadOrders() {
   S.orders = data;
   data.forEach((o) => S.seen.add(o.id + o.status));
 }
-async function loadRiders() { const { data } = await sb.from("riders").select("*").order("full_name"); S.riders = data || []; }
+async function loadRiders() { const { data } = await sb.from("riders").select("*").order("full_name"); S.riders = (data || []).filter((r) => !r.archived_at); }
 async function loadMenu() {
   const [c, p] = await Promise.all([sb.from("categories").select("*").order("sort"), sb.from("products").select("*").order("sort")]);
   S.cats = c.data || []; S.products = p.data || [];
