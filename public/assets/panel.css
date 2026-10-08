@@ -116,3 +116,8 @@ button.chip:hover { border-color: var(--crema-2); color: var(--crema); }
 .ac-list li[aria-selected="true"], .ac-list li:hover { background: #F2EFD9; }
 .wa-tag { font-family: var(--body); font-size: 11px; font-weight: 700; letter-spacing: .04em; background: #25D366; color: #0b3d1f; border-radius: 999px; padding: 2px 8px; vertical-align: middle; }
 .quick { max-width: 760px; }
+.mopt { margin: 6px 2px 0; font-size: 14.5px; }
+.optg { border: 1px solid var(--cacao); border-radius: 12px; padding: 12px; display: grid; gap: 8px; margin-bottom: 10px; }
+.optc { display: grid; gap: 6px; padding-left: 8px; border-left: 2px solid var(--cacao); }
+.optp { display: flex; flex-wrap: wrap; gap: 6px; }
+.optp .chip { padding: 5px 10px; font-weight: 500; font-size: 13.5px; }

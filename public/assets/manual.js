@@ -14,12 +14,20 @@ let st = null;
 export async function renderManual(view) {
   st = { cart: new Map(), loc: null, locLabel: "", quote: null, cfg: null, prods: [], cats: [], map: null, filter: "" };
   view.innerHTML = `<p class="muted">Cargando…</p>`;
-  const [cfg, cats, prods] = await Promise.all([
+  const [cfg, cats, prods, opts] = await Promise.all([
     api("config"),
     sb.from("categories").select("id,name,sort").eq("active", true).order("sort"),
     sb.from("products").select("*").eq("active", true).order("sort"),
+    sb.from("product_option_groups").select("product_id, option_groups(id,name,required,option_choices(id,name,price_delta,sort,active))"),
   ]);
   st.cfg = cfg; st.cats = cats.data || []; st.prods = prods.data || [];
+  // opciones (endulzante, etc.): cada opción se muestra como su propia fila
+  st.opts = {};
+  for (const r of opts.error ? [] : opts.data || []) {
+    const g = r.option_groups; if (!g) continue;
+    g.option_choices = (g.option_choices || []).filter((c) => c.active).sort((a, b) => a.sort - b.sort);
+    (st.opts[r.product_id] ||= []).push(g);
+  }
 
   view.innerHTML = `
     <details class="panel quick">
@@ -88,8 +96,8 @@ export async function renderManual(view) {
   $("#mSearch").oninput = () => { st.filter = $("#mSearch").value.trim().toLowerCase(); drawProds(); };
   $("#mProds").onclick = (e) => {
     const b = e.target.closest("[data-q]"); if (!b) return;
-    const id = Number(b.dataset.id), q = (st.cart.get(id) || 0) + Number(b.dataset.q);
-    if (q <= 0) st.cart.delete(id); else st.cart.set(id, Math.min(q, 50));
+    const k = b.dataset.id, q = (st.cart.get(k) || 0) + Number(b.dataset.q);
+    if (q <= 0) st.cart.delete(k); else st.cart.set(k, Math.min(q, 50));
     drawProds(); quote();
   };
   $$('input[name="mWhen"]').forEach((r) => (r.onchange = () => { $("#mSched").hidden = !$('input[name="mWhen"][value="later"]').checked; drawSum(); }));
@@ -117,21 +125,32 @@ function drawProds() {
   const html = st.cats.map((c) => {
     const items = st.prods.filter((p) => p.category_id === c.id && (!f || p.name.toLowerCase().includes(f)));
     if (!items.length) return "";
+    const row = (k, label, price) => {
+      const q = st.cart.get(k) || 0;
+      return `<div class="mprod ${q ? "on" : ""}"><span>${esc(label)} <span class="muted small">${money(price)}</span></span>
+        <span class="qty"><button type="button" data-q="-1" data-id="${k}" aria-label="Quitar uno">−</button><b>${q}</b><button type="button" data-q="1" data-id="${k}" aria-label="Agregar uno">+</button></span></div>`;
+    };
     return `<h3 class="mcat">${esc(c.name)}</h3>${items.map((p) => {
-      const q = st.cart.get(p.id) || 0;
-      return `<div class="mprod ${q ? "on" : ""}"><span>${esc(p.name)} <span class="muted small">${money(p.price)}</span></span>
-        <span class="qty"><button type="button" data-q="-1" data-id="${p.id}" aria-label="Quitar uno">−</button><b>${q}</b><button type="button" data-q="1" data-id="${p.id}" aria-label="Agregar uno">+</button></span></div>`;
+      const g = (st.opts[p.id] || [])[0];
+      if (!g) return row(String(p.id), p.name, p.price);
+      return `<div class="mopt"><b>${esc(p.name)}</b> <span class="muted small">· ${esc(g.name.toLowerCase())}</span></div>` +
+        g.option_choices.map((ch) => row(`${p.id}:${ch.id}`, `↳ ${ch.name}`, Number(p.price) + Number(ch.price_delta || 0))).join("");
     }).join("")}`;
   }).join("");
   $("#mProds").innerHTML = html || `<p class="muted small">No hay productos con ese nombre.</p>`;
   drawSum();
 }
 
-const subtotal = () => [...st.cart].reduce((s, [id, q]) => s + Number(st.prods.find((p) => p.id === id)?.price || 0) * q, 0);
-const items = () => [...st.cart].map(([product_id, quantity]) => ({ product_id, quantity }));
+const kId = (k) => Number(String(k).split(":")[0]);
+const kOpts = (k) => (String(k).split(":")[1] || "").split(".").filter(Boolean).map(Number);
+const choice = (cid) => { for (const gs of Object.values(st.opts)) for (const g of gs) { const c = g.option_choices.find((x) => x.id === cid); if (c) return c; } return null; };
+const lName = (k) => { const n = kOpts(k).map((c) => choice(c)?.name).filter(Boolean); return st.prods.find((p) => p.id === kId(k)).name + (n.length ? ` (${n.join(", ")})` : ""); };
+const lPrice = (k) => Number(st.prods.find((p) => p.id === kId(k))?.price || 0) + kOpts(k).reduce((s, c) => s + Number(choice(c)?.price_delta || 0), 0);
+const subtotal = () => [...st.cart].reduce((s, [k, q]) => s + lPrice(k) * q, 0);
+const items = () => [...st.cart].map(([k, quantity]) => ({ product_id: kId(k), quantity, options: kOpts(k) }));
 
 function drawSum() {
-  const lines = [...st.cart].map(([id, q]) => { const p = st.prods.find((x) => x.id === id); return `<div class="line"><span>${q} × ${esc(p.name)}</span><span class="tabnum">${money(p.price * q)}</span></div>`; });
+  const lines = [...st.cart].map(([k, q]) => `<div class="line"><span>${q} × ${esc(lName(k))}</span><span class="tabnum">${money(lPrice(k) * q)}</span></div>`);
   const fee = st.quote?.delivery_fee;
   $("#mSum").innerHTML = lines.length
     ? `${lines.join("")}<div class="line"><span>Envío</span><span class="tabnum">${fee != null ? money(fee) : "—"}</span></div><div class="line total"><span>Total</span><span class="tabnum">${money(subtotal() + (fee || 0))}</span></div>`
@@ -228,7 +247,7 @@ async function submit(e) {
 function done(res, body, paid) {
   const link = `${SITE}/pedido?t=${res.tracking_token}`;
   const first = body.customer_name.split(" ")[0];
-  const lines = [...st.cart].map(([id, q]) => `${q}× ${st.prods.find((p) => p.id === id).name}`).join("\n");
+  const lines = [...st.cart].map(([k, q]) => `${q}× ${lName(k)}`).join("\n");
   const whenTxt = body.scheduled_for ? `Entrega: ${when(body.scheduled_for)}` : st.quote?.eta_if_now ? `Llega aprox. a las ${hhmm(st.quote.eta_if_now)}` : "";
   const msg = `¡Hola ${first}! 🧁 Tu pedido ${res.code} en The Bakery Side:\n${lines}\nEnvío: ${money(res.delivery_fee)}\nTotal: ${money(res.total)}\n${whenTxt}\n\n` +
     (paid ? `¡Pago recibido, gracias! Sigue tu pedido aquí: ${link}` : `Paga aquí con tarjeta, Deuna o Peigo y sigue tu pedido: ${link}`);

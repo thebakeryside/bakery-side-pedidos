@@ -163,6 +163,15 @@
   <button class="btn primary" type="button" id="mbOpen">Ver pedido</button>
 </div>
 
+<!-- Opciones del producto (por ejemplo, endulzante) -->
+<div class="modal" id="optModal" hidden role="dialog" aria-modal="true" aria-labelledby="optTitle">
+  <div class="modal-card">
+    <div class="cart-head"><h2 id="optTitle" class="display opt-title">Producto</h2><button class="btn ghost small opt-close" type="button">Cerrar</button></div>
+    <div class="opt-body"></div>
+    <button class="btn primary block opt-add" type="button" style="margin-top:14px">Agregar al pedido</button>
+  </div>
+</div>
+
 <!-- Ventana de pago con tarjeta -->
 <div class="modal" id="payModal" hidden role="dialog" aria-modal="true" aria-labelledby="payTitle">
   <div class="modal-card">

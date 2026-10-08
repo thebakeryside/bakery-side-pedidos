@@ -127,3 +127,13 @@
 body:has(#mobileBar:not([hidden])) .wa-fab { bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
 @media (max-width: 560px) { .wa-fab span { display: none; } .wa-fab { padding: 12px; } }
 body.in-checkout .how, body.in-checkout .closed-bar, body.in-checkout .wa-fab { display: none !important; }
+
+/* opciones del producto */
+.optnote { font-size: 12.5px; color: var(--text-2); }
+.incart { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 999px; background: var(--inverse); color: var(--on-inverse); font-size: 12px; margin-left: 4px; }
+.optgroup { border: 0; margin: 12px 0 0; padding: 0; display: grid; gap: 8px; }
+.optgroup legend { font-weight: 700; margin-bottom: 8px; padding: 0; }
+.optchoice { display: flex; gap: 10px; align-items: center; padding: 12px; border: 1px solid #E6E1D3; border-radius: 12px; cursor: pointer; }
+.optchoice input { accent-color: var(--tinta); width: 18px; height: 18px; }
+.optchoice span:first-of-type { flex: 1; font-weight: 600; }
+.optchoice:has(input:checked) { border-color: var(--tinta); background: var(--crema); }

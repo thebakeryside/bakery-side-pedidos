@@ -123,13 +123,29 @@ async function quote(s: Settings, lat: number, lng: number) {
 }
 
 // ---------- pedido ----------
-type Item = { product_id: number; quantity: number };
+type Item = { product_id: number; quantity: number; options?: number[] };
+type Choice = { id: number; name: string; price_delta: number; active: boolean };
+type Group = { id: number; name: string; required: boolean; option_choices: Choice[] };
+
+// Opciones de cada producto (endulzante, etc.); si las tablas aún no existen, no hay opciones
+async function optionGroups(ids: number[]) {
+  const m = new Map<number, Group[]>();
+  const { data, error } = await db.from("product_option_groups")
+    .select("product_id, option_groups(id,name,required,option_choices(id,name,price_delta,active))").in("product_id", ids);
+  if (error) return m;
+  for (const r of (data ?? []) as any[]) {
+    if (!r.option_groups) continue;
+    if (!m.has(r.product_id)) m.set(r.product_id, []);
+    m.get(r.product_id)!.push(r.option_groups);
+  }
+  return m;
+}
 
 async function priceCart(items: Item[]) {
   if (!Array.isArray(items) || items.length === 0) fail("Tu carrito está vacío.");
   if (items.length > 30) fail("Demasiados productos distintos en un solo pedido.");
   const ids = items.map((i) => Number(i.product_id));
-  const { data: prods, error } = await db.from("products").select("*").in("id", ids);
+  const [{ data: prods, error }, groups] = await Promise.all([db.from("products").select("*").in("id", ids), optionGroups(ids)]);
   if (error) throw error;
   let subtotal = 0, prep = 0, lead = 0;
   const lines = items.map((i) => {
@@ -137,12 +153,24 @@ async function priceCart(items: Item[]) {
     const q = Math.floor(Number(i.quantity));
     if (!p || !p.active) fail("Uno de los productos ya no está disponible. Actualiza la página.");
     if (!(q >= 1 && q <= 50)) fail("Revisa las cantidades del carrito.");
-    const unit = Number(p!.price);
+    // opciones elegidas: una por grupo; las obligatorias no pueden faltar
+    const chosen = Array.isArray(i.options) ? i.options.map(Number) : [];
+    const picked: { group: string; choice: string; choice_id: number }[] = [];
+    let delta = 0;
+    for (const g of groups.get(p!.id) ?? []) {
+      const hits = g.option_choices.filter((c) => c.active && chosen.includes(c.id));
+      if (hits.length > 1) fail(`Elige solo una opción de ${g.name.toLowerCase()} para ${p!.name}.`);
+      if (!hits.length) { if (g.required) fail(`Elige ${g.name.toLowerCase()} para ${p!.name}.`); continue; }
+      picked.push({ group: g.name, choice: hits[0].name, choice_id: hits[0].id });
+      delta += Number(hits[0].price_delta);
+    }
+    const unit = Math.round((Number(p!.price) + delta) * 100) / 100;
     const line = Math.round(unit * q * 100) / 100;
     subtotal += line;
     prep = Math.max(prep, p!.prep_minutes);
     lead = Math.max(lead, p!.lead_hours);
-    return { product_id: p!.id, name: p!.name, unit_price: unit, quantity: q, line_total: line };
+    const name = picked.length ? `${p!.name} (${picked.map((x) => x.choice).join(", ")})` : p!.name;
+    return { product_id: p!.id, name, unit_price: unit, quantity: q, line_total: line, ...(picked.length ? { options: picked } : {}) };
   });
   return { lines, subtotal: Math.round(subtotal * 100) / 100, prep, lead, prods: prods! };
 }

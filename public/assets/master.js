@@ -204,7 +204,9 @@ async function menu() {
     <form id="catForm" class="reflink" style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap" novalidate>
       <input class="in" id="newCat" placeholder="Nueva categoría" aria-label="Nueva categoría" style="flex:1;min-width:200px"><button class="btn">Agregar categoría</button>
     </form>
-  </div>`;
+  </div>
+  <div class="panel" id="optAdmin" style="margin-top:14px"><p class="muted small">Cargando opciones…</p></div>`;
+  optionsAdmin(prods || []);
   $$("[data-save]").forEach((b) => (b.onclick = async () => {
     const tr = b.closest("tr"), v = (f) => tr.querySelector(`[data-f="${f}"]`);
     const patch = { name: v("name").value.trim(), description: v("description").value.trim(), category_id: Number(v("category_id").value), price: Number(v("price").value), prep_minutes: Number(v("prep_minutes").value), lead_hours: Number(v("lead_hours").value), active: v("active").checked };
@@ -250,6 +252,60 @@ async function menu() {
     const name = $("#newCat").value.trim(); if (!name) return toast("Escribe el nombre de la categoría.");
     const { error } = await sb.from("categories").insert({ name, sort: (cats?.length || 0) + 1 });
     if (error) return rpcErr(error); toast("Categoría agregada"); menu();
+  };
+}
+
+// ---------- opciones de productos (endulzante, etc.) ----------
+async function optionsAdmin(prods) {
+  const box = $("#optAdmin");
+  const [{ data: groups, error }, { data: links }] = await Promise.all([
+    sb.from("option_groups").select("id,name,required,sort,option_choices(id,name,price_delta,sort,active)").order("sort"),
+    sb.from("product_option_groups").select("product_id,group_id"),
+  ]);
+  if (error) { box.innerHTML = `<h2 class="display" style="font-size:28px">Opciones de productos</h2><p class="muted small">Falta un paso en la base de datos: corre el archivo 011_opciones_producto.sql en Supabase.</p>`; return; }
+  const has = (pid, gid) => (links || []).some((l) => l.product_id === pid && l.group_id === gid);
+  box.innerHTML = `<h2 class="display" style="font-size:28px">Opciones de productos</h2>
+    <p class="muted small" style="margin:4px 0 12px">Lo que el cliente elige al agregar un producto (por ejemplo, el endulzante). Aparece en el pedido de cocina junto al nombre.</p>
+    ${(groups || []).map((g) => `<div class="optg confirm-host" data-g="${g.id}">
+      <div class="row-btns" style="align-items:center"><input class="in" data-gname value="${esc(g.name)}" style="max-width:220px" aria-label="Nombre del grupo">
+        <label class="check" style="margin:0"><input type="checkbox" data-greq ${g.required ? "checked" : ""}> El cliente debe elegir</label>
+        <button class="btn small" type="button" data-gsave>Guardar</button><button class="btn small ghost" type="button" data-gdel>Eliminar grupo</button></div>
+      <div class="optc">${(g.option_choices || []).sort((a, b) => a.sort - b.sort).map((c) => `<div class="row-btns confirm-host" data-c="${c.id}">
+        <input class="in" data-cname value="${esc(c.name)}" style="max-width:220px" aria-label="Opción"><span class="muted small">+$</span><input class="in" data-cprice type="number" step="0.05" min="0" value="${Number(c.price_delta)}" style="width:80px" aria-label="Costo extra">
+        <label class="check" style="margin:0"><input type="checkbox" data-cactive ${c.active ? "checked" : ""}> Disponible</label>
+        <button class="btn small" type="button" data-csave>Guardar</button><button class="btn small ghost" type="button" data-cdel>Quitar</button></div>`).join("")}
+        <form class="row-btns" data-cadd novalidate><input class="in" placeholder="Nueva opción" style="max-width:220px" aria-label="Nueva opción"><button class="btn small">Agregar opción</button></form></div>
+      <p class="small" style="margin:10px 0 6px"><b>Se pregunta en:</b></p>
+      <div class="optp">${prods.map((p) => `<label class="chip"><input type="checkbox" data-plink="${p.id}" ${has(p.id, g.id) ? "checked" : ""}> ${esc(p.name)}</label>`).join("")}</div>
+    </div>`).join("")}
+    <form id="gAdd" class="row-btns" style="margin-top:12px" novalidate><input class="in" id="gNew" placeholder="Nuevo grupo, por ejemplo «Sabor»" style="max-width:260px"><button class="btn">Agregar grupo</button></form>`;
+
+  const ok = (e, msg) => (e ? rpcErr(e) : toast(msg));
+  box.querySelectorAll("[data-g]").forEach((el) => {
+    const gid = Number(el.dataset.g);
+    el.querySelector("[data-gsave]").onclick = async () => ok((await sb.from("option_groups").update({ name: el.querySelector("[data-gname]").value.trim(), required: el.querySelector("[data-greq]").checked }).eq("id", gid)).error, "Grupo guardado");
+    el.querySelector("[data-gdel]").onclick = (ev) => confirmRow(ev.target, "Se borra el grupo y sus opciones. Los pedidos anteriores no cambian.", async () => { const { error } = await sb.from("option_groups").delete().eq("id", gid); if (error) return rpcErr(error); toast("Grupo eliminado"); optionsAdmin(prods); });
+    el.querySelectorAll("[data-c]").forEach((row) => {
+      const cid = Number(row.dataset.c);
+      row.querySelector("[data-csave]").onclick = async () => ok((await sb.from("option_choices").update({ name: row.querySelector("[data-cname]").value.trim(), price_delta: Number(row.querySelector("[data-cprice]").value || 0), active: row.querySelector("[data-cactive]").checked }).eq("id", cid)).error, "Opción guardada");
+      row.querySelector("[data-cdel]").onclick = async () => { const { error } = await sb.from("option_choices").delete().eq("id", cid); if (error) return rpcErr(error); toast("Opción quitada"); optionsAdmin(prods); };
+    });
+    el.querySelector("[data-cadd]").onsubmit = async (ev) => {
+      ev.preventDefault(); const name = ev.target.querySelector("input").value.trim(); if (!name) return;
+      const { error } = await sb.from("option_choices").insert({ group_id: gid, name, sort: el.querySelectorAll("[data-c]").length + 1 });
+      if (error) return rpcErr(error); toast("Opción agregada"); optionsAdmin(prods);
+    };
+    el.querySelectorAll("[data-plink]").forEach((cb) => (cb.onchange = async () => {
+      const pid = Number(cb.dataset.plink);
+      const { error } = cb.checked ? await sb.from("product_option_groups").insert({ product_id: pid, group_id: gid }) : await sb.from("product_option_groups").delete().eq("product_id", pid).eq("group_id", gid);
+      if (error) { cb.checked = !cb.checked; return rpcErr(error); }
+      toast(cb.checked ? "Ahora se pregunta en ese producto" : "Ya no se pregunta en ese producto");
+    }));
+  });
+  $("#gAdd").onsubmit = async (e) => {
+    e.preventDefault(); const name = $("#gNew").value.trim(); if (!name) return toast("Escribe el nombre del grupo.");
+    const { error } = await sb.from("option_groups").insert({ name, required: true, sort: (groups?.length || 0) + 1 });
+    if (error) return rpcErr(error); toast("Grupo agregado"); optionsAdmin(prods);
   };
 }
 

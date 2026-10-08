@@ -12,11 +12,19 @@ const PROFILE_KEY = "tbs_cliente";
 // ---------- carga inicial ----------
 async function init() {
   try {
-    const [cfg, cats, prods] = await Promise.all([
+    const [cfg, cats, prods, opts] = await Promise.all([
       api("config"),
       sb.from("categories").select("id,name,sort").eq("active", true).order("sort"),
       sb.from("products").select("*").eq("active", true).order("sort"),
+      sb.from("product_option_groups").select("product_id, option_groups(id,name,required,sort,option_choices(id,name,price_delta,sort,active))"),
     ]);
+    // opciones por producto (si la tabla aún no existe, no hay opciones)
+    state.opts = {};
+    for (const r of opts.error ? [] : opts.data || []) {
+      const g = r.option_groups; if (!g) continue;
+      g.option_choices = (g.option_choices || []).filter((c) => c.active).sort((a, b) => a.sort - b.sort);
+      (state.opts[r.product_id] ||= []).push(g);
+    }
     if (cats.error) throw cats.error;
     if (prods.error) throw prods.error;
     state.cfg = cfg; state.cats = cats.data; state.products = prods.data;
@@ -28,7 +36,7 @@ async function init() {
   renderStatus(c);
   const wa = waLink(c.whatsapp, "Hola The Bakery Side, tengo una consulta 🙂");
   if (wa) { $("#waFab").href = wa; $("#waFab").hidden = false; }
-  try { JSON.parse(localStorage.getItem(CART_KEY) || "[]").forEach(([id, q]) => state.products.some((p) => p.id === id) && state.cart.set(id, q)); } catch {}
+  try { JSON.parse(localStorage.getItem(CART_KEY) || "[]").forEach(([k, q]) => { k = String(k); if (state.products.some((p) => p.id === keyId(k)) && validKey(k)) state.cart.set(k, q); }); } catch {}
   renderCats(); renderMenu(); renderCart();
   await refreshAccount();
   if (new URLSearchParams(location.search).get("carrito") === "1") { history.replaceState(null, "", "/"); if (state.cart.size) openCart(); }
@@ -94,7 +102,8 @@ function leftToday(p) {
   return null;
 }
 function itemCard(p) {
-  const q = state.cart.get(p.id) || 0;
+  const q = qtyOf(p.id);
+  if (groupsOf(p.id).length) return itemCardOpts(p, q);
   const left = leftToday(p);
   const img = p.image_url ? `<img src="${esc(p.image_url)}" alt="${esc(p.name)}" loading="lazy">` : `<span class="can" aria-hidden="true">${esc(p.name.split(" ").map((w) => w[0]).join("").slice(0, 2))}</span>`;
   const ctrl = left === 0 && !q
@@ -119,29 +128,74 @@ function renderMenu() {
 }
 $("#menu").addEventListener("click", (e) => {
   const b = e.target.closest("[data-a]"); if (!b) return;
-  changeQty(Number(b.dataset.id), b.dataset.a === "+" ? 1 : -1);
+  const id = Number(b.dataset.id);
+  if (b.dataset.a === "pick") return openPicker(product(id));
+  changeQty(String(id), b.dataset.a === "+" ? 1 : -1);
 });
-function changeQty(id, d) {
-  const q = (state.cart.get(id) || 0) + d;
+function changeQty(key, d) {
+  const id = keyId(key);
+  const q = (state.cart.get(key) || 0) + d;
   const left = leftToday(product(id));
-  if (d > 0 && left != null && q > left) { toast(left ? `Solo quedan ${left} hoy` : "Agotado por hoy"); return; }
-  if (q <= 0) state.cart.delete(id); else state.cart.set(id, Math.min(q, 50));
+  if (d > 0 && left != null && qtyOf(id) + d > left) { toast(left ? `Solo quedan ${left} hoy` : "Agotado por hoy"); return; }
+  if (q <= 0) state.cart.delete(key); else state.cart.set(key, Math.min(q, 50));
   try { localStorage.setItem(CART_KEY, JSON.stringify([...state.cart])); } catch {}
   renderMenu(); renderCart(); if (state.loc) requestQuote();
 }
 
 // ---------- carrito ----------
-const cartItems = () => [...state.cart].map(([product_id, quantity]) => ({ product_id, quantity }));
+// Cada línea del carrito: "id" o "id:opción.opción" (por ejemplo "12:3" = Cold Brew con Stevia)
+const keyId = (k) => Number(String(k).split(":")[0]);
+const keyOpts = (k) => (String(k).split(":")[1] || "").split(".").filter(Boolean).map(Number);
+const groupsOf = (id) => state.opts?.[id] || [];
+const qtyOf = (id) => [...state.cart].reduce((s, [k, q]) => s + (keyId(k) === id ? q : 0), 0);
+const choiceOf = (cid) => { for (const gs of Object.values(state.opts || {})) for (const g of gs) { const c = g.option_choices.find((x) => x.id === cid); if (c) return c; } return null; };
+function validKey(k) {
+  const gs = groupsOf(keyId(k)), opts = keyOpts(k);
+  return gs.every((g) => !g.required || g.option_choices.some((c) => opts.includes(c.id)));
+}
+const lineName = (k) => { const n = keyOpts(k).map((c) => choiceOf(c)?.name).filter(Boolean); return product(keyId(k)).name + (n.length ? ` (${n.join(", ")})` : ""); };
+const linePrice = (k) => Number(product(keyId(k)).price) + keyOpts(k).reduce((s, c) => s + Number(choiceOf(c)?.price_delta || 0), 0);
+const cartItems = () => [...state.cart].map(([k, quantity]) => ({ product_id: keyId(k), quantity, options: keyOpts(k) }));
 const product = (id) => state.products.find((p) => p.id === id);
-const subtotal = () => [...state.cart].reduce((s, [id, q]) => s + Number(product(id).price) * q, 0);
+const subtotal = () => [...state.cart].reduce((s, [k, q]) => s + linePrice(k) * q, 0);
+
+// Productos con opciones (por ejemplo, el endulzante de las bebidas)
+function itemCardOpts(p, q) {
+  const left = leftToday(p);
+  const img = p.image_url ? `<img src="${esc(p.image_url)}" alt="${esc(p.name)}" loading="lazy">` : `<span class="can" aria-hidden="true">${esc(p.name.split(" ").map((w) => w[0]).join("").slice(0, 2))}</span>`;
+  const ctrl = left === 0 && !q ? `<button class="btn small" type="button" disabled>Agotado hoy</button>`
+    : `<button class="btn small" type="button" data-a="pick" data-id="${p.id}"${left != null && q >= left ? " disabled" : ""}>${q ? `Agregar otra <span class="incart">${q}</span>` : "Agregar"}</button>`;
+  const stock = left === 0 ? `<span class="tag">Agotado por hoy · vuelve mañana</span>` : left != null ? `<span class="tag">Quedan ${left} hoy</span>` : "";
+  const hint = `<span class="optnote">Eliges ${groupsOf(p.id).map((g) => g.name.toLowerCase()).join(" y ")} al agregar</span>`;
+  return `<article class="item${left === 0 ? " soldout" : ""}"><div class="ph">${img}</div><div class="body"><h3>${esc(p.name)}</h3><p>${esc(p.description)}</p>${hint}${stock}<div class="foot"><span class="price">${money(p.price)}</span>${ctrl}</div></div></article>`;
+}
+function openPicker(p) {
+  const gs = groupsOf(p.id);
+  const box = $("#optModal");
+  box.querySelector(".opt-title").textContent = p.name;
+  box.querySelector(".opt-body").innerHTML = gs.map((g) => `<fieldset class="optgroup"><legend>${esc(g.name)}${g.required ? "" : ' <span class="muted small">(opcional)</span>'}</legend>
+    ${g.option_choices.map((c) => `<label class="optchoice"><input type="radio" name="g${g.id}" value="${c.id}"><span>${esc(c.name)}</span>${Number(c.price_delta) > 0 ? `<span class="muted small">+${money(c.price_delta)}</span>` : ""}</label>`).join("")}</fieldset>`).join("");
+  const add = box.querySelector(".opt-add");
+  const sync = () => { add.disabled = gs.some((g) => g.required && !box.querySelector(`input[name="g${g.id}"]:checked`)); };
+  box.querySelectorAll("input").forEach((i) => (i.onchange = sync)); sync();
+  add.onclick = () => {
+    const ids = gs.map((g) => Number(box.querySelector(`input[name="g${g.id}"]:checked`)?.value || 0)).filter(Boolean);
+    box.hidden = true;
+    changeQty(ids.length ? `${p.id}:${ids.join(".")}` : String(p.id), 1);
+    toast(`${lineName(ids.length ? `${p.id}:${ids.join(".")}` : String(p.id))} agregado`);
+  };
+  box.querySelector(".opt-close").onclick = () => (box.hidden = true);
+  box.hidden = false;
+  box.querySelector("input")?.focus();
+}
 
 function renderCart() {
   const n = [...state.cart.values()].reduce((a, b) => a + b, 0);
-  const lines = [...state.cart].map(([id, q]) => {
-    const p = product(id), left = leftToday(p);
-    return `<div class="cline"><span class="nm">${esc(p.name)}</span><span class="tabnum">${money(p.price * q)}</span>
-      <div class="qty"><button type="button" data-c="-" data-id="${id}" aria-label="Quitar uno de ${esc(p.name)}">−</button><span>${q}</span><button type="button" data-c="+" data-id="${id}" aria-label="Agregar uno de ${esc(p.name)}"${left != null && q >= left ? " disabled" : ""}>+</button></div>
-      <button class="rm" type="button" data-c="x" data-id="${id}">Quitar</button></div>`;
+  const lines = [...state.cart].map(([k, q]) => {
+    const p = product(keyId(k)), left = leftToday(p), nm = lineName(k);
+    return `<div class="cline"><span class="nm">${esc(nm)}</span><span class="tabnum">${money(linePrice(k) * q)}</span>
+      <div class="qty"><button type="button" data-c="-" data-id="${k}" aria-label="Quitar uno de ${esc(nm)}">−</button><span>${q}</span><button type="button" data-c="+" data-id="${k}" aria-label="Agregar uno de ${esc(nm)}"${left != null && qtyOf(p.id) >= left ? " disabled" : ""}>+</button></div>
+      <button class="rm" type="button" data-c="x" data-id="${k}">Quitar</button></div>`;
   });
   $("#cartLines").innerHTML = lines.length
     ? lines.join("") + `<div class="line total"><span>Subtotal</span><span class="tabnum">${money(subtotal())}</span></div><p class="muted small" style="margin:0">El envío se calcula con tu ubicación.</p>`
@@ -154,8 +208,8 @@ function renderCart() {
 }
 $("#cartLines").addEventListener("click", (e) => {
   const b = e.target.closest("[data-c]"); if (!b) return;
-  const id = Number(b.dataset.id);
-  changeQty(id, b.dataset.c === "+" ? 1 : b.dataset.c === "-" ? -1 : -(state.cart.get(id) || 0));
+  const k = b.dataset.id;
+  changeQty(k, b.dataset.c === "+" ? 1 : b.dataset.c === "-" ? -1 : -(state.cart.get(k) || 0));
 });
 const isMobile = () => matchMedia("(max-width: 899px)").matches;
 function openCart() {
@@ -185,7 +239,7 @@ function openCheckout() {
   // cuándo
   $("#whenNow").disabled = !c.open_now;
   $("#nowHint").textContent = c.open_now ? "Te mostramos la hora estimada" : (c.next_open ? `Ahora no: abrimos ${whenLabel(c.next_open)} a las ${c.next_open.time}` : "Ahora no estamos atendiendo");
-  const needLead = [...state.cart.keys()].some((id) => product(id).lead_hours > 0);
+  const needLead = [...state.cart.keys()].some((k) => product(keyId(k)).lead_hours > 0);
   if (needLead) { $("#whenNow").disabled = true; $("#nowHint").textContent = "Tu pedido necesita agendarse"; }
   ($("#whenNow").disabled ? $("#whenLater") : $("#whenNow")).checked = true;
   syncWhen(); fillDates();
@@ -248,7 +302,7 @@ function renderPerks() {
 function syncWhen() { $("#scheduleBox").hidden = !$("#whenLater").checked; renderSummary(); }
 $$('input[name="when"]').forEach((r) => r.addEventListener("change", syncWhen));
 
-function maxLeadHours() { return Math.max(0, ...[...state.cart.keys()].map((id) => product(id).lead_hours)); }
+function maxLeadHours() { return Math.max(0, ...[...state.cart.keys()].map((k) => product(keyId(k)).lead_hours)); }
 function fillDates() {
   const opts = [];
   for (let i = 0; i < 14; i++) {
@@ -348,7 +402,7 @@ function renderSummary() {
   if ($("#whenLater").checked && $("#schedTime").value) whenTxt = `Entrega ${dayLabel(localToISO($("#schedDate").value, $("#schedTime").value))} a las ${$("#schedTime").value}`;
   else if (state.quote?.eta_if_now) whenTxt = `Llega aprox. a las ${hhmm(state.quote.eta_if_now)}`;
   $("#summary").innerHTML =
-    [...state.cart].map(([id, q]) => `<div class="line"><span>${q} × ${esc(product(id).name)}</span><span class="tabnum">${money(product(id).price * q)}</span></div>`).join("") +
+    [...state.cart].map(([k, q]) => `<div class="line"><span>${q} × ${esc(lineName(k))}</span><span class="tabnum">${money(linePrice(k) * q)}</span></div>`).join("") +
     (free ? `<div class="line"><span>1 × ${esc(free.name)} (regalo)</span><span class="tabnum">$0.00</span></div>` : "") +
     (disc ? `<div class="line"><span>Regalo de cumpleaños</span><span class="tabnum">−${money(disc)}</span></div>` : "") +
     `<div class="line"><span>Envío</span><span class="tabnum">${fee != null ? money(fee) : "—"}</span></div>` +

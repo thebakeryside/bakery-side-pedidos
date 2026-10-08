@@ -14,8 +14,10 @@ async function render() {
   try { acc = await loadAccount(true); }
   catch (e) { root.innerHTML = `<div class="panel"><p class="err">${esc(e.message)}</p></div>`; return; }
   const c = acc.customer;
-  const { data: orders } = await sb.from("orders").select("code,status,total,created_at,scheduled_for,tracking_token,payment_status,order_items(product_id,name,quantity,line_total)")
+  const q = (cols) => sb.from("orders").select(`code,status,total,created_at,scheduled_for,tracking_token,payment_status,order_items(${cols})`)
     .eq("user_id", u.id).order("created_at", { ascending: false }).limit(50);
+  let { data: orders, error: oe } = await q("product_id,name,quantity,line_total,options");
+  if (oe) ({ data: orders } = await q("product_id,name,quantity,line_total"));
   const paid = (orders ?? []).filter((o) => ["pagado", "en_revision"].includes(o.payment_status) || o.status === "entregado");
   const first = (c.full_name || u.user_metadata?.name || "").split(" ")[0];
 
@@ -81,7 +83,12 @@ function panePedidos(_acc, orders) {
   $("#pane").querySelectorAll("[data-again]").forEach((b) => (b.onclick = () => {
     const o = orders.find((x) => x.code === b.dataset.again);
     const cart = new Map();
-    for (const i of o.order_items) if (Number(i.line_total) > 0 && i.product_id) cart.set(i.product_id, (cart.get(i.product_id) || 0) + i.quantity);
+    for (const i of o.order_items) {
+      if (!(Number(i.line_total) > 0 && i.product_id)) continue;
+      const ids = (i.options || []).map((x) => x.choice_id).filter(Boolean);
+      const k = ids.length ? `${i.product_id}:${ids.join(".")}` : String(i.product_id);
+      cart.set(k, (cart.get(k) || 0) + i.quantity);
+    }
     try { localStorage.setItem("tbs_cart", JSON.stringify([...cart])); } catch {}
     location.href = "/?carrito=1";
   }));
