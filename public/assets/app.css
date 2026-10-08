@@ -146,3 +146,9 @@ input.in::placeholder, textarea.in::placeholder { color: var(--text-2); opacity:
 .brand-s { height: 26px; width: auto; }
 body.light .st-listo, body.light .st-en_camino { color: #2F5C8C; background: rgb(47 92 140 / .1); }
 body.light .toast { box-shadow: 0 8px 24px rgb(28 23 20 / .25); }
+
+/* Sensación de app: tocar dos veces o tocar rápido no hace zoom (el pellizco sigue disponible por accesibilidad) */
+html { touch-action: manipulation; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+button, a, [data-a] { -webkit-tap-highlight-color: transparent; }
+/* En iPhone, un campo con letra menor a 16px hace zoom al escribir: lo evitamos */
+@media (pointer: coarse) { input, select, textarea { font-size: 16px !important; } }
