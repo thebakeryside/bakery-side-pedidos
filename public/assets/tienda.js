@@ -25,7 +25,6 @@ async function init() {
     return;
   }
   const c = state.cfg;
-  $("#hoursTxt").textContent = `${c.open_time} a ${c.close_time}`;
   renderStatus(c);
   const wa = waLink(c.whatsapp, "Hola The Bakery Side, tengo una consulta 🙂");
   if (wa) { $("#waFab").href = wa; $("#waFab").hidden = false; }
@@ -38,17 +37,22 @@ async function init() {
 }
 
 // Horario: aviso amable cuando no estamos abiertos
+const WEEKDAY = (d) => new Date(d + "T12:00:00-05:00").toLocaleDateString("es-EC", { weekday: "long", timeZone: "America/Guayaquil" });
+function whenLabel(n) { return !n ? null : n.in_days === 0 ? "hoy" : n.in_days === 1 ? "mañana" : `el ${WEEKDAY(n.day)}`; }
 function renderStatus(c) {
-  const nowHM = new Date().toLocaleTimeString("en-GB", { timeZone: "America/Guayaquil", hour: "2-digit", minute: "2-digit" });
-  const later = nowHM < c.open_time;
+  const n = c.next_open;
+  // compatibilidad con la versión anterior del servidor
+  const nextTxt = n ? `${whenLabel(n)} a las ${n.time}` : c.open_time ? `a las ${c.open_time}` : "pronto";
   $("#openTxt").innerHTML = c.open_now ? `Abierto<span class="long"> hasta ${c.close_time}</span>`
-    : c.store_open ? `Cerrado<span class="long"> · abrimos ${later ? "hoy" : "mañana"} ${c.open_time}</span>` : "Cerrado hoy";
+    : c.store_open ? `Cerrado<span class="long"> · abrimos ${nextTxt.replace(" a las ", " ")}</span>` : "Cerrado hoy";
   $("#openPill").classList.toggle("closed", !c.open_now);
   $("#closedCard").hidden = c.open_now;
+  const today = c.days?.[0];
+  $("#hoursTxt").textContent = c.open_now || today?.open ? `hoy de ${c.open_time} a ${c.close_time}` : "según el día";
   if (c.open_now) return;
   if (c.store_open) {
-    $("#closedTitle").textContent = "Ahora estamos descansando";
-    $("#closedText").textContent = `Abrimos ${later ? "hoy" : "mañana"} a las ${c.open_time}, pero puedes dejar tu pedido agendado desde ya y te lo llevamos el día y la hora que elijas.`;
+    $("#closedTitle").textContent = today?.closed && today.note ? `Hoy no abrimos por ${today.note.toLowerCase()}` : "Ahora estamos descansando";
+    $("#closedText").textContent = `Abrimos ${nextTxt}, pero puedes dejar tu pedido agendado desde ya y te lo llevamos el día y la hora que elijas.`;
   } else {
     $("#closedTitle").textContent = "Hoy no estamos recibiendo pedidos";
     $("#closedText").textContent = "Volvemos muy pronto. Si tienes una consulta, escríbenos por WhatsApp.";
@@ -161,7 +165,7 @@ function openCheckout() {
   const c = state.cfg;
   // cuándo
   $("#whenNow").disabled = !c.open_now;
-  $("#nowHint").textContent = c.open_now ? "Te mostramos la hora estimada" : `Ahora no: pedidos de ${c.open_time} a ${c.close_time}`;
+  $("#nowHint").textContent = c.open_now ? "Te mostramos la hora estimada" : (c.next_open ? `Ahora no: abrimos ${whenLabel(c.next_open)} a las ${c.next_open.time}` : "Ahora no estamos atendiendo");
   const needLead = [...state.cart.keys()].some((id) => product(id).lead_hours > 0);
   if (needLead) { $("#whenNow").disabled = true; $("#nowHint").textContent = "Tu pedido necesita agendarse"; }
   ($("#whenNow").disabled ? $("#whenLater") : $("#whenNow")).checked = true;
@@ -236,8 +240,15 @@ function fillDates() {
   $("#schedDate").innerHTML = opts.join("");
   fillTimes();
 }
+function hoursFor(date) {
+  const c = state.cfg, d = c.days?.find((x) => x.day === date);
+  if (d) return d.closed ? null : d;
+  return c.open_time ? { open: c.open_time, close: c.close_time } : null;
+}
 function timesFor(date) {
-  const c = state.cfg, [oh, om] = c.open_time.split(":").map(Number), [ch, cm] = c.close_time.split(":").map(Number);
+  const c = state.cfg, h = hoursFor(date);
+  if (!h) return [];
+  const [oh, om] = h.open.split(":").map(Number), [ch, cm] = h.close.split(":").map(Number);
   const earliest = Date.now() + Math.max(60 * 60000, maxLeadHours() * 3600000);
   const out = [];
   for (let m = oh * 60 + om; m <= ch * 60 + cm; m += c.slot_minutes) {
@@ -298,7 +309,7 @@ function requestQuote() {
       const q = await api("cotizar", { lat: state.loc.lat, lng: state.loc.lng, items: cartItems() });
       if (my !== quoteSeq) return;
       state.quote = q;
-      $("#quoteBox").innerHTML = `Envío <b>${money(q.delivery_fee)}</b> · ${q.distance_km.toFixed(1)} km${q.eta_if_now ? ` · si sale ahora, llega aprox. <b>${hhmm(q.eta_if_now)}</b>` : ""}`;
+      $("#quoteBox").innerHTML = `Envío <b>${money(q.delivery_fee)}</b> · ${q.distance_km.toFixed(1)} km${q.eta_if_now ? ` · si sale ahora, llega aprox. <b>${hhmm(q.eta_if_now)}</b>` : ""}${state.cfg.busy_extra && q.eta_if_now ? `<br>Hoy tenemos muchos pedidos, por eso la entrega toma un poco más.` : ""}`;
     } catch (e) {
       if (my !== quoteSeq) return;
       state.quote = null; $("#quoteBox").innerHTML = `<span class="err">${esc(e.message)}</span>`;

@@ -24,8 +24,12 @@ const json = (body: unknown, status = 200) =>
 class UserError extends Error {}
 const fail = (msg: string): never => { throw new UserError(msg); };
 
+type Hours = { open: string; close: string } | null;
+type Exception = { day: string; closed: boolean; open_time: string | null; close_time: string | null; note: string | null };
 type Settings = {
   open_time: string; close_time: string; store_open: boolean;
+  weekly_hours?: Record<string, Hours> | null; busy_until?: string | null; busy_extra_minutes?: number;
+  exceptions: Exception[];
   kitchen_lat: number; kitchen_lng: number; kitchen_address: string;
   fee_base: number; fee_included_km: number; fee_per_km: number; fee_round_to: number;
   max_km: number; slot_minutes: number; slot_capacity: number;
@@ -40,16 +44,41 @@ async function getSettings(): Promise<Settings> {
     // numeric llega como string
     (data as Record<string, unknown>)[k] = Number((data as Record<string, unknown>)[k]);
   }
+  // Días especiales (feriados) de hoy en adelante; si la tabla aún no existe, se ignora
+  const ex = await db.from("store_exceptions").select("*").gte("day", localDay(new Date(Date.now() - 86400000))).limit(200);
+  (data as Record<string, unknown>).exceptions = ex.error ? [] : ex.data;
   return data as Settings;
 }
 
 // ---------- tiempo local (Guayaquil) ----------
 const toLocal = (d: Date) => new Date(d.getTime() + TZ_OFFSET_MIN * 60000); // campos UTC = hora local
+const localDay = (d: Date) => toLocal(d).toISOString().slice(0, 10);
 const minutesOf = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
 function localMinutes(d: Date) { const l = toLocal(d); return l.getUTCHours() * 60 + l.getUTCMinutes(); }
+// Horario de un día (AAAA-MM-DD, hora de Guayaquil): excepción > horario semanal > horario general
+function hoursOn(day: string, s: Settings): (Hours & { note?: string | null }) | null {
+  const e = s.exceptions.find((x) => x.day === day);
+  if (e) return e.closed ? null : { open: e.open_time!.slice(0, 5), close: e.close_time!.slice(0, 5), note: e.note };
+  if (s.weekly_hours) {
+    const dow = new Date(day + "T12:00:00Z").getUTCDay();
+    const h = s.weekly_hours[String(dow)];
+    return h && h.open && h.close ? { open: h.open, close: h.close } : null;
+  }
+  return { open: s.open_time.slice(0, 5), close: s.close_time.slice(0, 5) };
+}
 function isOpenAt(d: Date, s: Settings) {
+  const h = hoursOn(localDay(d), s);
+  if (!h) return false;
   const m = localMinutes(d);
-  return m >= minutesOf(s.open_time) && m <= minutesOf(s.close_time);
+  return m >= minutesOf(h.open) && m <= minutesOf(h.close);
+}
+function hoursText(d: Date, s: Settings) {
+  const h = hoursOn(localDay(d), s);
+  return h ? `de ${h.open} a ${h.close}` : "cerrado ese día";
+}
+// Minutos extra cuando cocina activó "más tiempo de entrega"
+function busyExtra(s: Settings) {
+  return s.busy_until && new Date(s.busy_until).getTime() > Date.now() ? Number(s.busy_extra_minutes ?? 30) : 0;
 }
 
 // ---------- distancia y envío ----------
@@ -123,15 +152,15 @@ async function validateSchedule(s: Settings, scheduled: string | null, prep: num
   if (!s.store_open) fail("La tienda está cerrada temporalmente. Vuelve pronto.");
   if (!scheduled) {
     if (lead > 0) fail("Uno de tus productos necesita pedirse con anticipación. Agenda la entrega.");
-    if (!isOpenAt(now, s)) fail("Ahora estamos fuera del horario de pedidos (9:00 a 21:00). Agenda tu entrega.");
-    return { scheduled_for: null, eta: new Date(now.getTime() + (5 + prep + travel) * 60000) };
+    if (!isOpenAt(now, s)) fail("Ahora estamos fuera del horario de pedidos. Agenda tu entrega.");
+    return { scheduled_for: null, eta: new Date(now.getTime() + (5 + prep + travel + busyExtra(s)) * 60000) };
   }
   const when = new Date(scheduled);
   if (isNaN(when.getTime())) fail("La hora de entrega no es válida.");
-  const earliest = now.getTime() + Math.max((5 + prep + travel) * 60000, lead * 3600000);
+  const earliest = now.getTime() + Math.max((5 + prep + travel + busyExtra(s)) * 60000, lead * 3600000);
   if (when.getTime() < earliest) fail("Esa hora ya no alcanza. Elige una franja más tarde.");
   if (when.getTime() > now.getTime() + 30 * 86400000) fail("Puedes agendar hasta 30 días antes.");
-  if (!isOpenAt(when, s)) fail("Las entregas se agendan entre 9:00 y 21:00.");
+  if (!isOpenAt(when, s)) fail(`Ese día atendemos ${hoursText(when, s)}. Elige otra hora.`);
   if (localMinutes(when) % s.slot_minutes !== 0) fail("Elige una de las franjas disponibles.");
   const { count, error } = await db.from("orders").select("id", { count: "exact", head: true })
     .eq("scheduled_for", when.toISOString()).neq("status", "cancelado")
@@ -184,7 +213,6 @@ async function userFrom(req: Request): Promise<User> {
 }
 const COOKIES = ["Midnight Cookies", "Snowlemon Cookies", "Snowchocolate Cookies", "Chocochip Cookies"];
 const nowLocal = () => toLocal(new Date());
-const localDay = (d: Date) => toLocal(d).toISOString().slice(0, 10);
 
 // Agotados y porciones del día: solo aplican a pedidos que se entregan hoy
 function checkStock(cart: Awaited<ReturnType<typeof priceCart>>, deliveryDay: string) {
@@ -263,17 +291,43 @@ async function accountSummary(c: Record<string, any>) {
   };
 }
 
+// Horarios para la tienda: los próximos días y la siguiente apertura
+function nextDays(s: Settings, n: number) {
+  return Array.from({ length: n }, (_, i) => {
+    const day = localDay(new Date(Date.now() + i * 86400000));
+    const h = hoursOn(day, s);
+    return h ? { day, open: h.open, close: h.close, note: h.note ?? null } : { day, closed: true, note: s.exceptions.find((x) => x.day === day)?.note ?? null };
+  });
+}
+function nextOpen(s: Settings) {
+  if (!s.store_open) return null;
+  const nowM = localMinutes(new Date());
+  for (let i = 0; i < 31; i++) {
+    const day = localDay(new Date(Date.now() + i * 86400000));
+    const h = hoursOn(day, s);
+    if (h && (i > 0 || minutesOf(h.open) > nowM)) return { day, time: h.open, in_days: i };
+  }
+  return null;
+}
+function todayHours(s: Settings) {
+  const h = hoursOn(localDay(new Date()), s);
+  return h ? { open_time: h.open, close_time: h.close } : { open_time: null, close_time: null };
+}
+
 // ---------- acciones ----------
 const actions: Record<string, (b: any, user: User) => Promise<unknown>> = {
   async config() {
     const s = await getSettings();
     return {
-      open_time: s.open_time.slice(0, 5), close_time: s.close_time.slice(0, 5), store_open: s.store_open,
+      ...todayHours(s), store_open: s.store_open,
       slot_minutes: s.slot_minutes, kitchen: { lat: s.kitchen_lat, lng: s.kitchen_lng },
       fee: { base: s.fee_base, included_km: s.fee_included_km, per_km: s.fee_per_km },
       max_km: s.max_km, whatsapp: s.whatsapp_number, bank_info: s.bank_info,
       card_enabled: Boolean(PAYPHONE_TOKEN && PAYPHONE_STORE_ID), map_provider: s.map_provider,
       open_now: s.store_open && isOpenAt(new Date(), s),
+      busy_extra: busyExtra(s),
+      days: nextDays(s, 31),
+      next_open: nextOpen(s),
     };
   },
 
@@ -283,7 +337,7 @@ const actions: Record<string, (b: any, user: User) => Promise<unknown>> = {
     let eta = null;
     if (Array.isArray(b.items) && b.items.length) {
       const c = await priceCart(b.items);
-      eta = new Date(Date.now() + (5 + c.prep + q.travel_min) * 60000).toISOString();
+      eta = new Date(Date.now() + (5 + c.prep + q.travel_min + busyExtra(s)) * 60000).toISOString();
     }
     return { distance_km: q.km, delivery_fee: q.fee, travel_min: q.travel_min, eta_if_now: eta };
   },

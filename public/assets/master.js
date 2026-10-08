@@ -19,7 +19,7 @@ $$(".tabs [data-tab]").forEach((b) => b.addEventListener("click", () => { S.tab 
 
 function render() {
   $$(".tabs [data-tab]").forEach((b) => b.setAttribute("aria-selected", b.dataset.tab === S.tab));
-  ({ ventas, motorizados, accesos, menu, clientes, ajustes })[S.tab]();
+  ({ ventas, motorizados, accesos, menu, clientes, horarios, ajustes })[S.tab]();
 }
 
 // Confirmación dentro de la página (el navegador no muestra ventanas de confirmar aquí)
@@ -252,6 +252,113 @@ async function menu() {
   };
 }
 
+// ---------- horarios: semana y días especiales ----------
+const DAYS = [[1, "Lunes"], [2, "Martes"], [3, "Miércoles"], [4, "Jueves"], [5, "Viernes"], [6, "Sábado"], [0, "Domingo"]];
+// Feriados nacionales y de Guayaquil próximos. El Gobierno a veces los traslada: revisa la fecha antes de guardar.
+const HOLIDAYS = [
+  ["2026-10-09", "Independencia de Guayaquil"], ["2026-11-02", "Día de Difuntos"], ["2026-11-03", "Independencia de Cuenca"],
+  ["2026-12-24", "Nochebuena"], ["2026-12-25", "Navidad"], ["2026-12-31", "Fin de año"], ["2027-01-01", "Año Nuevo"],
+  ["2027-02-08", "Carnaval"], ["2027-02-09", "Carnaval"], ["2027-03-26", "Viernes Santo"], ["2027-05-01", "Día del Trabajo"],
+  ["2027-05-24", "Batalla de Pichincha"], ["2027-07-25", "Fundación de Guayaquil"], ["2027-08-10", "Primer Grito de Independencia"],
+];
+const hm5 = (t) => (t ? String(t).slice(0, 5) : "");
+const longDay = (d) => new Date(d + "T12:00:00-05:00").toLocaleDateString("es-EC", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "America/Guayaquil" });
+
+async function horarios() {
+  const today = new Date(Date.now() - 5 * 3600000).toISOString().slice(0, 10);
+  const [{ data: s, error }, ex] = await Promise.all([
+    sb.from("settings").select("*").single(),
+    sb.from("store_exceptions").select("*").gte("day", today).order("day"),
+  ]);
+  if (error) return ($("#view").innerHTML = `<p class="err">${esc(error.message)}</p>`);
+  const ready = "weekly_hours" in s && !ex.error;
+  const week = s.weekly_hours || Object.fromEntries(DAYS.map(([d]) => [d, { open: hm5(s.open_time), close: hm5(s.close_time) }]));
+  const excs = ex.data || [];
+  const taken = new Set(excs.map((e) => e.day));
+  const chips = HOLIDAYS.filter(([d]) => d >= today && !taken.has(d)).slice(0, 8);
+
+  $("#view").innerHTML = `
+    ${ready ? "" : `<div class="panel" style="border-color:var(--aviso);margin-bottom:14px"><b>Falta un paso en la base de datos.</b><p class="muted small" style="margin:4px 0 0">Corre el archivo 008_horarios_y_pausa.sql en Supabase para poder guardar horarios por día y feriados.</p></div>`}
+    <form class="panel" id="weekForm" novalidate>
+      <h2 class="display" style="font-size:30px">Horario de cada semana</h2>
+      <p class="muted small" style="margin:4px 0 12px">Es el horario en que la tienda recibe pedidos para entregar al momento y las horas en que se pueden agendar entregas.</p>
+      <div class="week">${DAYS.map(([d, name]) => { const h = week[d]; return `
+        <div class="wk ${h ? "" : "off"}" data-dow="${d}">
+          <b>${name}</b>
+          <label class="check" style="margin:0"><input type="checkbox" data-on ${h ? "checked" : ""}> Abierto</label>
+          <div class="times"><input class="in" type="time" data-open value="${h?.open || "09:00"}" aria-label="${name}: abre"><span class="muted">a</span><input class="in" type="time" data-close value="${h?.close || "21:00"}" aria-label="${name}: cierra"></div>
+        </div>`; }).join("")}</div>
+      <div class="row-btns" style="margin-top:12px"><button class="btn primary">Guardar horario</button><button class="btn ghost" type="button" id="copyMon">Copiar el lunes a todos los días abiertos</button></div>
+    </form>
+
+    <div class="panel" style="margin-top:14px">
+      <h2 class="display" style="font-size:30px">Días especiales y feriados</h2>
+      <p class="muted small" style="margin:4px 0 10px">Para un día puntual: cerrar todo el día o atender con otro horario. Manda sobre el horario de la semana.</p>
+      ${chips.length ? `<p class="small" style="margin:0 0 6px">Feriados próximos <span class="muted">(toca uno para llenarlo; revisa la fecha por si la trasladan)</span></p>
+        <div class="chips" style="margin-bottom:10px">${chips.map(([d, n]) => `<button class="chip" type="button" data-hol="${d}" data-name="${esc(n)}">${new Date(d + "T12:00:00-05:00").toLocaleDateString("es-EC", { day: "numeric", month: "short", timeZone: "America/Guayaquil" })} · ${esc(n)}</button>`).join("")}</div>` : ""}
+      <form id="excForm" novalidate>
+        <div class="form-grid">
+          <div><label class="f" for="eDay">Fecha</label><input class="in" id="eDay" type="date" min="${today}"></div>
+          <div><label class="f" for="eNote">Motivo <span class="hint">(opcional)</span></label><input class="in" id="eNote" maxlength="60" placeholder="Feriado, vacaciones, evento"></div>
+        </div>
+        <div class="chips" style="margin-top:12px" role="radiogroup" aria-label="Tipo">
+          <label class="chip"><input type="radio" name="eType" value="closed" checked> Cerrado todo el día</label>
+          <label class="chip"><input type="radio" name="eType" value="hours"> Otro horario</label>
+        </div>
+        <div class="times" id="eTimes" hidden style="display:flex;gap:6px;align-items:center;margin-top:10px">
+          <input class="in" type="time" id="eOpen" value="10:00" style="width:150px" aria-label="Abre"><span class="muted">a</span><input class="in" type="time" id="eClose" value="18:00" style="width:150px" aria-label="Cierra">
+        </div>
+        <button class="btn primary" style="margin-top:12px">Guardar día especial</button>
+      </form>
+      <div class="exc-list">${excs.map((e) => `
+        <div class="exc confirm-host"><b>${esc(longDay(e.day))}</b>
+          <span class="st ${e.closed ? "st-cancelado" : "st-confirmado"}">${e.closed ? "Cerrado" : `${hm5(e.open_time)} a ${hm5(e.close_time)}`}</span>
+          <span class="muted small" style="flex:1">${esc(e.note || "")}</span>
+          <button class="btn small ghost" type="button" data-delexc="${e.day}">Quitar</button></div>`).join("") || `<p class="muted small">No hay días especiales próximos.</p>`}</div>
+    </div>`;
+
+  // semana
+  $$(".wk [data-on]").forEach((c) => c.addEventListener("change", () => c.closest(".wk").classList.toggle("off", !c.checked)));
+  $("#copyMon").onclick = () => {
+    const mon = $('.wk[data-dow="1"]'), o = mon.querySelector("[data-open]").value, c = mon.querySelector("[data-close]").value;
+    $$(".wk").forEach((r) => { if (r.querySelector("[data-on]").checked) { r.querySelector("[data-open]").value = o; r.querySelector("[data-close]").value = c; } });
+    toast("Copiado. Recuerda guardar.");
+  };
+  $("#weekForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const wh = {};
+    for (const r of $$(".wk")) {
+      const on = r.querySelector("[data-on]").checked, o = r.querySelector("[data-open]").value, c = r.querySelector("[data-close]").value;
+      if (on && (!o || !c || o >= c)) return toast(`${r.querySelector("b").textContent}: la apertura debe ser antes del cierre.`);
+      wh[r.dataset.dow] = on ? { open: o, close: c } : null;
+    }
+    if (!Object.values(wh).some(Boolean)) return toast("Deja al menos un día abierto.");
+    const { error } = await sb.from("settings").update({ weekly_hours: wh, updated_at: new Date().toISOString() }).eq("id", true);
+    if (error) return /weekly_hours/.test(error.message) ? toast("Primero corre el archivo 008 en Supabase.") : rpcErr(error);
+    toast("Horario de la semana guardado");
+  };
+
+  // días especiales
+  const syncType = () => { $("#eTimes").hidden = document.querySelector('input[name="eType"]:checked').value !== "hours"; };
+  $$('input[name="eType"]').forEach((r) => r.addEventListener("change", syncType));
+  $$("[data-hol]").forEach((b) => (b.onclick = () => { $("#eDay").value = b.dataset.hol; $("#eNote").value = b.dataset.name; $("#eDay").focus(); }));
+  $("#excForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const day = $("#eDay").value, closed = document.querySelector('input[name="eType"]:checked').value === "closed";
+    if (!day) return toast("Elige la fecha.");
+    const row = { day, closed, note: $("#eNote").value.trim() || null, open_time: closed ? null : $("#eOpen").value, close_time: closed ? null : $("#eClose").value };
+    if (!closed && (!row.open_time || !row.close_time || row.open_time >= row.close_time)) return toast("La apertura debe ser antes del cierre.");
+    const { error } = await sb.from("store_exceptions").upsert(row);
+    if (error) return /store_exceptions/.test(error.message) ? toast("Primero corre el archivo 008 en Supabase.") : rpcErr(error);
+    toast("Día especial guardado"); horarios();
+  };
+  $$("[data-delexc]").forEach((b) => (b.onclick = () => confirmRow(b, "Ese día vuelve al horario normal de la semana.", async () => {
+    const { error } = await sb.from("store_exceptions").delete().eq("day", b.dataset.delexc);
+    if (error) return rpcErr(error);
+    toast("Día especial quitado"); horarios();
+  })));
+}
+
 // ---------- ajustes ----------
 async function ajustes() {
   const { data: s, error } = await sb.from("settings").select("*").single();
@@ -260,13 +367,11 @@ async function ajustes() {
   $("#view").innerHTML = `
     <form class="panel" id="setForm" novalidate>
       <h2 class="display" style="font-size:30px">Ajustes del negocio</h2>
-      <h3 class="group-title">Horario</h3>
-      <label class="check"><input type="checkbox" id="sOpen" ${s.store_open ? "checked" : ""}> Tienda abierta</label>
+      <h3 class="group-title">Pedidos agendados</h3>
       <div class="form-grid">
-        ${f("sOpenT", "Abre a las", s.open_time.slice(0, 5), "time")}
-        ${f("sCloseT", "Cierra a las", s.close_time.slice(0, 5), "time")}
         ${f("sSlotCap", "Pedidos máximos por franja de 30 min", s.slot_capacity, "number", 'min="1"')}
       </div>
+      <p class="muted small">Los horarios por día y los feriados están en la pestaña «Horarios».</p>
       <h3 class="group-title">Envío</h3>
       <div class="form-grid">
         ${f("sBase", "Envío base $", s.fee_base, "number", 'step="0.05" min="0"')}
@@ -290,12 +395,10 @@ async function ajustes() {
   $("#setForm").onsubmit = async (e) => {
     e.preventDefault();
     const patch = {
-      store_open: $("#sOpen").checked, open_time: $("#sOpenT").value, close_time: $("#sCloseT").value,
       slot_capacity: Number($("#sSlotCap").value), fee_base: Number($("#sBase").value), fee_included_km: Number($("#sIncl").value),
       fee_per_km: Number($("#sPerKm").value), max_km: Number($("#sMaxKm").value),
       whatsapp_number: $("#sWa").value.trim() || null, bank_info: $("#sBank").value.trim() || null, updated_at: new Date().toISOString(),
     };
-    if (patch.open_time >= patch.close_time) return toast("La hora de apertura debe ser antes del cierre.");
     const { error } = await sb.from("settings").update(patch).eq("id", true);
     if (error) return rpcErr(error);
     toast("Ajustes guardados");

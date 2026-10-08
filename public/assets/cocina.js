@@ -243,26 +243,86 @@ function renderMenu() {
   }));
 }
 
-// ---------- ajustes (solo horario y apertura) ----------
-function renderSettings() {
+// ---------- tienda: abrir/cerrar y "más tiempo de entrega" ----------
+// El horario por día y los feriados los define el master; aquí solo se opera el día.
+let busyTimer = null;
+const hm = (t) => (t ? String(t).slice(0, 5) : "");
+async function todayHoursText() {
+  const s = S.settings, day = todayLocal();
+  const { data: ex } = await sb.from("store_exceptions").select("*").eq("day", day).maybeSingle().then((r) => r, () => ({ data: null }));
+  if (ex) return ex.closed ? `Hoy cerrado${ex.note ? ` (${ex.note})` : ""}` : `Hoy de ${hm(ex.open_time)} a ${hm(ex.close_time)}${ex.note ? ` (${ex.note})` : ""}`;
+  const w = s.weekly_hours?.[String(new Date(day + "T12:00:00Z").getUTCDay())];
+  if (s.weekly_hours) return w ? `Hoy de ${w.open} a ${w.close}` : "Hoy es día de descanso";
+  return `Hoy de ${hm(s.open_time)} a ${hm(s.close_time)}`;
+}
+async function renderSettings() {
+  clearInterval(busyTimer);
   const s = S.settings;
+  const busyLeft = () => (s.busy_until ? new Date(s.busy_until).getTime() - Date.now() : 0);
+  const busy = busyLeft() > 0;
+  const extra = s.busy_extra_minutes ?? 30;
   $("#view").innerHTML = `
-    <form class="panel" id="setForm" novalidate>
-      <h2 class="display" style="font-size:30px">Horario</h2>
-      <label class="check"><input type="checkbox" id="sOpen" ${s.store_open ? "checked" : ""}> Tienda abierta (desmárcalo para pausar pedidos)</label>
-      <div class="form-grid">
-        <div><label class="f" for="sOpenT">Abre a las</label><input class="in" id="sOpenT" type="time" value="${s.open_time.slice(0, 5)}"></div>
-        <div><label class="f" for="sCloseT">Cierra a las</label><input class="in" id="sCloseT" type="time" value="${s.close_time.slice(0, 5)}"></div>
+    <div class="panel store-state ${s.store_open ? "is-open" : "is-closed"}">
+      <div class="ss-row">
+        <span class="ss-dot" aria-hidden="true"></span>
+        <div style="flex:1;min-width:200px">
+          <b class="ss-title">${s.store_open ? "Recibiendo pedidos" : "Tienda cerrada"}</b>
+          <span class="muted small" id="todayHours">…</span>
+        </div>
+        <button class="btn ${s.store_open ? "ghost danger" : "primary"}" type="button" id="toggleOpen">${s.store_open ? "Cerrar la tienda" : "Abrir la tienda"}</button>
       </div>
-      <p class="muted small">Envíos, datos de transferencia y WhatsApp los cambia el master.</p>
-      <button class="btn primary" style="margin-top:8px">Guardar</button>
-    </form>`;
-  $("#setForm").onsubmit = async (e) => {
-    e.preventDefault();
-    const patch = { store_open: $("#sOpen").checked, open_time: $("#sOpenT").value, close_time: $("#sCloseT").value, updated_at: new Date().toISOString() };
-    if (!patch.open_time || !patch.close_time || patch.open_time >= patch.close_time) return toast("La hora de apertura debe ser antes del cierre.");
-    const { error } = await sb.from("settings").update(patch).eq("id", true);
-    if (error) return toast("No se pudo guardar: " + error.message);
-    toast("Horario guardado"); await loadSettings();
+      <div id="openAsk"></div>
+      <p class="muted small" style="margin:10px 0 0">Los horarios de cada día y los feriados los configura el master.</p>
+    </div>
+
+    <div class="panel busy ${busy ? "on" : ""}" style="margin-top:14px">
+      <h2 class="display" style="font-size:28px">Más tiempo de entrega</h2>
+      ${busy ? `
+        <p class="busy-now"><b>Entregas +${extra} min</b> · termina en <span class="tabnum" id="busyLeft"></span></p>
+        <p class="muted small" style="margin:0 0 12px">Se siguen recibiendo pedidos; a los nuevos les mostramos una hora de llegada ${extra} minutos más tarde.</p>
+        <div class="row-btns"><button class="btn primary" type="button" id="busyStop">Reanudar ritmo normal</button><button class="btn" type="button" id="busyMore">30 min más</button></div>`
+      : `
+        <p class="muted small" style="margin:6px 0 12px">¿Mucho trabajo? Durante 30 minutos, los pedidos nuevos se siguen recibiendo, pero con una hora de llegada más tarde.</p>
+        <div class="chips" role="radiogroup" aria-label="Minutos extra">${[15, 30, 45].map((m) => `<label class="chip"><input type="radio" name="extra" value="${m}" ${m === extra ? "checked" : ""}> +${m} min</label>`).join("")}</div>
+        <button class="btn primary" type="button" id="busyGo" style="margin-top:12px">Activar por 30 minutos</button>`}
+    </div>`;
+
+  todayHoursText().then((t) => { const el = $("#todayHours"); if (el) el.textContent = t; });
+
+  $("#toggleOpen").onclick = () => {
+    const box = $("#openAsk");
+    if (box.innerHTML) { box.innerHTML = ""; return; }
+    const closing = s.store_open;
+    box.innerHTML = `<div class="confirm-row" style="margin-top:12px"><span class="small" style="flex:1;min-width:200px">${closing
+      ? "¿Cerrar la tienda? Nadie podrá hacer pedidos, ni siquiera agendados, hasta que la vuelvas a abrir. Los pedidos en curso no cambian."
+      : "¿Abrir la tienda? Los clientes podrán volver a hacer pedidos dentro del horario."}</span>
+      <button class="btn small primary" type="button" id="openYes">${closing ? "Sí, cerrar" : "Sí, abrir"}</button><button class="btn small ghost" type="button" id="openNo">Cancelar</button></div>`;
+    $("#openNo").onclick = () => (box.innerHTML = "");
+    $("#openYes").onclick = async () => {
+      $("#openYes").disabled = true;
+      await saveSettings({ store_open: !closing }, closing ? "Tienda cerrada" : "Tienda abierta");
+    };
   };
+
+  if (busy) {
+    const tick = () => {
+      const ms = busyLeft();
+      if (ms <= 0) { clearInterval(busyTimer); return renderSettings(); }
+      const el = $("#busyLeft"); if (!el) return clearInterval(busyTimer);
+      el.textContent = `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, "0")}`;
+    };
+    tick(); busyTimer = setInterval(tick, 1000);
+    $("#busyStop").onclick = () => saveSettings({ busy_until: null }, "Ritmo normal de nuevo");
+    $("#busyMore").onclick = () => saveSettings({ busy_until: new Date(Math.max(Date.now(), new Date(s.busy_until).getTime()) + 30 * 60000).toISOString() }, "30 minutos más");
+  } else {
+    $("#busyGo").onclick = () => {
+      const m = Number(document.querySelector('input[name="extra"]:checked')?.value || 30);
+      saveSettings({ busy_until: new Date(Date.now() + 30 * 60000).toISOString(), busy_extra_minutes: m }, `Entregas +${m} min durante 30 minutos`);
+    };
+  }
+}
+async function saveSettings(patch, msg) {
+  const { error } = await sb.from("settings").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", true);
+  if (error) return toast(/busy_/.test(error.message) ? "Falta actualizar la base de datos (008). Avísale al master." : "No se pudo guardar: " + error.message);
+  toast(msg); await loadSettings(); renderSettings();
 }
