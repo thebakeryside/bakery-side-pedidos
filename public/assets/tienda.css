@@ -140,3 +140,31 @@ body.in-checkout .how, body.in-checkout .closed-bar, body.in-checkout .wa-fab { 
 .optchoice .free { font-size: 12.5px; font-weight: 700; color: var(--ok); background: rgb(62 122 52 / .1); padding: 2px 8px; border-radius: 999px; }
 .freenote { margin: 2px 0 0; font-size: 13.5px; color: var(--ok); font-weight: 600; }
 .serv { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; font-size: 12.5px; font-weight: 600; color: var(--tinta); background: var(--crema); border-radius: 999px; padding: 3px 10px; }
+
+/* ---- escritorio: más ancho, 4 productos por fila y carrito más angosto ---- */
+body.light .wrap { max-width: 1260px; }
+@media (min-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr) 300px; gap: 24px; } }
+@media (min-width: 1100px) { .menu-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (min-width: 900px) and (max-width: 1099px) { .menu-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 900px) {
+  .item .body { padding: 12px; }
+  .item h3 { font-size: 16px; }
+  .item p { font-size: 13.5px; }
+}
+
+/* ---- celular: el menú como lista, para leerlo rápido ---- */
+@media (max-width: 640px) {
+  .menu-grid { grid-template-columns: 1fr; gap: 0; border-top: 1px solid var(--line); }
+  .item { flex-direction: row; border: 0; border-radius: 0; border-bottom: 1px solid var(--line); background: transparent; padding: 12px 0; gap: 12px; }
+  .item:hover { box-shadow: none; }
+  .item .ph { flex: none; width: 84px; height: 84px; aspect-ratio: auto; border-radius: 12px; overflow: hidden; order: 2; }
+  .item .ph .can { font-size: 22px; }
+  .item .body { padding: 0; gap: 3px; min-width: 0; }
+  .item h3 { font-size: 15.5px; }
+  .item p { font-size: 13px; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; flex: none; }
+  .item .tag, .item .optnote { font-size: 12px; }
+  .item .serv { font-size: 11.5px; padding: 2px 8px; }
+  .item .foot { margin-top: 6px; }
+  .item .foot .btn.small { min-height: 34px; padding: 6px 12px; }
+  .cat-title { margin: 20px 0 4px; font-size: 26px; }
+}
