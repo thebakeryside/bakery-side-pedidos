@@ -141,11 +141,19 @@ function itemCard(p) {
   const lead = p.lead_hours ? `<span class="tag">Pedir con ${p.lead_hours} h de anticipación</span>` : "";
   const stock = left === 0 ? `<span class="tag">Agotado por hoy · vuelve mañana</span>`
     : left != null ? `<span class="tag">Quedan ${left} hoy</span>` : "";
-  return `<article class="item${left === 0 ? " soldout" : ""}"><div class="ph">${img}</div><div class="body"><h3>${esc(p.name)}</h3>${servChip(p)}<p>${esc(p.description)}</p>${lead}${stock}<div class="foot"><span class="price">${money(p.price)}</span>${ctrl}</div></div></article>`;
+  return `<article class="item${left === 0 ? " soldout" : ""}" data-pid="${p.id}"><div class="ph">${img}</div><div class="body"><h3>${esc(p.name)}</h3>${servChip(p)}<p>${esc(p.description)}</p>${lead}${stock}<div class="foot"><span class="price">${money(p.price)}</span>${ctrl}</div></div></article>`;
 }
 // Orden del menú: dulces enteros de mayor a menor precio; el resto en orden alfabético (x2, x6, x12 en orden)
 const byName = (a, b) => a.name.localeCompare(b.name, "es", { numeric: true, sensitivity: "base" });
 const menuOrder = (c) => (/dulces enteros/i.test(c.name) ? (a, b) => Number(b.price) - Number(a.price) || byName(a, b) : byName);
+// Al agregar o quitar solo se actualizan los botones de ese producto (las fotos no se recargan)
+function updateCard(id) {
+  const el = document.querySelector(`#menu [data-pid="${id}"]`); if (!el) return;
+  const t = document.createElement("template"); t.innerHTML = itemCard(product(id)).trim();
+  const fresh = t.content.firstElementChild;
+  el.className = fresh.className;
+  el.querySelector(".foot").replaceWith(fresh.querySelector(".foot"));
+}
 function renderMenu() {
   const groups = state.cats
     .map((c) => ({ c, items: state.products.filter((p) => p.category_id === c.id).sort(menuOrder(c)) }));
@@ -168,7 +176,7 @@ function changeQty(key, d) {
   if (d > 0 && left != null && qtyOf(id) + d > left) { toast(left ? `Solo quedan ${left} hoy` : "Agotado por hoy"); return; }
   if (q <= 0) state.cart.delete(key); else state.cart.set(key, Math.min(q, 50));
   try { localStorage.setItem(CART_KEY, JSON.stringify([...state.cart])); } catch {}
-  renderMenu(); renderCart(); if (state.loc) requestQuote();
+  updateCard(id); renderCart(); if (state.loc) requestQuote();
 }
 
 // ---------- carrito ----------
@@ -196,7 +204,7 @@ function itemCardOpts(p, q) {
     : `<button class="btn small" type="button" data-a="pick" data-id="${p.id}"${left != null && q >= left ? " disabled" : ""}>${q ? `Agregar otra <span class="incart">${q}</span>` : "Agregar"}</button>`;
   const stock = left === 0 ? `<span class="tag">Agotado por hoy · vuelve mañana</span>` : left != null ? `<span class="tag">Quedan ${left} hoy</span>` : "";
   const hint = `<span class="optnote">Eliges ${groupsOf(p.id).map((g) => g.name.toLowerCase()).join(" y ")} al agregar</span>`;
-  return `<article class="item${left === 0 ? " soldout" : ""}"><div class="ph">${img}</div><div class="body"><h3>${esc(p.name)}</h3>${servChip(p)}<p>${esc(p.description)}</p>${hint}${stock}<div class="foot"><span class="price">${money(p.price)}</span>${ctrl}</div></div></article>`;
+  return `<article class="item${left === 0 ? " soldout" : ""}" data-pid="${p.id}"><div class="ph">${img}</div><div class="body"><h3>${esc(p.name)}</h3>${servChip(p)}<p>${esc(p.description)}</p>${hint}${stock}<div class="foot"><span class="price">${money(p.price)}</span>${ctrl}</div></div></article>`;
 }
 function openPicker(p) {
   const gs = groupsOf(p.id);
