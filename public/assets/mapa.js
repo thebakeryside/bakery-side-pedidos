@@ -204,6 +204,7 @@ async function mountSearch(g, slot, geocoder, go) {
         const { results } = await geocoder.geocode({ address: `${q}, Guayaquil`, bounds: BOUNDS, componentRestrictions: { country: "EC" }, language: "es" });
         for (const r of (results || []).slice(0, 3)) {
           const [main, ...rest] = clean(r.formatted_address).split(", ");
+          if (/^[2-9CFGHJMPQRVWX]{4,}\+/.test(main)) continue; // códigos tipo R3JJ+QRP no le dicen nada al cliente
           add({ main, sub: rest.join(", "), lat: r.geometry.location.lat(), lng: r.geometry.location.lng(), addr: clean(r.formatted_address) });
         }
       } catch {}
