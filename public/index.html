@@ -135,14 +135,10 @@
         <div class="step-title"><span class="n">4</span><h2>Pago</h2></div>
         <div class="choices">
           <label class="choice"><input type="radio" name="pay" value="tarjeta" id="payCard"><div><b>Tarjeta de débito o crédito</b><span id="cardHint">Pago seguro con Payphone</span></div></label>
-          <label class="choice"><input type="radio" name="pay" value="transferencia" id="payTransfer"><div><b>Transferencia o De Una</b><span>Subes la foto del comprobante</span></div></label>
+          <label class="choice"><input type="radio" name="pay" value="transferencia" id="payTransfer"><div><b>Deuna, Peigo o transferencia</b><span>Te mostramos el QR al confirmar</span></div></label>
         </div>
         <div id="transferBox" hidden>
-          <div class="note" id="bankInfo">Los datos bancarios aparecen al confirmar.</div>
-          <label class="f" for="receipt">Foto del comprobante</label>
-          <input class="in" id="receipt" type="file" accept="image/*,application/pdf">
-          <label class="f" for="receiptRef">Número de comprobante <span class="hint">(opcional)</span></label>
-          <input class="in" id="receiptRef" inputmode="numeric">
+          <div class="note">Al confirmar tu pedido te mostramos el código QR para pagar con Deuna o Peigo (o los datos para transferir). Pagas y subes la captura del pago desde ahí.</div>
         </div>
 
         <div id="perksBox"></div>

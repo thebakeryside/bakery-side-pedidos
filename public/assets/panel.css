@@ -73,3 +73,9 @@ button.chip:hover { border-color: var(--crema-2); color: var(--crema); }
 .exc-list { display: grid; gap: 8px; margin-top: 10px; }
 .exc { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--cacao); border-radius: 12px; }
 .exc b { min-width: 150px; }
+
+/* QR de cobro (master) */
+.qr-admin { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.qr-slot { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 10px; border: 1px solid var(--cacao); border-radius: 12px; }
+.qr-slot img, .qr-empty { width: 96px; height: 96px; border-radius: 10px; background: #fff; object-fit: contain; padding: 4px; }
+.qr-empty { display: grid; place-items: center; color: #8d8573; font-size: 13px; background: var(--tinta-3); }

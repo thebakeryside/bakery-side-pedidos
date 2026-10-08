@@ -193,7 +193,6 @@ function openCheckout() {
   $("#payCard").disabled = !c.card_enabled;
   if (!c.card_enabled) $("#cardHint").textContent = "Disponible muy pronto";
   ($("#payCard").disabled ? $("#payTransfer") : $("#payCard")).checked = true;
-  $("#bankInfo").textContent = c.bank_info || "Escríbenos por WhatsApp para recibir los datos de la cuenta.";
   syncPay();
   // datos guardados del cliente
   try { const p = JSON.parse(localStorage.getItem(PROFILE_KEY) || "{}"); for (const k of ["cName", "cPhone", "address", "reference"]) if (p[k] && !$("#" + k).value) $("#" + k).value = k === "address" ? splitAddr(p[k]) : p[k]; if (p.locLabel && !state.locLabel) setLocLabel(p.locLabel); if (p.lat && !state.loc) state.loc = { lat: p.lat, lng: p.lng }; } catch {}
@@ -356,13 +355,14 @@ function renderSummary() {
     `<div class="line total"><span>Total</span><span class="tabnum">${fee != null ? money(sub - disc + fee) : money(sub - disc) + " + envío"}</span></div>` +
     (whenTxt ? `<p class="muted small">${whenTxt}</p>` : "") +
     (state.acct ? `<p class="small" style="color:var(--accent-ink);margin:0;font-weight:600">Este pedido te da ${stampsFor(sub - disc)} ${stampsFor(sub - disc) === 1 ? "sello" : "sellos"}.</p>` : "");
-  $("#payBtn").textContent = fee != null ? `Pagar ${money(sub - disc + fee)}` : "Pagar";
+  const card = $("#payCard").checked;
+  $("#payBtn").textContent = fee != null ? `${card ? "Pagar" : "Confirmar pedido de"} ${money(sub - disc + fee)}` : card ? "Pagar" : "Confirmar pedido";
 }
 
 // ---------- extras del formulario ----------
 $("#isGift").onchange = (e) => ($("#giftBox").hidden = !e.target.checked);
 $("#wantInvoice").onchange = (e) => ($("#invoiceBox").hidden = !e.target.checked);
-function syncPay() { $("#transferBox").hidden = !$("#payTransfer").checked; }
+function syncPay() { $("#transferBox").hidden = !$("#payTransfer").checked; renderSummary(); }
 $$('input[name="pay"]').forEach((r) => r.addEventListener("change", syncPay));
 
 // ---------- enviar ----------
@@ -379,11 +379,6 @@ $("#orderForm").addEventListener("submit", async (e) => {
   if (!$("#cName").value.trim()) return bad("Escribe tu nombre.", $("#cName"));
   if ($("#cPhone").value.replace(/\D/g, "").length < 10) return bad("Escribe tu WhatsApp de 10 dígitos.", $("#cPhone"));
   const pay = $("#payCard").checked ? "tarjeta" : "transferencia";
-  const file = $("#receipt").files[0];
-  if (pay === "transferencia") {
-    if (!file) return bad("Sube la foto del comprobante de tu transferencia.", $("#receipt"));
-    if (file.size > 8 * 1024 * 1024) return bad("La foto pesa más de 8 MB. Envía una más liviana.", $("#receipt"));
-  }
 
   const body = {
     items: cartItems(), lat: state.loc.lat, lng: state.loc.lng,
@@ -410,11 +405,8 @@ $("#orderForm").addEventListener("submit", async (e) => {
       btn.textContent = `Pagar ${money(res.total)}`; btn.disabled = false;
       openPayphone(res.payphone, `Pedido ${res.code} · Total ${money(res.total)}`, res.tracking_token);
     } else {
-      btn.textContent = "Enviando comprobante…";
-      const { error } = await sb.storage.from("comprobantes").uploadToSignedUrl(res.upload.path, res.upload.token, file, { contentType: file.type || "image/jpeg" });
-      if (error) throw new Error("No pudimos subir el comprobante. Tu pedido quedó guardado; súbelo desde el seguimiento.");
-      await api("comprobante", { tracking_token: res.tracking_token, path: res.upload.path, reference: $("#receiptRef").value });
-      location.href = `/pedido?t=${res.tracking_token}`;
+      // Los datos para pagar (QR o cuenta) solo se muestran a quien ya tiene un pedido
+      location.href = `/pedido?t=${res.tracking_token}&pagar=1`;
     }
   } catch (ex) {
     btn.disabled = false; renderSummary(); err.textContent = ex.message;

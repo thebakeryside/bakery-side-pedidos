@@ -382,8 +382,11 @@ async function ajustes() {
       <p class="muted small">Ejemplo con estos valores: 5 km = <b id="feeEx"></b>. La distancia se mide ${s.map_provider === "google" ? "por calles con Google" : "en línea recta × 1,4"} desde la cocina (${esc(s.kitchen_address || "sin ubicación")}).</p>
       <h3 class="group-title">Pagos y contacto</h3>
       ${f("sWa", "WhatsApp del negocio", s.whatsapp_number, "tel")}
-      <label class="f" for="sBank">Datos para transferencia <span class="hint">(se muestran al cliente)</span></label>
-      <textarea class="in" id="sBank" placeholder="Banco, tipo y número de cuenta, nombre y cédula/RUC">${esc(s.bank_info ?? "")}</textarea>
+      <label class="f">Códigos QR de cobro</label>
+      <p class="muted small" style="margin:0 0 8px">Sube la imagen del QR de tu negocio en Deuna y en Peigo. El cliente lo ve solo después de hacer su pedido, y así no tienes que publicar tu cédula.</p>
+      <div class="qr-admin" id="qrAdmin"><p class="muted small">Cargando…</p></div>
+      <label class="f" for="sBank">Datos para transferencia bancaria <span class="hint">(opcional; solo los ve quien ya hizo un pedido)</span></label>
+      <textarea class="in" id="sBank" placeholder="Déjalo vacío si prefieres cobrar solo por Deuna o Peigo">${esc(s.bank_info ?? "")}</textarea>
       <button class="btn primary" style="margin-top:14px">Guardar ajustes</button>
     </form>`;
   const ex = () => {
@@ -392,6 +395,7 @@ async function ajustes() {
     $("#feeEx").textContent = money(Math.ceil(raw / 0.25 - 1e-9) * 0.25);
   };
   ["#sBase", "#sIncl", "#sPerKm"].forEach((k) => $(k).addEventListener("input", ex)); ex();
+  renderQrAdmin();
   $("#setForm").onsubmit = async (e) => {
     e.preventDefault();
     const patch = {
@@ -403,6 +407,33 @@ async function ajustes() {
     if (error) return rpcErr(error);
     toast("Ajustes guardados");
   };
+}
+
+// QR de Deuna y Peigo (storage público productos/pagos/deuna y productos/pagos/peigo)
+async function renderQrAdmin() {
+  const box = $("#qrAdmin"); if (!box) return;
+  const { data } = await sb.storage.from("productos").list("pagos");
+  const has = Object.fromEntries((data ?? []).map((f) => [f.name, f.updated_at || f.created_at]));
+  const url = (k) => `${sb.storage.from("productos").getPublicUrl(`pagos/${k}`).data.publicUrl}?v=${encodeURIComponent(has[k] || "")}`;
+  box.innerHTML = [["deuna", "Deuna"], ["peigo", "Peigo"]].map(([k, n]) => `
+    <div class="qr-slot confirm-host">
+      ${has[k] ? `<img src="${esc(url(k))}" alt="QR de ${n}">` : `<div class="qr-empty">Sin QR</div>`}
+      <div style="display:grid;gap:6px"><b>${n}</b>
+        <label class="btn small" style="cursor:pointer">${has[k] ? "Cambiar imagen" : "Subir imagen"}<input type="file" accept="image/*" data-qr="${k}" hidden></label>
+        ${has[k] ? `<button class="btn small ghost" type="button" data-qrdel="${k}">Quitar</button>` : ""}</div>
+    </div>`).join("");
+  box.querySelectorAll("[data-qr]").forEach((inp) => (inp.onchange = async () => {
+    const f = inp.files[0]; if (!f) return;
+    if (f.size > 4 * 1024 * 1024) return toast("La imagen pesa más de 4 MB.");
+    const { error } = await sb.storage.from("productos").upload(`pagos/${inp.dataset.qr}`, f, { upsert: true, contentType: f.type || "image/png", cacheControl: "60" });
+    if (error) return rpcErr(error);
+    toast("QR guardado"); renderQrAdmin();
+  }));
+  box.querySelectorAll("[data-qrdel]").forEach((b) => (b.onclick = () => confirmRow(b, "El cliente ya no verá este QR para pagar.", async () => {
+    const { error } = await sb.storage.from("productos").remove([`pagos/${b.dataset.qrdel}`]);
+    if (error) return rpcErr(error);
+    toast("QR quitado"); renderQrAdmin();
+  })));
 }
 
 // ---------- clientes y sellos ----------

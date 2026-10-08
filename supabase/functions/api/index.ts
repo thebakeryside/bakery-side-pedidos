@@ -1,5 +1,5 @@
 // The Bakery Side — API pública de la tienda
-// Acciones: config, cotizar, crear, pagar, confirmar, subir, comprobante, perfil, guardar_perfil
+// Acciones: config, cotizar, crear, pagar, confirmar, pago_info, subir, comprobante, perfil, guardar_perfil
 // El seguimiento usa la función de base de datos track_order(token).
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -314,6 +314,18 @@ function todayHours(s: Settings) {
   return h ? { open_time: h.open, close_time: h.close } : { open_time: null, close_time: null };
 }
 
+// QR de cobro que el master sube en Ajustes (storage: productos/pagos/deuna y productos/pagos/peigo)
+async function payQrs() {
+  const { data } = await db.storage.from("productos").list("pagos");
+  const out: Record<string, string> = {};
+  for (const f of data ?? []) {
+    if (!["deuna", "peigo"].includes(f.name)) continue;
+    const v = encodeURIComponent(f.updated_at ?? f.created_at ?? "");
+    out[f.name] = `${db.storage.from("productos").getPublicUrl(`pagos/${f.name}`).data.publicUrl}?v=${v}`;
+  }
+  return out;
+}
+
 // ---------- acciones ----------
 const actions: Record<string, (b: any, user: User) => Promise<unknown>> = {
   async config() {
@@ -322,7 +334,7 @@ const actions: Record<string, (b: any, user: User) => Promise<unknown>> = {
       ...todayHours(s), store_open: s.store_open,
       slot_minutes: s.slot_minutes, kitchen: { lat: s.kitchen_lat, lng: s.kitchen_lng },
       fee: { base: s.fee_base, included_km: s.fee_included_km, per_km: s.fee_per_km },
-      max_km: s.max_km, whatsapp: s.whatsapp_number, bank_info: s.bank_info,
+      max_km: s.max_km, whatsapp: s.whatsapp_number,
       card_enabled: Boolean(PAYPHONE_TOKEN && PAYPHONE_STORE_ID), map_provider: s.map_provider,
       open_now: s.store_open && isOpenAt(new Date(), s),
       busy_extra: busyExtra(s),
@@ -415,7 +427,6 @@ const actions: Record<string, (b: any, user: User) => Promise<unknown>> = {
       const { data: up, error: e3 } = await db.storage.from("comprobantes").createSignedUploadUrl(path);
       if (e3) throw e3;
       out.upload = { path, token: up.token };
-      out.bank_info = s.bank_info;
     }
     return out;
   },
@@ -482,6 +493,15 @@ const actions: Record<string, (b: any, user: User) => Promise<unknown>> = {
     }
     await db.from("orders").update({ payment_status: "fallido" }).eq("id", o.id);
     return { ok: false, code: o.code, tracking_token: o.tracking_token, message: p?.message || "El pago no fue aprobado." };
+  },
+
+  // Cómo pagar por Deuna, Peigo o transferencia: solo para quien tiene un pedido sin pagar
+  // (así los datos de la cuenta no quedan publicados para cualquiera)
+  async pago_info(b) {
+    const o = await orderByToken(b.tracking_token);
+    if (o.payment_status === "pagado" || o.status === "cancelado") fail("Este pedido ya no necesita pago.");
+    const s = await getSettings();
+    return { code: o.code, total: Number(o.total), bank_info: s.bank_info, qr: await payQrs() };
   },
 
   // Permiso para subir un comprobante a un pedido aún no pagado
