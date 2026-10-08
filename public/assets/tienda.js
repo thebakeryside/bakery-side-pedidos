@@ -136,10 +136,10 @@ let expanded = null, expTimer = 0;
 function photoCtrl(p, q, left, opts) {
   if (left === 0 && !q) return `<div class="pctrl"><span class="sold">Agotado hoy</span></div>`;
   const full = left != null && q >= left;
-  if (opts) return `<div class="pctrl">${q ? `<button type="button" class="pc-count" data-a="pick" data-id="${p.id}" aria-label="${q} en tu pedido, agregar otra"${full ? " disabled" : ""}>${q}</button>` : `<button type="button" class="pc-plus" data-a="pick" data-id="${p.id}" aria-label="Agregar ${esc(p.name)}">${PLUS}</button>`}</div>`;
+  if (opts && !q) return `<div class="pctrl"><button type="button" class="pc-plus" data-a="pick" data-id="${p.id}" aria-label="Agregar ${esc(p.name)}"${full ? " disabled" : ""}>${PLUS}</button></div>`;
   if (!q) return `<div class="pctrl"><button type="button" class="pc-plus" data-a="+" data-id="${p.id}" aria-label="Agregar ${esc(p.name)}"${full ? " disabled" : ""}>${PLUS}</button></div>`;
   if (expanded !== p.id) return `<div class="pctrl"><button type="button" class="pc-count" data-a="expand" data-id="${p.id}" aria-label="${q} en tu pedido. Cambiar cantidad">${q}</button></div>`;
-  return `<div class="pctrl"><div class="pc-step"><button type="button" data-a="-" data-id="${p.id}" aria-label="${q === 1 ? "Quitar" : "Quitar uno"}">${q === 1 ? TRASH : MINUS}</button><b>${q}</b><button type="button" data-a="+" data-id="${p.id}" aria-label="Agregar uno"${full ? " disabled" : ""}>${PLUS}</button></div></div>`;
+  return `<div class="pctrl"><div class="pc-step"><button type="button" data-a="-" data-id="${p.id}" aria-label="${q === 1 ? "Quitar" : "Quitar uno"}">${q === 1 ? TRASH : MINUS}</button><b>${q}</b><button type="button" data-a="${opts ? "pick" : "+"}" data-id="${p.id}" aria-label="Agregar uno"${full ? " disabled" : ""}>${PLUS}</button></div></div>`;
 }
 function itemCard(p) {
   const q = qtyOf(p.id), left = leftToday(p), opts = groupsOf(p.id).length > 0;
@@ -173,10 +173,13 @@ function renderMenu() {
 $("#menu").addEventListener("click", (e) => {
   const b = e.target.closest("[data-a]"); if (!b) return;
   const id = Number(b.dataset.id), a = b.dataset.a;
-  if (a === "pick") return openPicker(product(id));
+  if (a === "pick") { if (expanded === id) { expanded = null; clearTimeout(expTimer); updateCard(id); } return openPicker(product(id)); }
   if (a === "expand") { setExpanded(id); return; }
   if (a === "+" && qtyOf(id) > 0) expanded = id; // sigue mostrando − y + mientras ajusta
-  changeQty(String(id), a === "+" ? 1 : -1);
+  // con opciones (endulzante): el − quita la última que agregó de ese producto
+  const key = a === "-" && groupsOf(id).length ? lastKeyOf(id) : String(id);
+  if (a === "-" && groupsOf(id).length && new Set([...state.cart.keys()].filter((k) => keyId(k) === id)).size > 1) toast(`Quitamos 1 ${lineName(key)}`);
+  changeQty(key, a === "+" ? 1 : -1);
   if (!qtyOf(id) && expanded === id) { expanded = null; updateCard(id); }
   if (expanded === id) bumpCollapse(id);
 });
@@ -198,6 +201,7 @@ function changeQty(key, d) {
 const keyId = (k) => Number(String(k).split(":")[0]);
 const keyOpts = (k) => (String(k).split(":")[1] || "").split(".").filter(Boolean).map(Number);
 const groupsOf = (id) => state.opts?.[id] || [];
+const lastKeyOf = (id) => [...state.cart.keys()].filter((k) => keyId(k) === id).pop() ?? String(id);
 const qtyOf = (id) => [...state.cart].reduce((s, [k, q]) => s + (keyId(k) === id ? q : 0), 0);
 const choiceOf = (cid) => { for (const gs of Object.values(state.opts || {})) for (const g of gs) { const c = g.option_choices.find((x) => x.id === cid); if (c) return c; } return null; };
 function validKey(k) {
