@@ -42,7 +42,15 @@
 .checkout form { display: grid; gap: 14px; }
 .map-tools { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0 10px; }
 .search { display: flex; gap: 6px; flex: 1; min-width: 220px; }
-.map { height: 300px; border-radius: 12px; border: 1px solid var(--cacao); z-index: 0; }
+.map-wrap { position: relative; }
+.map { height: 340px; border-radius: 12px; border: 1px solid var(--cacao); z-index: 0; overflow: hidden; }
+.pin { position: absolute; left: 50%; top: 50%; width: 34px; height: 46px; transform: translate(-50%, -100%); pointer-events: none; z-index: 2; }
+.pin span { position: absolute; inset: 0 0 12px 0; background: var(--tostado); border: 3px solid var(--tinta); border-radius: 50% 50% 50% 0; transform: rotate(-45deg); box-shadow: 0 4px 10px rgb(0 0 0 / .35); }
+.pin span::after { content: ""; position: absolute; width: 10px; height: 10px; left: 50%; top: 50%; transform: translate(-50%, -50%); background: var(--tinta); border-radius: 50%; }
+.pin::after { content: ""; position: absolute; left: 50%; bottom: 0; width: 10px; height: 4px; transform: translateX(-50%); background: rgb(0 0 0 / .35); border-radius: 50%; }
+.map-hint { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); background: var(--tinta); color: var(--crema); font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: 999px; pointer-events: none; z-index: 2; white-space: nowrap; }
+.map.touched ~ .map-hint { display: none; }
+.search .gplace { width: 100%; color-scheme: light; }
 .quote { margin-top: 10px; }
 .quote b { color: var(--crema); }
 .summary { margin: 16px 0 12px; display: flex; flex-direction: column; gap: 8px; }

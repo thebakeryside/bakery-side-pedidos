@@ -68,15 +68,16 @@
 
       <div class="panel">
         <div class="step-title"><span class="n">2</span><h2>¿Dónde lo entregamos?</h2></div>
-        <p class="muted small">Toca el mapa o arrastra el pin hasta la puerta exacta. Con eso calculamos el envío.</p>
+        <p class="muted small">Busca tu dirección o usa tu ubicación, y mueve el mapa hasta que el pin quede en tu puerta. Con eso calculamos el envío.</p>
         <div class="map-tools">
+          <div class="search" id="searchSlot"></div>
           <button class="btn small" type="button" id="locateMe">Usar mi ubicación</button>
-          <div class="search">
-            <input class="in" id="searchQ" type="search" placeholder="Buscar: Urdesa, calle Guayacanes" aria-label="Buscar dirección">
-            <button class="btn small" type="button" id="searchBtn">Buscar</button>
-          </div>
         </div>
-        <div id="map" class="map" role="application" aria-label="Mapa para elegir la ubicación de entrega"></div>
+        <div class="map-wrap">
+          <div id="map" class="map" role="application" aria-label="Mapa para elegir la ubicación de entrega"></div>
+          <div class="pin" aria-hidden="true"><span></span></div>
+          <div class="map-hint" aria-hidden="true">Mueve el mapa hasta tu puerta</div>
+        </div>
         <div id="quoteBox" class="quote muted small">Marca tu ubicación para ver el costo de envío.</div>
         <label class="f" for="address">Dirección</label>
         <input class="in" id="address" autocomplete="street-address" placeholder="Ciudadela, manzana y villa o calle y número">

@@ -1,5 +1,6 @@
 import { sb, api, $, $$, money, esc, hhmm, dayLabel, localToISO, todayLocal, toast } from "./common.js";
 import { openPayphone } from "./payphone.js";
+import { createMap } from "./mapa.js";
 import { captureRef, storedRef, currentUser, loadAccount, stampCard, stampsFor, googleButton, mountGoogle } from "./account.js";
 
 captureRef();
@@ -109,7 +110,7 @@ $("#backToMenu").onclick = () => {
 };
 
 // ---------- checkout ----------
-let map, marker;
+let mapCtl = null;
 function openCheckout() {
   $("#cart").classList.remove("open");
   $(".layout").hidden = true; $(".intro").hidden = true; $("#checkout").hidden = false; $("#mobileBar").hidden = true;
@@ -143,7 +144,7 @@ function renderAcctBox() {
     if (c.phone && !$("#cPhone").value) $("#cPhone").value = c.phone;
     if (c.address && !$("#address").value) $("#address").value = c.address;
     if (c.reference && !$("#reference").value) $("#reference").value = c.reference;
-    if (c.lat && !state.loc && map) { map.setView([c.lat, c.lng], 17); setLoc(c.lat, c.lng, false); }
+    if (c.lat && !state.loc) { state.loc = { lat: c.lat, lng: c.lng }; if (mapCtl) mapCtl.setView(c.lat, c.lng, 18); else requestQuote(); }
     box.innerHTML = `<p class="muted small" style="margin:6px 0 0">Pedido con tu cuenta de Google (${esc(c.email || "")}). Este pedido suma sellos a tu tarjeta.</p>`;
     return;
   }
@@ -211,51 +212,30 @@ $("#schedDate").addEventListener("change", fillTimes);
 $("#schedTime").addEventListener("change", renderSummary);
 
 // ---------- mapa ----------
-function setupMap() {
-  if (map) { setTimeout(() => map.invalidateSize(), 50); return; }
-  const k = state.cfg.kitchen?.lat ? [state.cfg.kitchen.lat, state.cfg.kitchen.lng] : [-2.17, -79.9];
-  map = L.map("map", { zoomControl: true }).setView(state.loc ? [state.loc.lat, state.loc.lng] : k, state.loc ? 17 : 13);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OpenStreetMap" }).addTo(map);
-  map.on("click", (e) => setLoc(e.latlng.lat, e.latlng.lng, true));
-  if (state.loc) setLoc(state.loc.lat, state.loc.lng, false);
-  setTimeout(() => map.invalidateSize(), 50);
+async function setupMap() {
+  if (mapCtl) { mapCtl.resize(); return; }
+  const k = state.cfg.kitchen?.lat ? { lat: state.cfg.kitchen.lat, lng: state.cfg.kitchen.lng } : null;
+  mapCtl = await createMap($("#map"), {
+    start: state.loc, center: k, searchSlot: $("#searchSlot"),
+    onPick: (lat, lng, addr) => {
+      state.loc = { lat, lng };
+      // completamos la dirección solo si el cliente no la escribió a mano
+      if (addr && (!$("#address").value.trim() || state.autoAddr)) { $("#address").value = addr; state.autoAddr = true; }
+      requestQuote();
+    },
+  });
+  if (state.loc) { mapCtl.setView(state.loc.lat, state.loc.lng, 18); requestQuote(); }
 }
-function setLoc(lat, lng, reverse) {
-  state.loc = { lat, lng };
-  if (!marker) {
-    marker = L.marker([lat, lng], { draggable: true }).addTo(map);
-    marker.on("dragend", () => { const p = marker.getLatLng(); setLoc(p.lat, p.lng, true); });
-  } else marker.setLatLng([lat, lng]);
-  requestQuote();
-  if (reverse && !$("#address").value.trim()) reverseGeocode(lat, lng);
-}
+$("#address").addEventListener("input", () => (state.autoAddr = false));
 $("#locateMe").onclick = () => {
-  if (!navigator.geolocation) return toast("Tu navegador no permite compartir ubicación.");
+  if (!navigator.geolocation) return toast("Tu navegador no permite compartir ubicación. Busca tu dirección o mueve el mapa.");
   $("#locateMe").disabled = true;
   navigator.geolocation.getCurrentPosition(
-    (p) => { $("#locateMe").disabled = false; map.setView([p.coords.latitude, p.coords.longitude], 18); setLoc(p.coords.latitude, p.coords.longitude, true); },
-    () => { $("#locateMe").disabled = false; toast("No pudimos obtener tu ubicación. Marca el punto en el mapa."); },
+    (p) => { $("#locateMe").disabled = false; mapCtl?.setView(p.coords.latitude, p.coords.longitude, 18); toast("Ajusta el mapa para que el pin quede en tu puerta."); },
+    () => { $("#locateMe").disabled = false; toast("No pudimos obtener tu ubicación. Busca tu dirección o mueve el mapa."); },
     { enableHighAccuracy: true, timeout: 12000 },
   );
 };
-async function nominatim(path) {
-  const r = await fetch(`https://nominatim.openstreetmap.org/${path}&format=json&accept-language=es`);
-  return r.ok ? r.json() : null;
-}
-async function reverseGeocode(lat, lng) {
-  try { const j = await nominatim(`reverse?lat=${lat}&lon=${lng}&zoom=18`); const a = j?.address; if (a && !$("#address").value.trim()) $("#address").value = [a.road, a.house_number, a.neighbourhood || a.suburb].filter(Boolean).join(", "); } catch {}
-}
-async function search() {
-  const q = $("#searchQ").value.trim(); if (!q) return;
-  try {
-    const j = await nominatim(`search?q=${encodeURIComponent(q + ", Guayaquil")}&countrycodes=ec&limit=1&viewbox=-80.15,-1.95,-79.75,-2.35`);
-    if (!j?.length) return toast("No encontramos esa dirección. Marca el punto en el mapa.");
-    map.setView([+j[0].lat, +j[0].lon], 17); setLoc(+j[0].lat, +j[0].lon, false);
-    toast("Ajusta el pin a la puerta exacta.");
-  } catch { toast("No pudimos buscar. Marca el punto en el mapa."); }
-}
-$("#searchBtn").onclick = search;
-$("#searchQ").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); search(); } });
 
 let quoteSeq = 0, quoteTimer;
 function requestQuote() {
