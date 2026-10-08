@@ -4,7 +4,7 @@
 .acct-btn { display: inline-flex; align-items: center; gap: 8px; }
 .acct-btn .mini { background: var(--tostado); color: var(--tinta); border-radius: 999px; padding: 0 8px; font-size: 12px; font-weight: 700; }
 
-.stampcard { background: #FFFFF6; color: var(--tinta); border: 1px solid #DED8C2; border-radius: 18px; padding: 18px 18px 16px; display: grid; gap: 14px; position: relative; overflow: hidden; box-shadow: var(--shadow); }
+.stampcard { background: var(--crema); color: var(--tinta); border: 1px solid #E6E1D3; border-radius: 18px; padding: 18px 18px 16px; display: grid; gap: 14px; position: relative; overflow: hidden; box-shadow: var(--shadow); }
 .stampcard::before { content: ""; position: absolute; inset: 7px; border: 1.5px dashed rgb(28 23 20 / .18); border-radius: 13px; pointer-events: none; }
 .stampcard-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .sc-logo { height: 26px; width: auto; }
