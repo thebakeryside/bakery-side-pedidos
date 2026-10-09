@@ -197,13 +197,14 @@ function timesFor(date) {
   const out = [], earliest = Date.now() + 45 * 60000;
   for (let m = oh * 60 + om; m <= ch * 60 + cm; m += st.cfg.slot_minutes) {
     const t = `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
-    if (new Date(localToISO(date, t)).getTime() >= earliest) out.push(t);
+    const at = new Date(localToISO(date, t)).getTime();
+    if (at >= earliest && at <= Date.now() + 30 * 86400000 - 5 * 60000) out.push(t);
   }
   return out;
 }
 function fillDates() {
   const opts = [];
-  for (let i = 0; i < 14; i++) {
+  for (let i = 0; i <= 30; i++) { // se puede agendar hasta un mes antes
     const d = todayLocal(i);
     if (timesFor(d).length) opts.push(`<option value="${d}">${i === 0 ? "Hoy" : i === 1 ? "Mañana" : new Date(d + "T12:00:00-05:00").toLocaleDateString("es-EC", { weekday: "long", day: "numeric", month: "short", timeZone: "America/Guayaquil" })}</option>`);
   }
