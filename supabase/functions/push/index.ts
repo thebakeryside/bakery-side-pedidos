@@ -1,4 +1,4 @@
-// The Bakery Side — avisos en el celular (Web Push) para cocina, moto y master
+// The Bakery Side — avisos en el celular (Web Push) para cocina, moto y master, y correos al cliente en cada paso
 // Acciones:
 //   key     → llave pública para suscribirse (se crea la primera vez)
 //   notify  → la base de datos avisa un evento de un pedido (requiere x-hook-secret)
@@ -81,8 +81,85 @@ const hhmm = (d: string) => new Date(d).toLocaleTimeString("es-EC", { hour: "2-d
 const dayHm = (d: string) => new Date(d).toLocaleString("es-EC", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Guayaquil" });
 const short = (t: string, n = 60) => (t.length > n ? t.slice(0, n - 1) + "…" : t);
 
+
+// ---------- correos al cliente (Resend) ----------
+const RESEND_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
+const MAIL_FROM = Deno.env.get("MAIL_FROM") ?? "The Bakery Side <pedidos@thebakeryside.com>";
+const SITE = Deno.env.get("SITE_URL") ?? "https://thebakeryside.com";
+const escH = (t: unknown) => String(t ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+
+async function customerEmail(o: any) {
+  if (o.customer_email) return String(o.customer_email);
+  if (o.user_id) { const { data } = await db.auth.admin.getUserById(o.user_id); if (data?.user?.email) return data.user.email; }
+  return o.invoice_email ? String(o.invoice_email) : null;
+}
+async function orderPin(id: string) {
+  const { data } = await db.from("order_pins").select("pin").eq("order_id", id).maybeSingle();
+  return data?.pin as string | undefined;
+}
+
+function mailHtml(o: any, m: { title: string; lead: string; pin?: string; step: number; extra?: string }) {
+  const first = escH(String(o.customer_name).split(" ")[0]);
+  const link = `${SITE}/pedido?t=${o.tracking_token}`;
+  const steps = ["Pago confirmado", "En preparación", "Listo", "En camino", "Entregado"];
+  const bar = m.step >= 0 ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:22px 0 6px"><tr>${steps.map((st, i) => `<td align="center" width="20%" style="font-size:11px;color:${i <= m.step ? "#1C1714" : "#a39a90"};font-weight:${i === m.step ? "bold" : "normal"};padding:0 2px"><div style="height:6px;border-radius:3px;background:${i <= m.step ? "#C68A4E" : "#EDE8DA"};margin-bottom:6px"></div>${st}</td>`).join("")}</tr></table>` : "";
+  const items = (o.order_items ?? []).map((i: any) => `<tr><td style="padding:4px 0;font-size:14px;color:#1C1714">${i.quantity} × ${escH(i.name)}</td><td align="right" style="padding:4px 0;font-size:14px;color:#554741">${money(i.line_total ?? 0)}</td></tr>`).join("");
+  const when = o.scheduled_for ? `Entrega agendada: <b>${escH(dayHm(o.scheduled_for))}</b>` : o.eta ? `Llega aprox. a las <b>${escH(hhmm(o.eta))}</b>` : "";
+  const pin = m.pin ? `<div style="margin:20px 0;border:2px solid #C68A4E;border-radius:14px;padding:16px;text-align:center;background:#FBF6EE">
+      <div style="font-size:11px;letter-spacing:2px;color:#8a7f76;font-weight:bold">TU PIN DE ENTREGA</div>
+      <div style="font-size:38px;letter-spacing:12px;font-weight:bold;color:#1C1714;margin:6px 0 4px;font-family:'Courier New',monospace">${escH(m.pin)}</div>
+      <div style="font-size:13px;color:#554741;line-height:1.45">${o.recipient_name ? "Como es un regalo, compártelo con quien lo recibe. " : ""}Dáselo al motorizado solo cuando tengas el pedido en tus manos.</div></div>` : "";
+  return `<!doctype html><html lang="es"><body style="margin:0;background:#F4F1EA;padding:24px 12px;font-family:Arial,Helvetica,sans-serif">
+  <div style="max-width:520px;margin:0 auto;background:#FFFFFF;border-radius:18px;padding:28px 24px;border:1px solid #E6E1D3">
+    <div style="font-size:12px;letter-spacing:3px;color:#C68A4E;font-weight:bold">THE BAKERY SIDE</div>
+    <div style="font-size:13px;color:#8a7f76;margin-top:2px">Pedido ${escH(o.code)}</div>
+    <h1 style="margin:14px 0 8px;font-size:26px;line-height:1.2;color:#1C1714">${escH(m.title)}</h1>
+    <p style="margin:0;font-size:15px;line-height:1.55;color:#554741">Hola ${first}, ${m.lead}</p>
+    ${bar}
+    ${when && m.step >= 0 && m.step < 4 ? `<p style="margin:14px 0 0;font-size:15px;color:#1C1714">${when}</p>` : ""}
+    ${pin}
+    ${m.extra ?? ""}
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:18px;border-top:1px solid #EDE8DA;padding-top:10px">${items}
+      <tr><td style="padding:4px 0;font-size:14px;color:#554741">Envío</td><td align="right" style="padding:4px 0;font-size:14px;color:#554741">${money(o.delivery_fee)}</td></tr>
+      <tr><td style="padding:8px 0 0;font-size:16px;font-weight:bold;color:#1C1714">Total</td><td align="right" style="padding:8px 0 0;font-size:16px;font-weight:bold;color:#1C1714">${money(o.total)}</td></tr></table>
+    <div style="text-align:center;margin-top:24px"><a href="${link}" style="display:inline-block;background:#1C1714;color:#FFFFFF;text-decoration:none;font-weight:bold;padding:13px 26px;border-radius:12px;font-size:15px">Ver mi pedido</a></div>
+    <p style="margin:24px 0 0;font-size:12px;color:#a39a90;text-align:center">Dulces hechos con cariño · Guayaquil y Samborondón</p>
+  </div></body></html>`;
+}
+
+async function mailCustomer(o: any, event: string) {
+  if (!RESEND_KEY) return false; // sin clave de Resend, no se envían correos (los avisos push siguen igual)
+  const to = await customerEmail(o);
+  if (!to) return false;
+  const rider = o.riders?.full_name ? escH(String(o.riders.full_name).split(" ")[0]) : null;
+  let m: { subject: string; title: string; lead: string; pin?: string; step: number; extra?: string } | null = null;
+  switch (event) {
+    case "pagado": case "pago_confirmado":
+      m = { subject: `Confirmamos tu pedido ${o.code} 🧁`, title: "¡Pedido confirmado!", lead: "recibimos tu pago y tu pedido ya está en nuestra cocina. Te escribiremos en cada paso.", pin: await orderPin(o.id), step: 0 }; break;
+    case "preparando":
+      m = { subject: `Estamos preparando tu pedido ${o.code}`, title: "Manos a la masa", lead: "ya estamos preparando tu pedido con todo el cariño.", step: 1 }; break;
+    case "listo":
+      m = { subject: `Tu pedido ${o.code} está listo`, title: "¡Está listo!", lead: `tu pedido está listo y ${rider ? `${rider} lo recoge` : "el motorizado lo recoge"} en unos minutos.`, step: 2 }; break;
+    case "en_camino":
+      m = { subject: `Tu pedido ${o.code} va en camino 🛵`, title: "Va en camino", lead: `${rider ? `${rider} salió` : "el motorizado salió"} con tu pedido. Ten a mano tu PIN: se lo darás cuando lo tengas en tus manos.`, pin: await orderPin(o.id), step: 3 }; break;
+    case "entregado":
+      m = { subject: `¡Entregado! Gracias por tu pedido ${o.code}`, title: "¡Que lo disfrutes!", lead: "tu pedido fue entregado. Gracias por elegirnos; nos encantaría saber qué tal te pareció.", step: 4,
+        extra: o.user_id ? `<p style="margin:16px 0 0;font-size:14px;color:#554741">Este pedido suma sellos a tu tarjeta. Revísala en <a href="${SITE}/cuenta" style="color:#C68A4E">Mi cuenta</a>.</p>` : "" }; break;
+    case "cancelado":
+      m = { subject: `Tu pedido ${o.code} fue cancelado`, title: "Pedido cancelado", lead: `cancelamos tu pedido${o.cancel_reason ? ` (${escH(o.cancel_reason)})` : ""}. Si ya habías pagado, te devolvemos el dinero. Escríbenos si tienes dudas.`, step: -1 }; break;
+  }
+  if (!m) return false;
+  const r = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${RESEND_KEY}`, "Content-Type": "application/json", "Idempotency-Key": `${o.id}-${event}` },
+    body: JSON.stringify({ from: MAIL_FROM, to: [to], subject: m.subject, html: mailHtml(o, m), tags: [{ name: "evento", value: event }] }),
+  });
+  if (!r.ok) { console.error("correo", r.status, await r.text()); return false; }
+  return true;
+}
+
 async function notify(orderId: string, event: string) {
-  const { data: o } = await db.from("orders").select("*, order_items(name,quantity), riders(full_name)").eq("id", orderId).maybeSingle();
+  const { data: o } = await db.from("orders").select("*, order_items(name,quantity,line_total), riders(full_name)").eq("id", orderId).maybeSingle();
   if (!o) return { sent: 0 };
   const when = o.scheduled_for ? `para ${dayHm(o.scheduled_for)}` : `llega aprox. ${hhmm(o.eta)}`;
   const items = (o.order_items ?? []).map((i: any) => `${i.quantity}× ${i.name}`).join(", ");
@@ -108,12 +185,14 @@ async function notify(orderId: string, event: string) {
     case "en_camino":
       await toStaff({ title: `🛵 ${o.code} va en camino`, body: `${o.riders?.full_name ?? "El motorizado"} salió hacia ${addr}`, tag: `o-${o.code}` }, false); break;
     case "entregado":
-      await toStaff({ title: `🎉 ${o.code} entregado`, body: `${o.customer_name} · ${money(o.total)}`, tag: `o-${o.code}` }); break;
+      await toStaff({ title: `🎉 ${o.code} entregado`, body: `${o.customer_name} · ${money(o.total)}${o.delivered_by === "moto" ? " · confirmado con PIN" : o.delivered_by === "cocina" ? " · marcado por cocina" : ""}`, tag: `o-${o.code}` }); break;
     case "cancelado":
       await toStaff({ title: `✖️ ${o.code} cancelado`, body: o.cancel_reason ? short(o.cancel_reason, 100) : `${o.customer_name} · ${money(o.total)}`, tag: `o-${o.code}` });
       await toRider({ title: `✖️ ${o.code} fue cancelado`, body: "Ya no tienes que entregarlo.", tag: `r-${o.code}` }); break;
   }
-  return { sent };
+  let mailed = false;
+  try { mailed = await mailCustomer(o, event); } catch (e) { console.error("correo", e); }
+  return { sent, mailed };
 }
 
 Deno.serve(async (req) => {

@@ -42,6 +42,7 @@ export async function renderManual(view) {
         <div class="form-grid">
           <div><label class="f" for="mName">Nombre</label><input class="in" id="mName" autocomplete="off"></div>
           <div><label class="f" for="mPhone">WhatsApp</label><input class="in" id="mPhone" type="tel" inputmode="tel" placeholder="0991234567" autocomplete="off"></div>
+          <div><label class="f" for="mEmail">Correo <span class="hint">(opcional, para avisarle cada paso)</span></label><input class="in" id="mEmail" type="email" inputmode="email" autocomplete="off"></div>
         </div>
       </section>
 
@@ -219,6 +220,7 @@ async function submit(e) {
   const bad = (m, el) => { err.textContent = m; el?.focus(); };
   if (!$("#mName").value.trim()) return bad("Escribe el nombre del cliente.", $("#mName"));
   if ($("#mPhone").value.replace(/\D/g, "").length < 10) return bad("Escribe el WhatsApp de 10 dígitos.", $("#mPhone"));
+  if ($("#mEmail").value.trim() && !/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test($("#mEmail").value.trim())) return bad("Revisa el correo o déjalo vacío.", $("#mEmail"));
   if (!st.cart.size) return bad("Agrega al menos un producto.", $("#mSearch"));
   if (!st.loc) return bad("Marca la ubicación de entrega.", $("#mPaste"));
   if (!st.quote) return bad("Aún no tenemos el costo de envío para esa ubicación.");
@@ -234,6 +236,7 @@ async function submit(e) {
     reference: $("#mRef").value,
     scheduled_for: later ? localToISO($("#mDate").value, $("#mTime").value) : null,
     customer_name: $("#mName").value.trim(), customer_phone: $("#mPhone").value,
+    customer_email: $("#mEmail").value.trim() || null,
     recipient_name: gift ? $("#mRName").value : null, recipient_phone: gift && $("#mRPhone").value ? $("#mRPhone").value : null,
     gift_message: gift ? $("#mMsg").value : null,
     paid,

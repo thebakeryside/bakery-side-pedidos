@@ -121,3 +121,36 @@ button.chip:hover { border-color: var(--crema-2); color: var(--crema); }
 .optc { display: grid; gap: 6px; padding-left: 8px; border-left: 2px solid var(--cacao); }
 .optp { display: flex; flex-wrap: wrap; gap: 6px; }
 .optp .chip { padding: 5px 10px; font-weight: 500; font-size: 13.5px; }
+
+/* PIN de entrega (moto) */
+.pin-ask { width: 100%; }
+.pin-row { display: flex; gap: 8px; }
+.pin-row input.pin-in { width: 128px; flex: none; min-width: 0; font-size: 24px !important; letter-spacing: .4em; text-align: center; font-variant-numeric: tabular-nums; }
+.pin-row .btn { flex: 1; min-width: 0; }
+
+/* Tarjeta de cocina: primero lo que se prepara */
+.owhen { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.rel { font-family: var(--body); font-size: 13px; font-weight: 700; letter-spacing: 0; padding: 3px 9px; border-radius: 999px; background: var(--tinta-3); color: var(--crema-2); }
+.rel.soon { background: rgb(231 185 95 / .18); color: var(--aviso); }
+.rel.late { background: rgb(229 138 122 / .2); color: var(--error); }
+.kitems { list-style: none; margin: 0; padding: 10px 12px; display: grid; gap: 7px; background: var(--tinta); border-radius: 10px; }
+.kitems li { display: grid; grid-template-columns: 30px 1fr; gap: 8px; align-items: baseline; font-size: 16.5px; font-weight: 600; line-height: 1.25; }
+.kitems .q { font-family: var(--display); font-size: 24px; color: var(--tostado); text-align: right; line-height: 1; font-weight: 400; }
+.kitems em { display: block; font-style: normal; font-weight: 500; font-size: 13.5px; color: var(--aviso); }
+.ocard .gift { display: flex; gap: 10px; align-items: flex-start; background: rgb(198 138 78 / .14); border: 1px dashed var(--tostado); color: var(--crema); }
+.ocard .gift svg { flex: none; margin-top: 2px; color: var(--tostado); }
+.ocard .gift span { display: block; color: var(--crema-2); margin-top: 2px; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 600; padding: 4px 9px; border-radius: 999px; background: var(--tinta-3); color: var(--crema-2); }
+.chip.ok { color: var(--ok); background: rgb(156 196 138 / .14); }
+.chip.warn { color: var(--aviso); background: rgb(231 185 95 / .14); }
+.chip.bad { color: var(--error); background: rgb(229 138 122 / .18); }
+.acts.main .btn.primary { flex: 1 1 200px; min-height: 46px; font-size: 15.5px; }
+.wait { display: inline-flex; gap: 6px; align-items: center; font-size: 14px; color: var(--crema-2); flex: 1 1 200px; }
+.more { border-top: 1px solid var(--cacao); padding-top: 8px; }
+.more summary { cursor: pointer; font-size: 13.5px; font-weight: 600; color: var(--crema-2); list-style: none; display: flex; align-items: center; gap: 6px; }
+.more summary::-webkit-details-marker { display: none; }
+.more summary::before { content: "›"; display: inline-block; transition: transform .15s; font-size: 18px; line-height: 1; }
+.more[open] summary::before { transform: rotate(90deg); }
+.more .meta { margin-top: 8px; }
+.meta a { color: inherit; }

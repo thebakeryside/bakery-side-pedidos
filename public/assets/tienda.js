@@ -296,7 +296,7 @@ function openCheckout() {
   ($("#payCard").disabled ? $("#payTransfer") : $("#payCard")).checked = true;
   syncPay();
   // datos guardados del cliente
-  try { const p = JSON.parse(localStorage.getItem(PROFILE_KEY) || "{}"); for (const k of ["cName", "cPhone", "address", "reference"]) if (p[k] && !$("#" + k).value) $("#" + k).value = k === "address" ? splitAddr(p[k]) : p[k]; if (p.locLabel && !state.locLabel) setLocLabel(p.locLabel); if (p.lat && !state.loc) state.loc = { lat: p.lat, lng: p.lng }; } catch {}
+  try { const p = JSON.parse(localStorage.getItem(PROFILE_KEY) || "{}"); for (const k of ["cName", "cPhone", "cEmail", "address", "reference"]) if (p[k] && !$("#" + k).value) $("#" + k).value = k === "address" ? splitAddr(p[k]) : p[k]; if (p.locLabel && !state.locLabel) setLocLabel(p.locLabel); if (p.lat && !state.loc) state.loc = { lat: p.lat, lng: p.lng }; } catch {}
   setupMap();
   renderAcctBox(); renderPerks();
   renderSummary();
@@ -304,6 +304,7 @@ function openCheckout() {
 
 function renderAcctBox() {
   const box = $("#acctBox"), a = state.acct;
+  $("#emailRow").hidden = false;
   if (a) {
     const c = a.customer;
     if (c.full_name && !$("#cName").value) $("#cName").value = c.full_name;
@@ -311,7 +312,8 @@ function renderAcctBox() {
     if (c.address && !$("#address").value) { const [dir, loc] = String(c.address).split(LOC_SEP); $("#address").value = dir; if (loc && !state.locLabel) setLocLabel(loc); }
     if (c.reference && !$("#reference").value) $("#reference").value = c.reference;
     if (c.lat && !state.loc) { state.loc = { lat: c.lat, lng: c.lng }; if (mapCtl) mapCtl.setView(c.lat, c.lng, 18); else requestQuote(); }
-    box.innerHTML = `<p class="muted small" style="margin:6px 0 0">Pedido con tu cuenta de Google (${esc(c.email || "")}). Este pedido suma sellos a tu tarjeta.</p>`;
+    box.innerHTML = `<p class="muted small" style="margin:6px 0 0">Pedido con tu cuenta de Google (${esc(c.email || "")}). Este pedido suma sellos a tu tarjeta y te avisamos cada paso a ese correo.</p>`;
+    $("#emailRow").hidden = true;
     return;
   }
   if (state.guest) {
@@ -480,6 +482,8 @@ $("#orderForm").addEventListener("submit", async (e) => {
   if (!$("#address").value.trim()) return bad("Escribe la dirección de entrega.", $("#address"));
   if (!$("#cName").value.trim()) return bad("Escribe tu nombre.", $("#cName"));
   if ($("#cPhone").value.replace(/\D/g, "").length < 10) return bad("Escribe tu WhatsApp de 10 dígitos.", $("#cPhone"));
+  const mail = $("#cEmail").value.trim();
+  if (!state.acct && !/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(mail)) return bad("Escribe tu correo para avisarte cómo va tu pedido.", $("#cEmail"));
   const pay = $("#payCard").checked ? "tarjeta" : "transferencia";
 
   const body = {
@@ -487,6 +491,7 @@ $("#orderForm").addEventListener("submit", async (e) => {
     address: fullAddress(), reference: $("#reference").value,
     scheduled_for: later ? localToISO($("#schedDate").value, $("#schedTime").value) : null,
     customer_name: $("#cName").value, customer_phone: $("#cPhone").value,
+    customer_email: state.acct ? null : $("#cEmail").value.trim(),
     recipient_name: $("#isGift").checked ? $("#rName").value : null,
     recipient_phone: $("#isGift").checked && $("#rPhone").value ? $("#rPhone").value : null,
     gift_message: $("#isGift").checked ? $("#giftMsg").value : null,
@@ -497,7 +502,7 @@ $("#orderForm").addEventListener("submit", async (e) => {
     reward_product_id: Number($("#rewardPick")?.value || 0) || null,
     ref: storedRef(),
   };
-  try { localStorage.setItem(PROFILE_KEY, JSON.stringify({ cName: body.customer_name, cPhone: body.customer_phone, address: $("#address").value.trim(), locLabel: state.locLabel, reference: body.reference, ...state.loc })); } catch {}
+  try { localStorage.setItem(PROFILE_KEY, JSON.stringify({ cName: body.customer_name, cPhone: body.customer_phone, cEmail: $("#cEmail").value.trim(), address: $("#address").value.trim(), locLabel: state.locLabel, reference: body.reference, ...state.loc })); } catch {}
 
   const btn = $("#payBtn"); btn.disabled = true; btn.textContent = "Creando tu pedido…";
   try {

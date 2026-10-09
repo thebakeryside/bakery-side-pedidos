@@ -31,6 +31,14 @@ async function load() {
 }
 
 function render() {
+  // conserva el PIN que el motorizado está escribiendo si llega una actualización
+  const typed = Object.fromEntries([...document.querySelectorAll(".pin-in")].map((i) => [i.dataset.pin, i.value]));
+  const focused = document.activeElement?.dataset?.pin;
+  draw();
+  for (const [id, v] of Object.entries(typed)) { const i = document.querySelector(`[data-pin="${id}"]`); if (i) i.value = v; }
+  if (focused) document.querySelector(`[data-pin="${focused}"]`)?.focus();
+}
+function draw() {
   const active = orders.filter((o) => o.status !== "entregado" && o.status !== "cancelado");
   const done = orders.filter((o) => o.status === "entregado");
   const earned = done.reduce((s, o) => s + Number(o.delivery_fee), 0);
@@ -47,7 +55,12 @@ function card(o) {
   if (!o.rider_accepted_at && o.status !== "entregado") act = `<button class="btn primary" data-a="aceptar" data-id="${o.id}">Aceptar entrega</button><button class="btn ghost" data-a="rechazar" data-id="${o.id}">No puedo</button>`;
   else if (["confirmado", "preparando"].includes(o.status)) act = `<span class="muted small">Cocina lo está preparando. Te avisamos cuando esté listo.</span>`;
   else if (o.status === "listo") act = `<button class="btn primary block" data-a="recoger" data-id="${o.id}">Recogí el pedido · salir</button>`;
-  else if (o.status === "en_camino") act = `<button class="btn primary block" data-a="entregar" data-id="${o.id}">Entregado</button>`;
+  else if (o.status === "en_camino") act = `<div class="pin-ask">
+      <label class="f" for="pin-${o.id}">PIN del cliente</label>
+      <p class="muted small" style="margin:0 0 8px">Pídele a ${esc(to.split(" ")[0])} los 4 números de su PIN. ${o.recipient_name ? "Es un regalo: si no lo tiene, que se lo pida a quien hizo el pedido." : "Está en su correo y en su seguimiento del pedido."}</p>
+      <div class="pin-row"><input class="in pin-in" id="pin-${o.id}" data-pin="${o.id}" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="one-time-code" placeholder="••••" aria-label="PIN de 4 dígitos">
+      <button class="btn primary" data-a="entregar" data-id="${o.id}">Confirmar entrega</button></div>
+      <p class="err small" data-pinerr="${o.id}" role="alert"></p></div>`;
   return `<article class="ocard" data-s="${o.status}">
     <div class="ohead"><span class="oid">${esc(o.code)}</span><span class="st st-${o.status}">${STATUS[o.status]}</span></div>
     <div class="dest">
@@ -72,13 +85,16 @@ function card(o) {
 
 document.addEventListener("click", async (e) => {
   const b = e.target.closest("button[data-a]"); if (!b) return;
+  const pinIn = b.dataset.a === "entregar" ? $(`[data-pin="${b.dataset.id}"]`) : null;
+  const pin = pinIn ? pinIn.value.replace(/\D/g, "") : null;
+  if (pinIn && pin.length !== 4) { $(`[data-pinerr="${b.dataset.id}"]`).textContent = "Escribe los 4 números del PIN."; pinIn.focus(); return; }
   b.disabled = true;
-  const call = () => sb.rpc("rider_action", { p_order: b.dataset.id, p_action: b.dataset.a });
-  let { error } = await call();
+  const call = () => sb.rpc("rider_action", { p_order: b.dataset.id, p_action: b.dataset.a, ...(pinIn ? { p_pin: pin } : {}) });
+  let { data, error } = await call();
   // Si la sesión venció (por ejemplo, con cocina abierta en otra pestaña), la renovamos y reintentamos una vez
   if (error && /permission denied|motorizado activo|JWT/i.test(error.message)) {
     const { error: re } = await sb.auth.refreshSession();
-    if (!re) ({ error } = await call());
+    if (!re) ({ data, error } = await call());
   }
   if (error) {
     b.disabled = false;
@@ -86,6 +102,13 @@ document.addEventListener("click", async (e) => {
     if (/no asignado/i.test(error.message)) { await load(); return toast("Este pedido ya no está asignado a ti."); }
     if (/estado actual/i.test(error.message)) { await load(); return toast("El pedido cambió de estado. Revisa la tarjeta."); }
     return toast("No se pudo guardar. Revisa tu conexión e intenta de nuevo.");
+  }
+  // PIN equivocado o bloqueado: el servidor responde con el mensaje (el intento sí cuenta)
+  if (typeof data === "string" && data !== "ok") {
+    b.disabled = false;
+    $(`[data-pinerr="${b.dataset.id}"]`).textContent = data;
+    if (pinIn) { pinIn.value = ""; pinIn.focus(); }
+    return;
   }
   toast({ aceptar: "Entrega aceptada", rechazar: "Avisamos a cocina", recoger: "¡Buen viaje!", entregar: "Entrega registrada" }[b.dataset.a]);
   await load();

@@ -26,26 +26,40 @@ function render(o) {
   if (o.status === "cancelado") head = `<p class="eyebrow">Pedido ${esc(o.code)}</p><div class="big">Cancelado</div><p class="muted">Si tienes dudas, escríbenos por WhatsApp.</p>`;
   else if (o.status === "entregado") head = `<p class="eyebrow">Pedido ${esc(o.code)}</p><div class="big">Entregado</div><p class="muted">${when(o.delivered_at)}</p>`;
   else if (unpaid) head = `<p class="eyebrow">Pedido ${esc(o.code)}</p><div class="big">Falta el pago</div><p class="muted">${o.payment_status === "fallido" ? "El último intento de pago no se aprobó." : "Tu pedido está guardado, pero aún no recibimos el pago."} Lo preparamos apenas se confirme.</p>`;
-  else if (o.status === "por_confirmar") head = `<p class="eyebrow">Pedido ${esc(o.code)}</p><div class="big">Verificando tu transferencia</div><p class="muted">Recibimos tu comprobante. Te avisamos por WhatsApp apenas lo confirmemos.</p>`;
+  else if (o.status === "por_confirmar") head = `<p class="eyebrow">Pedido ${esc(o.code)}</p><div class="big">Verificando tu transferencia</div><p class="muted">Recibimos tu comprobante. Te avisamos por correo apenas lo confirmemos.</p>`;
   else head = `<p class="eyebrow">Pedido ${esc(o.code)} · ${o.scheduled_for ? "Entrega agendada" : "Llega aprox."}</p><div class="big tabnum">${o.scheduled_for ? when(o.scheduled_for) : hhmm(o.eta)}</div>`;
 
   const showSteps = !unpaid && !["cancelado", "por_confirmar"].includes(o.status);
   $("#root").innerHTML = `
     <div class="panel">${head}
-      ${unpaid ? `<div style="display:grid;gap:10px;margin-top:14px">
+      ${unpaid ? `<div class="paybox">
+        <div class="payseg" role="tablist" aria-label="Forma de pago">
+          <button type="button" role="tab" id="segCard" aria-selected="${!wantAlt}">Tarjeta</button>
+          <button type="button" role="tab" id="segAlt" aria-selected="${wantAlt}">Deuna, Peigo o transferencia</button>
+        </div>
         <div id="altPay" ${wantAlt ? "" : "hidden"}>
-          <p class="small" style="margin:0 0 8px">Paga <b class="tabnum">${money(o.total)}</b> con:</p>
-          <div class="paytabs" id="payTabs" role="tablist"></div>
-          <div id="payPane" class="paypane"><p class="muted small">Cargando…</p></div>
-          <label class="f" for="receipt">Captura o foto del pago</label><input class="in" id="receipt" type="file" accept="image/*,application/pdf">
-          <button class="btn primary block" id="sendReceipt" style="margin-top:10px">Enviar comprobante</button>
-          <p class="muted small" style="margin:8px 0 0">¿Prefieres tarjeta? <a href="#" id="toCard">Paga con tarjeta</a>.</p>
+          <ol class="paysteps">
+            <li><span class="pn">1</span><div class="pbody"><b>Paga <span class="tabnum">${money(o.total)}</span></b>
+              <div class="paytabs" id="payTabs" role="tablist"></div>
+              <div id="payPane" class="paypane"><p class="muted small">Cargando…</p></div></div></li>
+            <li><span class="pn">2</span><div class="pbody"><b>Sube la captura del pago</b>
+              <label class="drop" id="drop" for="receipt">
+                <input id="receipt" type="file" accept="image/*,application/pdf">
+                <span class="drop-empty"><svg width="30" height="30" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.5" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+                  <b>Toca aquí para elegir la captura</b><small>Foto o captura de pantalla del pago (también PDF)</small></span>
+                <span class="drop-full" hidden><img id="rcPrev" alt=""><span><b id="rcName"></b><small>Toca para cambiarla</small></span></span>
+              </label></div></li>
+            <li><span class="pn">3</span><div class="pbody"><b>Envíala y listo</b>
+              <button class="btn primary block" id="sendReceipt" disabled>Enviar comprobante</button>
+              <p class="muted small" style="margin:6px 0 0">Te avisamos por correo apenas confirmemos el pago.</p></div></li>
+          </ol>
         </div>
         <div id="cardPay" ${wantAlt ? "hidden" : ""}>
           <button class="btn primary block" id="payNow">Pagar ${money(o.total)} con tarjeta</button>
-          <p class="muted small" style="margin:8px 0 0">¿Prefieres Deuna, Peigo o transferencia? <a href="#" id="showUpload">Ver cómo pagar</a>.</p>
         </div>
         <p class="err" id="err" role="alert"></p></div>` : ""}
+      ${o.delivery_pin ? `<div class="pinbox"><span class="lbl">Tu PIN de entrega</span><span class="pinnum tabnum" aria-label="PIN ${o.delivery_pin.split("").join(" ")}">${o.delivery_pin.split("").map((d) => `<i>${d}</i>`).join("")}</span>
+        <small>${o.is_gift ? "Como es un regalo, compártelo con quien lo recibe. " : ""}Dáselo al motorizado solo cuando tengas el pedido en tus manos. Así confirmamos que llegó a ti.</small></div>` : ""}
       ${showSteps ? `<ol class="steps">${steps.map(([k, l, t, sub], i) => `<li class="${o.status === "entregado" || i < idx ? "done" : i === Math.ceil(idx) ? "now" : ""}"><span class="dot"></span><div><b>${l}</b><small>${esc(sub)}</small></div><span class="t">${t ? hhmm(t) : ""}</span></li>`).join("")}</ol>` : ""}
     </div>
     <div class="panel">
@@ -62,18 +76,28 @@ function render(o) {
       try { const r = await api("pagar", { tracking_token: token }); openPayphone(r.payphone, `Pedido ${r.code} · Total ${money(r.total)}`, token); }
       catch (e) { $("#err").textContent = e.message; }
     };
-    const showAlt = async () => {
-      $("#altPay").hidden = false; $("#cardPay").hidden = true;
-      try { renderPayOptions(await api("pago_info", { tracking_token: token })); }
-      catch (e) { $("#payPane").innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+    let loaded = false;
+    const seg = (alt) => {
+      $("#segCard").setAttribute("aria-selected", !alt); $("#segAlt").setAttribute("aria-selected", alt);
+      $("#altPay").hidden = !alt; $("#cardPay").hidden = alt; $("#err").textContent = "";
+      if (alt && !loaded) { loaded = true; api("pago_info", { tracking_token: token }).then(renderPayOptions).catch((e) => { loaded = false; $("#payPane").innerHTML = `<p class="err">${esc(e.message)}</p>`; }); }
     };
-    $("#showUpload").onclick = (e) => { e.preventDefault(); showAlt(); };
-    $("#toCard").onclick = (e) => { e.preventDefault(); $("#altPay").hidden = true; $("#cardPay").hidden = false; };
-    if (wantAlt) showAlt();
+    $("#segCard").onclick = () => seg(false);
+    $("#segAlt").onclick = () => seg(true);
+    if (wantAlt) seg(true);
+    $("#receipt").onchange = () => {
+      const f = $("#receipt").files[0];
+      $(".drop-empty").hidden = !!f; $(".drop-full").hidden = !f; $("#drop").classList.toggle("has", !!f);
+      $("#sendReceipt").disabled = !f; $("#err").textContent = "";
+      if (!f) return;
+      $("#rcName").textContent = f.name.length > 34 ? f.name.slice(0, 31) + "…" : f.name;
+      const img = $("#rcPrev");
+      if (f.type.startsWith("image/")) { img.src = URL.createObjectURL(f); img.hidden = false; } else img.hidden = true;
+    };
     $("#sendReceipt").onclick = async () => {
       const f = $("#receipt").files[0];
       if (!f) return ($("#err").textContent = "Elige la foto del comprobante.");
-      $("#sendReceipt").disabled = true;
+      $("#sendReceipt").disabled = true; $("#sendReceipt").textContent = "Enviando…";
       try {
         const up = await api("subir", { tracking_token: token });
         const { error } = await sb.storage.from("comprobantes").uploadToSignedUrl(up.path, up.token, f, { contentType: f.type || "image/jpeg" });
@@ -81,7 +105,7 @@ function render(o) {
         await api("comprobante", { tracking_token: token, path: up.path });
         history.replaceState(null, "", `/pedido?t=${token}`);
         load();
-      } catch (e) { $("#err").textContent = e.message; $("#sendReceipt").disabled = false; }
+      } catch (e) { $("#err").textContent = e.message; $("#sendReceipt").disabled = false; $("#sendReceipt").textContent = "Enviar comprobante"; }
     };
   }
   clearTimeout(timer);

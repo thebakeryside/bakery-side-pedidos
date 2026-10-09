@@ -396,12 +396,15 @@ async function makeOrder(b: any, cust: Record<string, any> | null, staff: { paid
       invoice_id_number: invoiceWith ? clean(b.invoice_id_number, 13) : null,
       invoice_name: invoiceWith ? clean(b.invoice_name, 120) : null,
       invoice_email: invoiceWith ? clean(b.invoice_email, 120) : null,
+      // correo para avisar cada paso: el de la cuenta de Google o el que escribió el cliente
+      customer_email: (/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(clean(b.customer_email, 120)) ? clean(b.customer_email, 120).toLowerCase() : null) || cust?.email || null,
     };
     if (staff) {
       row.channel = "whatsapp";
       row.payment_ref = `Pedido por WhatsApp · registrado por ${staff.by}`;
     }
     let ins = await db.from("orders").insert(row).select().single();
+    if (ins.error && /customer_email/.test(ins.error.message)) { delete row.customer_email; ins = await db.from("orders").insert(row).select().single(); }
     if (ins.error && /channel/.test(ins.error.message)) { delete row.channel; ins = await db.from("orders").insert(row).select().single(); }
     if (ins.error) throw ins.error;
     const o = ins.data;

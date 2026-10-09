@@ -4,7 +4,7 @@ import { renderManual } from "./manual.js";
 
 $("#loginSlot").innerHTML = loginHTML("Panel de cocina");
 
-const S = { tab: "pedidos", orders: [], riders: [], products: [], cats: [], settings: null, sound: false, seen: new Set() };
+const S = { tab: "pedidos", orders: [], riders: [], products: [], cats: [], settings: null, sound: false, seen: new Set(), pins: new Map() };
 const ACTIVE = ["por_confirmar", "confirmado", "preparando", "listo", "en_camino"];
 const AGENDA_HOURS = 3; // los agendados aparecen en "Pedidos" desde 3 horas antes
 
@@ -39,6 +39,12 @@ async function loadOrders() {
   if (error) return toast("No pudimos cargar los pedidos: " + error.message);
   S.orders = data;
   data.forEach((o) => S.seen.add(o.id + o.status));
+  // PIN de entrega de los pedidos en curso (solo cocina y master pueden leerlos)
+  const live = data.filter((o) => ACTIVE.includes(o.status)).map((o) => o.id);
+  if (live.length) {
+    const { data: pins } = await sb.from("order_pins").select("order_id,pin,attempts").in("order_id", live);
+    S.pins = new Map((pins || []).map((p) => [p.order_id, p]));
+  }
 }
 async function loadRiders() { const { data } = await sb.from("riders").select("*").order("full_name"); S.riders = (data || []).filter((r) => !r.archived_at); }
 async function loadMenu() {
@@ -104,55 +110,96 @@ function waText(o) {
   const link = `${location.origin}/pedido?t=${o.tracking_token}`;
   const first = o.customer_name.split(" ")[0];
   const r = o.riders?.full_name?.split(" ")[0];
+  const pin = S.pins.get(o.id)?.pin;
   const msgs = {
     pendiente_pago: `Hola ${first}, vimos tu pedido ${o.code} en The Bakery Side pero aún no se completó el pago. Puedes pagarlo aquí: ${link}`,
     por_confirmar: `Hola ${first}, recibimos tu comprobante del pedido ${o.code}. Lo estamos verificando. Seguimiento: ${link}`,
-    confirmado: `Hola ${first}, ¡confirmamos tu pedido ${o.code}! ${o.scheduled_for ? `Lo entregamos ${when(o.scheduled_for)}.` : `Llega aprox. a las ${hhmm(o.eta)}.`} Seguimiento: ${link}`,
+    confirmado: `Hola ${first}, ¡confirmamos tu pedido ${o.code}! ${o.scheduled_for ? `Lo entregamos ${when(o.scheduled_for)}.` : `Llega aprox. a las ${hhmm(o.eta)}.`}${pin ? ` Tu PIN de entrega es ${pin}: dáselo al motorizado solo cuando tengas el pedido en tus manos.` : ""} Seguimiento: ${link}`,
     preparando: `Hola ${first}, tu pedido ${o.code} ya se está preparando. Seguimiento: ${link}`,
     listo: `Hola ${first}, tu pedido ${o.code} está listo y sale en minutos. Seguimiento: ${link}`,
-    en_camino: `Hola ${first}, tu pedido ${o.code} va en camino${r ? ` con ${r}` : ""}. Seguimiento: ${link}`,
+    en_camino: `Hola ${first}, tu pedido ${o.code} va en camino${r ? ` con ${r}` : ""}.${pin ? ` Ten a mano tu PIN de entrega: ${pin}.` : ""} Seguimiento: ${link}`,
     entregado: `Hola ${first}, gracias por tu pedido ${o.code}. ¡Que lo disfrutes!`,
     cancelado: `Hola ${first}, tu pedido ${o.code} fue cancelado. Escríbenos si tienes dudas.`,
   };
   return msgs[o.status];
 }
 
+// Tarjeta de pedido: arriba lo que cocina necesita (hora, productos, regalo, acción); los datos del cliente van plegados
+const ICON = {
+  moto: `<svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5.5" cy="17" r="3" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="18.5" cy="17" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8.5 17h6l2-6h-4M14 6h3l1.5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  pay: `<svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 10h18" stroke="currentColor" stroke-width="2"/></svg>`,
+  pin: `<svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.1-7-11.5A7 7 0 0 1 19 9.5C19 14.9 12 21 12 21z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="9.5" r="2.5" fill="currentColor"/></svg>`,
+  gift: `<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11h16v9H4zM3 7h18v4H3zM12 7v13M12 7S10.5 3 8 3.6 7.6 7 12 7zm0 0s1.5-4 4-3.4S16.4 7 12 7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>`,
+};
+function relTime(o) {
+  if (["entregado", "cancelado", "pendiente_pago"].includes(o.status)) return "";
+  const at = new Date(o.scheduled_for || o.eta).getTime(), m = Math.round((at - Date.now()) / 60000);
+  if (m < -1) return `<span class="rel late">${-m} min tarde</span>`;
+  if (m <= 1) return `<span class="rel late">ahora</span>`;
+  if (m < 90) return `<span class="rel ${m <= 15 ? "soon" : ""}">en ${m} min</span>`;
+  return "";
+}
+function payChip(o) {
+  if (o.payment_status === "pagado") return `<span class="chip ok">${ICON.pay}Pagado</span>`;
+  if (o.payment_status === "en_revision") return `<span class="chip warn">${ICON.pay}Transferencia por verificar</span>`;
+  return `<span class="chip warn">${ICON.pay}${o.payment_status === "fallido" ? "Pago fallido" : "Sin pagar"}</span>`;
+}
+function riderChip(o) {
+  if (!["confirmado", "preparando", "listo", "en_camino", "entregado"].includes(o.status)) return "";
+  if (!o.riders) return `<span class="chip warn">${ICON.moto}Sin motorizado</span>`;
+  return `<span class="chip">${ICON.moto}${esc(o.riders.full_name.split(" ")[0])}${o.rider_accepted_at || o.status === "entregado" ? "" : " · sin aceptar"}</span>`;
+}
+function itemLine(i) {
+  const m = String(i.name).match(/^(.*?) \(([^()]*)\)$/); // "Cold Brew (11oz) (Stevia)" → opción aparte
+  return m ? `<li><b class="q">${i.quantity}</b><span>${esc(m[1])}<em>${esc(m[2])}</em></span></li>` : `<li><b class="q">${i.quantity}</b><span>${esc(i.name)}</span></li>`;
+}
 function card(o) {
   const t = o.scheduled_for ? when(o.scheduled_for) : `Llega ${hhmm(o.eta)}`;
-  const payTxt = o.payment_method === "tarjeta"
-    ? `Tarjeta · ${o.payment_status === "pagado" ? "pagado" : o.payment_status}`
-    : `Transferencia · ${o.payment_status === "pagado" ? "confirmada" : o.payment_status === "en_revision" ? "por verificar" : o.payment_status}`;
   const riderOpts = `<option value="">Asignar motorizado…</option>` + S.riders.filter((r) => r.active).map((r) => `<option value="${r.id}" ${o.rider_id === r.id ? "selected" : ""}>${esc(r.full_name)}</option>`).join("");
-  let acts = "";
-  if (o.status === "por_confirmar") acts += `<button class="btn small" data-act="receipt" data-id="${o.id}">Ver comprobante</button><button class="btn small primary" data-act="confirmPay" data-id="${o.id}">Confirmar pago</button>`;
-  if (o.status === "confirmado") acts += `<button class="btn small primary" data-act="prep" data-id="${o.id}">Empezar a preparar</button>`;
-  if (o.status === "preparando") acts += `<button class="btn small primary" data-act="ready" data-id="${o.id}">Marcar listo</button>`;
-  if (["confirmado", "preparando", "listo"].includes(o.status)) acts += `<select class="in" data-act="assign" data-id="${o.id}" aria-label="Motorizado">${riderOpts}</select>`;
-  if (o.status === "listo") acts += `<button class="btn small" data-act="pick" data-id="${o.id}">Salió con el motorizado</button>`;
-  if (o.status === "en_camino") acts += `<button class="btn small" data-act="deliver" data-id="${o.id}">Marcar entregado</button>`;
+  const pin = S.pins.get(o.id);
+  // acción principal según el estado (una sola, grande)
+  let main = "";
+  if (o.status === "por_confirmar") main = `<button class="btn small" data-act="receipt" data-id="${o.id}">Ver comprobante</button><button class="btn primary" data-act="confirmPay" data-id="${o.id}">Confirmar pago</button>`;
+  else if (o.status === "confirmado") main = `<button class="btn primary" data-act="prep" data-id="${o.id}">Empezar a preparar</button>`;
+  else if (o.status === "preparando") main = `<button class="btn primary" data-act="ready" data-id="${o.id}">Listo · que lo recoja el motorizado</button>`;
+  else if (o.status === "listo") main = `<span class="wait">${ICON.moto}Esperando que ${o.riders ? esc(o.riders.full_name.split(" ")[0]) : "el motorizado"} lo recoja</span>`;
+  else if (o.status === "en_camino") main = `<span class="wait">${ICON.moto}En camino · se confirma con el PIN del cliente</span>`;
+  const assign = ["confirmado", "preparando", "listo"].includes(o.status) ? `<select class="in" data-act="assign" data-id="${o.id}" aria-label="Motorizado">${riderOpts}</select>` : "";
   const canCancel = !["entregado", "cancelado"].includes(o.status);
+  const canForce = ["listo", "en_camino"].includes(o.status);
+  const delivered = o.status === "entregado" ? `<span>Entregado ${hhmm(o.delivered_at)}${o.delivered_by === "moto" ? " · confirmado con PIN" : o.delivered_by === "cocina" ? " · marcado por cocina" : ""}${o.delivery_note ? ` (${esc(o.delivery_note)})` : ""}</span>` : "";
   return `<article class="ocard" data-s="${o.status}">
     <div class="ohead"><span class="oid">${esc(o.code)}${o.channel === "whatsapp" || /WhatsApp/.test(o.payment_ref || "") ? ` <span class="wa-tag">WhatsApp</span>` : ""}</span><span class="st st-${o.status}">${STATUS[o.status]}</span></div>
-    <div class="owhen tabnum">${esc(t)}</div>
-    <div class="meta">
-      <span><b>${esc(o.customer_name)}</b> · ${esc(o.customer_phone)}</span>
-      ${o.recipient_name ? `<span>Recibe: <b>${esc(o.recipient_name)}</b>${o.recipient_phone ? " · " + esc(o.recipient_phone) : ""}</span>` : ""}
-      <span>${esc(o.address)}${o.reference ? " · " + esc(o.reference) : ""}</span>
-      <span>${Number(o.distance_km).toFixed(1)} km · envío ${money(o.delivery_fee)} · total <b>${money(o.total)}</b></span>
-      <span>${esc(payTxt)}</span>
-      ${Number(o.discount) > 0 ? `<span>Regalo de cumpleaños: −${money(o.discount)}</span>` : ""}
-      ${o.user_id ? `<span>Cliente con cuenta (suma sellos)</span>` : ""}
-      ${o.invoice_type === "con_datos" ? `<span>Factura: ${esc(o.invoice_name)} · ${esc(o.invoice_id_number)} · ${esc(o.invoice_email)}</span>` : ""}
-      ${o.riders ? `<span>Motorizado: <b>${esc(o.riders.full_name)}</b>${o.rider_accepted_at ? " (aceptó)" : ""}</span>` : ""}
-      ${o.cancel_reason ? `<span>Motivo: ${esc(o.cancel_reason)}</span>` : ""}
-    </div>
-    <ul class="items">${o.order_items.map((i) => `<li>${i.quantity} × ${esc(i.name)}</li>`).join("")}</ul>
-    ${o.gift_message ? `<div class="gift"><b>Tarjeta de regalo:</b> “${esc(o.gift_message)}”</div>` : ""}
-    ${acts ? `<div class="acts">${acts}</div>` : ""}
+    <div class="owhen tabnum">${esc(t)} ${relTime(o)}</div>
+    <ul class="kitems">${o.order_items.map(itemLine).join("")}</ul>
+    ${o.gift_message || o.recipient_name ? `<div class="gift">${ICON.gift}<div><b>Regalo${o.recipient_name ? ` para ${esc(o.recipient_name)}` : ""}</b>${o.gift_message ? `<span>Tarjeta: “${esc(o.gift_message)}”</span>` : ""}</div></div>` : ""}
+    <div class="chips">${payChip(o)}${riderChip(o)}<span class="chip">${ICON.pin}${Number(o.distance_km).toFixed(1)} km</span>${pin?.attempts >= 5 && canForce ? `<span class="chip bad">PIN bloqueado</span>` : ""}</div>
+    ${main || assign ? `<div class="acts main">${main}${assign}</div>` : ""}
+    <details class="more">
+      <summary>Datos del cliente y entrega</summary>
+      <div class="meta">
+        <span><b>${esc(o.customer_name)}</b> · <a href="tel:${esc(o.customer_phone)}">${esc(o.customer_phone)}</a></span>
+        ${o.recipient_name ? `<span>Recibe: <b>${esc(o.recipient_name)}</b>${o.recipient_phone ? " · " + esc(o.recipient_phone) : ""}</span>` : ""}
+        <span>${esc(o.address)}${o.reference ? " · " + esc(o.reference) : ""}</span>
+        <span>Total <b>${money(o.total)}</b> · envío ${money(o.delivery_fee)} · ${o.payment_method === "tarjeta" ? "tarjeta" : "transferencia"}</span>
+        ${pin && canCancel ? `<span>PIN de entrega: <b class="tabnum">${esc(pin.pin)}</b> <span class="muted">(solo para ayudar al cliente; el motorizado debe pedírselo a él)</span></span>` : ""}
+        ${Number(o.discount) > 0 ? `<span>Regalo de cumpleaños: −${money(o.discount)}</span>` : ""}
+        ${o.user_id ? `<span>Cliente con cuenta (suma sellos)</span>` : ""}
+        ${o.invoice_type === "con_datos" ? `<span>Factura: ${esc(o.invoice_name)} · ${esc(o.invoice_id_number)} · ${esc(o.invoice_email)}</span>` : ""}
+        ${delivered}
+        ${o.cancel_reason ? `<span>Motivo: ${esc(o.cancel_reason)}</span>` : ""}
+      </div>
+    </details>
     <div class="acts">
-      <a class="btn small ghost" href="${waLink(o.customer_phone, waText(o))}" target="_blank" rel="noopener">Avisar por WhatsApp</a>
+      <a class="btn small ghost" href="${waLink(o.customer_phone, waText(o))}" target="_blank" rel="noopener">WhatsApp</a>
       <a class="btn small ghost" href="https://www.google.com/maps/search/?api=1&query=${o.lat},${o.lng}" target="_blank" rel="noopener">Mapa</a>
+      ${canForce ? `<button class="btn small ghost" data-act="forceAsk" data-id="${o.id}">Marcar entregado</button>` : ""}
       ${canCancel ? `<button class="btn small ghost" data-act="cancelAsk" data-id="${o.id}">Cancelar</button>` : ""}
+    </div>
+    <div class="confirm-row" data-force="${o.id}" hidden>
+      <p class="small" style="margin:0;width:100%">Úsalo solo si el motorizado no pudo confirmar con el PIN. ¿Qué pasó?</p>
+      <input class="in" placeholder="Ej.: el cliente no tenía el PIN, lo recibió el guardia" data-freason="${o.id}" style="flex:1;min-width:160px">
+      <button class="btn small" data-act="force" data-id="${o.id}">Confirmar entregado</button>
     </div>
     <div class="confirm-row" data-cancel="${o.id}" hidden>
       <input class="in" placeholder="Motivo de la cancelación" data-reason="${o.id}" style="flex:1;min-width:160px">
@@ -179,8 +226,12 @@ document.addEventListener("click", async (e) => {
     case "confirmPay": return upd(id, { payment_status: "pagado", status: "confirmado", paid_at: now }, `${o.code}: pago confirmado`);
     case "prep": return upd(id, { status: "preparando", prep_started_at: now, eta: o.scheduled_for || new Date(Date.now() + (o.prep_minutes + 15) * 60000).toISOString() }, `${o.code} en preparación`);
     case "ready": return upd(id, { status: "listo", ready_at: now }, `${o.code} listo`);
-    case "pick": return upd(id, { status: "en_camino", picked_at: now }, `${o.code} en camino`);
-    case "deliver": return upd(id, { status: "entregado", delivered_at: now }, `${o.code} entregado`);
+    case "forceAsk": $(`[data-force="${id}"]`).hidden = false; $(`[data-freason="${id}"]`).focus(); break;
+    case "force": {
+      const reason = $(`[data-freason="${id}"]`).value.trim();
+      if (!reason) return toast("Escribe qué pasó para marcarlo entregado.");
+      return upd(id, { status: "entregado", delivered_at: now, picked_at: o.picked_at || now, delivered_by: "cocina", delivery_note: reason.slice(0, 200) }, `${o.code} entregado`);
+    }
     case "cancelAsk": $(`[data-cancel="${id}"]`).hidden = false; $(`[data-reason="${id}"]`).focus(); break;
     case "cancel": {
       const reason = $(`[data-reason="${id}"]`).value.trim();
