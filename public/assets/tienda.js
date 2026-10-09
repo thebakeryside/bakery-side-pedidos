@@ -464,7 +464,10 @@ function renderSummary() {
 }
 
 // ---------- extras del formulario ----------
-$("#isGift").onchange = (e) => ($("#giftBox").hidden = !e.target.checked);
+$("#isGift").onchange = (e) => {
+  $("#giftBox").hidden = !e.target.checked;
+  if (e.target.checked && !$("#giftFrom").value) $("#giftFrom").value = $("#cName").value.trim(); // por defecto, quien compra
+};
 $("#wantInvoice").onchange = (e) => ($("#invoiceBox").hidden = !e.target.checked);
 function syncPay() { $("#transferBox").hidden = !$("#payTransfer").checked; renderSummary(); }
 $$('input[name="pay"]').forEach((r) => r.addEventListener("change", syncPay));
@@ -495,6 +498,7 @@ $("#orderForm").addEventListener("submit", async (e) => {
     recipient_name: $("#isGift").checked ? $("#rName").value : null,
     recipient_phone: $("#isGift").checked && $("#rPhone").value ? $("#rPhone").value : null,
     gift_message: $("#isGift").checked ? $("#giftMsg").value : null,
+    gift_from: $("#isGift").checked ? ($("#giftFrom").value.trim() || $("#cName").value.trim()) : null,
     invoice_type: $("#wantInvoice").checked ? "con_datos" : "consumidor_final",
     invoice_id_number: $("#invId").value, invoice_name: $("#invName").value, invoice_email: $("#invEmail").value,
     payment_method: pay,

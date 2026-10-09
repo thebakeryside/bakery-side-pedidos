@@ -387,6 +387,7 @@ async function makeOrder(b: any, cust: Record<string, any> | null, staff: { paid
       recipient_name: clean(b.recipient_name, 80) || null,
       recipient_phone: b.recipient_phone ? normPhone(b.recipient_phone) : null,
       gift_message: clean(b.gift_message, 300) || null,
+      gift_from: clean(b.recipient_name, 80) || clean(b.gift_message, 300) ? (clean(b.gift_from, 80) || name) : null,
       address, reference: clean(b.reference, 200) || null,
       lat: Number(b.lat), lng: Number(b.lng), distance_km: q.km,
       scheduled_for: sched.scheduled_for, eta: sched.eta.toISOString(), prep_minutes: cart.prep,

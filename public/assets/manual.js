@@ -76,6 +76,7 @@ export async function renderManual(view) {
         <div id="mGiftBox" hidden class="form-grid">
           <div><label class="f" for="mRName">Quién recibe</label><input class="in" id="mRName"></div>
           <div><label class="f" for="mRPhone">Su teléfono <span class="hint">(opcional)</span></label><input class="in" id="mRPhone" type="tel"></div>
+          <div><label class="f" for="mFrom">De parte de <span class="hint">(firma de la tarjeta)</span></label><input class="in" id="mFrom" maxlength="80" placeholder="Si se deja vacío, el nombre del cliente"></div>
           <div style="grid-column:1/-1"><label class="f" for="mMsg">Mensaje para la tarjeta <span class="hint">(opcional)</span></label><textarea class="in" id="mMsg" maxlength="300"></textarea></div>
         </div>
       </section>
@@ -239,6 +240,7 @@ async function submit(e) {
     customer_email: $("#mEmail").value.trim() || null,
     recipient_name: gift ? $("#mRName").value : null, recipient_phone: gift && $("#mRPhone").value ? $("#mRPhone").value : null,
     gift_message: gift ? $("#mMsg").value : null,
+    gift_from: gift ? ($("#mFrom").value.trim() || $("#mName").value.trim()) : null,
     paid,
   };
   const btn = $("#mGo"); btn.disabled = true; btn.textContent = "Registrando…";

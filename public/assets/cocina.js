@@ -172,7 +172,7 @@ function card(o) {
     <div class="ohead"><span class="oid">${esc(o.code)}${o.channel === "whatsapp" || /WhatsApp/.test(o.payment_ref || "") ? ` <span class="wa-tag">WhatsApp</span>` : ""}</span><span class="st st-${o.status}">${STATUS[o.status]}</span></div>
     <div class="owhen tabnum">${esc(t)} ${relTime(o)}</div>
     <ul class="kitems">${o.order_items.map(itemLine).join("")}</ul>
-    ${o.gift_message || o.recipient_name ? `<div class="gift">${ICON.gift}<div><b>Regalo${o.recipient_name ? ` para ${esc(o.recipient_name)}` : ""}</b>${o.gift_message ? `<span>Tarjeta: “${esc(o.gift_message)}”</span>` : ""}</div></div>` : ""}
+    ${o.gift_message || o.recipient_name ? `<div class="gift">${ICON.gift}<div><b>Regalo${o.recipient_name ? ` para ${esc(o.recipient_name)}` : ""}</b><span class="from">De parte de: <b>${esc(o.gift_from || o.customer_name)}</b></span>${o.gift_message ? `<span>Tarjeta: “${esc(o.gift_message)}”</span>` : `<span>Sin mensaje: solo la firma.</span>`}</div></div>` : ""}
     <div class="chips">${payChip(o)}${riderChip(o)}<span class="chip">${ICON.pin}${Number(o.distance_km).toFixed(1)} km</span>${pin?.attempts >= 5 && canForce ? `<span class="chip bad">PIN bloqueado</span>` : ""}</div>
     ${main || assign ? `<div class="acts main">${main}${assign}</div>` : ""}
     <details class="more">

@@ -78,7 +78,7 @@ function card(o) {
       <a class="btn small" href="tel:${esc(phone)}">Llamar</a>
     </div>
     <ul class="items">${o.order_items.map((i) => `<li>${i.quantity} × ${esc(i.name)}</li>`).join("")}</ul>
-    ${o.gift_message ? `<div class="gift"><b>Es un regalo.</b> Tarjeta: “${esc(o.gift_message)}”</div>` : ""}
+    ${o.gift_message || o.recipient_name ? `<div class="gift"><b>Es un regalo</b> de parte de ${esc(o.gift_from || o.customer_name)}.${o.gift_message ? ` Tarjeta: “${esc(o.gift_message)}”` : ""}</div>` : ""}
     ${act ? `<div class="acts">${act}</div>` : ""}
   </article>`;
 }
