@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Disallow: /cocina
+Disallow: /master
+Disallow: /moto
+Disallow: /pago
+Disallow: /pedido
+Disallow: /cuenta
+
+Sitemap: https://thebakeryside.com/sitemap.xml
