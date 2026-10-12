@@ -245,7 +245,7 @@ function renderCart() {
       <button class="rm" type="button" data-c="x" data-id="${k}">Quitar</button></div>`;
   });
   $("#cartLines").innerHTML = lines.length
-    ? lines.join("") + `<div class="line total"><span>Subtotal</span><span class="tabnum">${money(subtotal())}</span></div><p class="muted small" style="margin:0">El envío se calcula con tu ubicación.</p>`
+    ? lines.join("") + `<div class="line total"><span>Subtotal</span><span class="tabnum">${money(subtotal())}</span></div><p class="muted small" style="margin:0">El envío se calcula con tu ubicación.</p>${state.acct?.rewards_available ? `<p class="reward-note">🎁 Tu postre sorpresa se suma gratis a este pedido.</p>` : ""}`
     : `<div class="cart-empty"><b>Tu pedido está vacío</b><span class="muted small">Agrega algo rico del menú para empezar.</span></div>`;
   $("#goCheckout").disabled = !n;
   $("#goCheckout").textContent = n ? `Continuar · ${money(subtotal())}` : "Continuar";

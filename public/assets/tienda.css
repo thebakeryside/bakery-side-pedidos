@@ -216,3 +216,4 @@ body.light .wrap { max-width: 1260px; }
   .cart #cartLines { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: 2px; }
   .cart #goCheckout { flex: none; min-height: 52px; font-size: 16.5px; box-shadow: 0 -10px 16px -8px rgb(28 23 20 / .15); }
 }
+.reward-note { margin: 0; padding: 8px 10px; border-radius: 10px; background: var(--accent-soft); border: 1px dashed var(--tostado); font-size: 13.5px; font-weight: 600; }

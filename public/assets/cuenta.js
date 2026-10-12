@@ -55,7 +55,7 @@ function paneInicio(acc) {
         <div class="rw-bar"><i style="width:${(n / STAMPS_TOTAL) * 100}%"></i></div>
         <small>1 sello por cada $10 · un pedido de $20 te da 2</small>
       </div>
-      ${acc.rewards_available ? Array.from({ length: Math.min(3, acc.rewards_available) }, () => `<div class="rw-ticket"><div class="l" aria-hidden="true">🎁</div><div class="r"><b>Postre sorpresa</b><span>Ganaste uno: se agrega gratis en tu próximo pedido. Cocina elige algo especial para ti.</span><em>Listo para usar</em></div></div>`).join("") : ""}
+      ${acc.rewards_available ? Array.from({ length: Math.min(3, acc.rewards_available) }, () => `<div class="rw-ticket"><div class="l" aria-hidden="true">🎁</div><div class="r"><b>Postre sorpresa</b><span>Se agrega gratis con tu próximo pedido (con cualquier producto). Cocina elige algo especial para ti.</span><em>Listo para usar</em></div></div>`).join("") : ""}
       <div class="rw-tiles">
         <div class="rw-tile ${acc.birthday_available ? "ready" : ""}"><span class="ic" aria-hidden="true">🎂</span><b>$4 en tu cumpleaños</b><span>${bday}</span>${c.birthday ? "" : `<button class="btn small" type="button" id="toDatos">Agregar</button>`}</div>
         <div class="rw-tile"><span class="ic" aria-hidden="true">💌</span><b>Invita a un amigo</b><span>Empieza con 3 sellos y tú ganas 1 cuando pague su primer pedido</span>
