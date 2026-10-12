@@ -247,7 +247,7 @@ function openPicker(p) {
   const box = $("#optModal");
   box.querySelector(".opt-title").textContent = p.name;
   box.querySelector(".opt-body").innerHTML = gs.map((g) => `<fieldset class="optgroup"><legend>${esc(g.name)}${g.required ? "" : ' <span class="muted small">(opcional)</span>'}</legend>
-    ${g.option_choices.map((c) => `<label class="optchoice"><input type="radio" name="g${g.id}" value="${c.id}"><span>${esc(c.name)}</span>${Number(c.price_delta) > 0 ? `<span class="muted small">+${money(c.price_delta)}</span>` : `<span class="free">+$0.00</span>`}</label>`).join("")}
+    ${g.option_choices.map((c) => `<label class="optchoice"><input type="radio" name="g${g.id}" value="${c.id}"><span>${esc(c.name)}</span>${Number(c.price_delta) > 0 ? `<span class="muted small">+${money(c.price_delta)}</span>` : `<span class="free">${g.option_choices.some((x) => Number(x.price_delta) > 0) ? "Incluido" : "+$0.00"}</span>`}</label>`).join("")}
     ${g.option_choices.every((c) => !Number(c.price_delta)) ? `<p class="freenote">🎁 Cualquier opción, sin recargo adicional.</p>` : ""}</fieldset>`).join("");
   const add = box.querySelector(".opt-add");
   const sync = () => { add.disabled = gs.some((g) => g.required && !box.querySelector(`input[name="g${g.id}"]:checked`)); };
