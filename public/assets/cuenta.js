@@ -1,4 +1,4 @@
-import { sb, api, $, money, esc, when, dayLabel, orderRange, toast, STATUS, mountSocial } from "./common.js";
+import { sb, api, $, money, esc, when, dayLabel, orderRange, toast, STATUS, mountSocial, isTodayLocal } from "./common.js";
 import { captureRef, currentUser, loadAccount, setAccount, signOut, stampCard, googleButton, mountGoogle, STAMPS_TOTAL } from "./account.js";
 import { createMap } from "./mapa.js";
 import { reviewForm } from "./reviews.js";
@@ -75,7 +75,7 @@ function paneInicio(acc, orders = []) {
         <div class="rw-bar"><i style="width:${(n / STAMPS_TOTAL) * 100}%"></i></div>
         <small>1 sello por cada $10 · un pedido de $20 te da 2</small>
       </div>
-      ${orders.some((o) => o.status === "entregado") ? `<button type="button" class="rate-banner as-btn" id="goRate"><b>🎁 HOY: califica todo tu pedido y gana 1 sello</b><span>Califica lo que ya probaste en «Mis pedidos» ›</span></button>` : ""}
+      ${orders.some((o) => o.status === "entregado" && isTodayLocal(o.delivered_at)) ? `<button type="button" class="rate-banner as-btn" id="goRate"><b>🎁 HOY: califica todo tu pedido y gana 1 sello</b><span>Califica lo que ya probaste en «Mis pedidos» ›</span></button>` : ""}
       ${acc.rewards_available ? Array.from({ length: Math.min(3, acc.rewards_available) }, () => `<div class="rw-ticket"><div class="l" aria-hidden="true">🎁</div><div class="r"><b>Postre sorpresa</b><span>Se agrega gratis con tu próximo pedido (con cualquier producto). Cocina elige algo especial para ti.</span><em>Listo para usar</em></div></div>`).join("") : ""}
       <div class="rw-tiles">
         <div class="rw-tile ${acc.birthday_available ? "ready" : ""}"><span class="ic" aria-hidden="true">🎂</span>${bd ? `<span class="bd-count">${bd.big === "🎉" ? "🎉" : `<small>Faltan</small>${bd.big}`}</span>` : ""}<b>${bd?.title || "$4 en tu cumpleaños"}</b><span>${bday}</span>${c.birthday ? "" : `<button class="btn small" type="button" id="toDatos">Agregar</button>`}</div>
@@ -106,10 +106,11 @@ async function panePedidos(_acc, orders) {
   const { data: stampRows } = await sb.from("orders").select("code,review_stamp_at").not("review_stamp_at", "is", null);
   const stamped = new Set((stampRows || []).map((r) => r.code));
   const canRate = !rvErr;
-  const toRate = canRate ? [...new Set(shown.filter((o) => o.status === "entregado").flatMap((o) => o.order_items.filter((i) => i.product_id && Number(i.line_total) > 0).map((i) => i.product_id)))].filter((id) => !rev.has(id)) : [];
+  const today = (o) => o.status === "entregado" && isTodayLocal(o.delivered_at);
+  const toRate = canRate ? [...new Set(shown.filter(today).flatMap((o) => o.order_items.filter((i) => i.product_id && Number(i.line_total) > 0).map((i) => i.product_id)))].filter((id) => !rev.has(id)) : [];
   const initials = (t) => t.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
   const active = (o) => !["entregado", "cancelado", "pendiente_pago"].includes(o.status);
-  $("#pane").innerHTML = `<div class="ol">${toRate.length ? `<div class="rate-banner"><b>🎁 HOY: califica todo tu pedido y gana 1 sello</b><span>Califica cada producto de un pedido entregado. Cuando publicamos todas sus reseñas, sumas 1 sello.</span></div>` : ""}${shown.map((o) => {
+  $("#pane").innerHTML = `<div class="ol">${toRate.length ? `<div class="rate-banner"><b>🎁 HOY: califica todo tu pedido y gana 1 sello</b><span>Solo hoy: califica cada producto del pedido que recibiste. Cuando publicamos todas sus reseñas, sumas 1 sello.</span></div>` : ""}${shown.map((o) => {
     const items = o.order_items.filter((i) => Number(i.line_total) > 0 || !/regalo/i.test(i.name));
     const nItems = items.reduce((t, i) => t + i.quantity, 0);
     const sub = active(o) ? (o.scheduled_for ? `${dayLabel(o.scheduled_for)} · entre ${orderRange(o)}` : `Hoy · llega entre ${orderRange(o)}`)
@@ -121,14 +122,14 @@ async function panePedidos(_acc, orders) {
       ${canRate && o.status === "entregado" ? `<div class="rate-row">${[...new Map(items.filter((i) => i.product_id && Number(i.line_total) > 0).map((i) => [i.product_id, i])).values()].map((i) => {
         const st = rev.get(i.product_id), nm = img.get(i.product_id)?.name || i.name;
         return st ? `<span class="rated">${st === "publicada" ? "✓ Calificado" : st === "oculta" ? "Calificado" : "⏳ En revisión"} · ${esc(nm)}</span>`
-          : `<button type="button" class="chip-btn" data-rate="${i.product_id}" data-name="${esc(nm)}">★ Calificar ${esc(nm)}</button>`; }).join("")}</div>${(() => { const ps = [...new Set(items.filter((i) => i.product_id && Number(i.line_total) > 0).map((i) => i.product_id))]; const done = ps.filter((id) => rev.has(id)).length;
-        return stamped.has(o.code) ? `<p class="rate-prog ok">✓ Ganaste 1 sello por calificar este pedido</p>` : `<p class="rate-prog">Calificaste ${done} de ${ps.length} · ${done === ps.length ? "te sumamos el sello al publicar tus reseñas" : "completa todos y gana 1 sello"}</p>`; })()}<div class="rate-box"></div>` : ""}
+          : `<button type="button" class="chip-btn" data-rate="${i.product_id}" data-name="${esc(nm)}" data-today="${today(o) ? 1 : ""}">★ Calificar ${esc(nm)}</button>`; }).join("")}</div>${(() => { const ps = [...new Set(items.filter((i) => i.product_id && Number(i.line_total) > 0).map((i) => i.product_id))]; const done = ps.filter((id) => rev.has(id)).length;
+        return stamped.has(o.code) ? `<p class="rate-prog ok">✓ Ganaste 1 sello por calificar este pedido</p>` : !today(o) ? "" : `<p class="rate-prog">Calificaste ${done} de ${ps.length} · ${done === ps.length ? "te sumamos el sello al publicar tus reseñas" : "completa todos hoy y gana 1 sello"}</p>`; })()}<div class="rate-box"></div>` : ""}
       <div class="bot"><b class="tabnum">${money(o.total)}</b><span class="acts">
         <a class="btn small ghost" href="/pedido?t=${o.tracking_token}">Ver</a>
         ${active(o) ? `<a class="btn small primary" href="/pedido?t=${o.tracking_token}">Seguir pedido</a>` : `<button class="btn small primary" type="button" data-again="${o.code}">Volver a pedir</button>`}</span></div>
     </article>`; }).join("")}</div>`;
   $("#pane").querySelectorAll("[data-rate]").forEach((b) => (b.onclick = () => {
-    reviewForm(b.closest(".oc").querySelector(".rate-box"), Number(b.dataset.rate), b.dataset.name, () => { b.outerHTML = `<span class="rated">⏳ En revisión · ${esc(b.dataset.name)}</span>`; });
+    reviewForm(b.closest(".oc").querySelector(".rate-box"), Number(b.dataset.rate), b.dataset.name, () => { b.outerHTML = `<span class="rated">⏳ En revisión · ${esc(b.dataset.name)}</span>`; }, Boolean(b.dataset.today));
   }));
   $("#pane").querySelectorAll("[data-again]").forEach((b) => (b.onclick = () => {
     const o = orders.find((x) => x.code === b.dataset.again);

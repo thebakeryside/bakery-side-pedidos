@@ -118,3 +118,6 @@ export const ALLERGENS = [
   ["frutos_secos", "🌰", "Frutos secos"], ["mani", "🥜", "Maní"], ["soya", "🫘", "Soya"],
 ];
 export const allergenNames = (codes) => ALLERGENS.filter(([k]) => (codes || []).includes(k)).map(([, , n]) => n);
+
+// ¿Esta fecha cae hoy en Guayaquil?
+export const isTodayLocal = (iso) => !!iso && new Date(new Date(iso).getTime() - 5 * 3600000).toISOString().slice(0, 10) === todayLocal();
