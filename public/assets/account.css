@@ -152,3 +152,5 @@
 .oc .bot { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .oc .bot > b { font-size: 17px; }
 .oc .acts { display: flex; gap: 6px; }
+.rw-tile > span.bd-count { font-family: var(--display); font-size: 36px; line-height: 1; letter-spacing: .02em; color: var(--tostado); margin-top: 4px; }
+.rw-tile > span.bd-count small { display: block; font-family: var(--body); font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text-2); margin-bottom: 2px; }

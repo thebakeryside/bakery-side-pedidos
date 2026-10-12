@@ -38,14 +38,33 @@ async function render() {
   pane(acc, orders ?? []);
 }
 
+// Cuenta regresiva al cumpleaños (fecha de Guayaquil)
+function birthdayInfo(birthday, available, first) {
+  if (!birthday) return null;
+  const today = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Guayaquil" })); today.setHours(0, 0, 0, 0);
+  const [, m, d] = birthday.split("-").map(Number);
+  let next = new Date(today.getFullYear(), m - 1, d);
+  if (next < today) next = new Date(today.getFullYear() + 1, m - 1, d);
+  const days = Math.round((next - today) / 86400000);
+  const month = next.toLocaleDateString("es-EC", { month: "long" });
+  const dayTxt = `${d} de ${month}`;
+  const inMonth = today.getMonth() === m - 1;
+  if (days === 0) return { big: "🎉", title: `¡Feliz cumpleaños${first ? ", " + first : ""}!`, text: available ? "Hoy tienes $4 de regalo en tu pedido. ¡Celébralo con algo rico!" : "Que tengas un día muy dulce." };
+  if (inMonth && available) return { big: days === 1 ? "1 día" : `${days} días`, title: "¡Tu mes llegó! 🎂", text: `Tu regalo de $4 ya está disponible. Faltan ${days === 1 ? "1 día" : days + " días"} para tu cumpleaños.` };
+  if (inMonth && !available) return { big: days === 1 ? "1 día" : `${days} días`, title: "Para tu cumpleaños", text: `El ${dayTxt}. Ya usaste tu regalo de este año.` };
+  return { big: days === 1 ? "1 día" : `${days} días`, title: "Para tu cumpleaños", text: `El ${dayTxt}. Ese mes te esperan $4 de regalo.` };
+}
+
 function paneInicio(acc) {
   const c = acc.customer;
+  const first = (c.full_name || "").split(" ")[0];
   const link = `${location.origin}/?ref=${c.referral_code}`;
   const monthName = (m) => new Date(2026, m - 1, 1).toLocaleDateString("es-EC", { month: "long" });
   const n = Math.max(0, Math.min(STAMPS_TOTAL, acc.stamps)), left = STAMPS_TOTAL - n;
   const dots = Array.from({ length: STAMPS_TOTAL }, (_, i) => i === STAMPS_TOTAL - 1 ? `<span class="g ${n >= STAMPS_TOTAL ? "on" : ""}" aria-hidden="true">🎁</span>` : i < n ? `<span class="on" aria-hidden="true">S</span>` : `<span aria-hidden="true">${i + 1}</span>`).join("");
   const title = left === 0 ? "¡Completaste tu tarjeta!" : left === 1 ? "¡Te falta 1 sello para tu postre sorpresa!" : `Te faltan ${left} sellos para tu postre sorpresa`;
-  const bday = c.birthday ? (acc.birthday_available ? "¡Feliz cumpleaños! Úsalo este mes" : `Disponible todo ${monthName(Number(c.birthday.slice(5, 7)))}`) : "Agrega tu cumpleaños en «Mis datos»";
+  const bd = birthdayInfo(c.birthday, acc.birthday_available, first);
+  const bday = bd ? bd.text : "Agrega tu cumpleaños en «Mis datos»";
   $("#pane").innerHTML = `
     <div class="rw">
       <div class="rw-hero" role="img" aria-label="Tarjeta de sellos: ${n} de ${STAMPS_TOTAL}">
@@ -57,7 +76,7 @@ function paneInicio(acc) {
       </div>
       ${acc.rewards_available ? Array.from({ length: Math.min(3, acc.rewards_available) }, () => `<div class="rw-ticket"><div class="l" aria-hidden="true">🎁</div><div class="r"><b>Postre sorpresa</b><span>Se agrega gratis con tu próximo pedido (con cualquier producto). Cocina elige algo especial para ti.</span><em>Listo para usar</em></div></div>`).join("") : ""}
       <div class="rw-tiles">
-        <div class="rw-tile ${acc.birthday_available ? "ready" : ""}"><span class="ic" aria-hidden="true">🎂</span><b>$4 en tu cumpleaños</b><span>${bday}</span>${c.birthday ? "" : `<button class="btn small" type="button" id="toDatos">Agregar</button>`}</div>
+        <div class="rw-tile ${acc.birthday_available ? "ready" : ""}"><span class="ic" aria-hidden="true">🎂</span>${bd ? `<span class="bd-count">${bd.big === "🎉" ? "🎉" : `<small>Faltan</small>${bd.big}`}</span>` : ""}<b>${bd?.title || "$4 en tu cumpleaños"}</b><span>${bday}</span>${c.birthday ? "" : `<button class="btn small" type="button" id="toDatos">Agregar</button>`}</div>
         <div class="rw-tile"><span class="ic" aria-hidden="true">💌</span><b>Invita a un amigo</b><span>Empieza con 3 sellos y tú ganas 1 cuando pague su primer pedido</span>
           <a class="btn small wa" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(`Te regalo 3 sellos en The Bakery Side 🧁 Pide aquí: ${link}`)}">Compartir</a>
           <button class="linkbtn" type="button" id="copyRef">Copiar enlace</button></div>
