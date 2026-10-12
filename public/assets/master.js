@@ -1,4 +1,4 @@
-import { sb, $, $$, money, esc, toast } from "./common.js";
+import { sb, $, $$, money, esc, toast, parseBank } from "./common.js";
 import { requireLogin, loginHTML } from "./auth.js";
 import { renderManual } from "./manual.js";
 
@@ -420,6 +420,7 @@ async function horarios() {
 async function ajustes() {
   const { data: s, error } = await sb.from("settings").select("*").single();
   if (error) return ($("#view").innerHTML = `<p class="err">${esc(error.message)}</p>`);
+  const bankData = parseBank(s.bank_info);
   const f = (id, label, val, type = "text", extra = "") => `<div><label class="f" for="${id}">${label}</label><input class="in" id="${id}" type="${type}" value="${esc(val ?? "")}" ${extra}></div>`;
   $("#view").innerHTML = `
     <form class="panel" id="setForm" novalidate>
@@ -454,8 +455,14 @@ async function ajustes() {
       <label class="f">Códigos QR de cobro</label>
       <p class="muted small" style="margin:0 0 8px">Sube la imagen del QR de tu negocio en DeUna y en PeiGo. El cliente lo ve solo después de hacer su pedido, y así no tienes que publicar tu cédula.</p>
       <div class="qr-admin" id="qrAdmin"><p class="muted small">Cargando…</p></div>
-      <label class="f" for="sBank">Datos para transferencia bancaria <span class="hint">(opcional; solo los ve quien ya hizo un pedido)</span></label>
-      <textarea class="in" id="sBank" placeholder="Déjalo vacío si prefieres cobrar solo por DeUna o PeiGo">${esc(s.bank_info ?? "")}</textarea>
+      <h3 class="group-title">Transferencia directa</h3>
+      <p class="muted small" style="margin:0 0 8px">Cuentas para que el cliente transfiera desde su mismo banco: así no le pide cédula. Pon solo tu nombre y correo, sin cédula. Las ve únicamente quien ya hizo un pedido.</p>
+      <div class="form-grid">
+        ${f("sHolder", "A nombre de", bankData?.holder || "")}
+        ${f("sBEmail", "Correo", bankData?.email || "", "email")}
+      </div>
+      <div id="bankRows" class="bank-rows"></div>
+      <button class="btn small" type="button" id="addBank" style="margin-top:6px">+ Agregar cuenta</button>
       <button class="btn primary" style="margin-top:14px">Guardar ajustes</button>
     </form>`;
   const ex = () => {
@@ -467,6 +474,19 @@ async function ajustes() {
   const winEx = () => { const w = Number($("#sWin").value) || 30, end = 10 * 60 + 15 + w; $("#winEx").textContent = `10h15 – ${Math.floor(end / 60)}h${String(end % 60).padStart(2, "0")}`; };
   $("#sWin").addEventListener("input", winEx); winEx();
   renderQrAdmin();
+  // cuentas bancarias: una fila por banco
+  const rowHTML = (a = {}) => `<div class="bank-row">
+    <input class="in" placeholder="Banco (ej.: Banco Pichincha)" value="${esc(a.bank || "")}" data-k="bank">
+    <select class="in" data-k="type"><option ${a.type !== "Corriente" ? "selected" : ""}>Ahorros</option><option ${a.type === "Corriente" ? "selected" : ""}>Corriente</option></select>
+    <input class="in" placeholder="Número de cuenta" inputmode="numeric" value="${esc(a.number || "")}" data-k="number">
+    <button class="btn small ghost" type="button" data-delbank aria-label="Quitar esta cuenta">Quitar</button></div>`;
+  $("#bankRows").innerHTML = (bankData?.accounts?.length ? bankData.accounts : [{}]).map(rowHTML).join("");
+  $("#addBank").onclick = () => $("#bankRows").insertAdjacentHTML("beforeend", rowHTML());
+  $("#bankRows").addEventListener("click", (e) => { const b = e.target.closest("[data-delbank]"); if (b) b.closest(".bank-row").remove(); });
+  const bankJSON = () => {
+    const accounts = [...document.querySelectorAll(".bank-row")].map((r) => ({ bank: r.querySelector('[data-k="bank"]').value.trim(), type: r.querySelector('[data-k="type"]').value, number: r.querySelector('[data-k="number"]').value.trim() })).filter((a) => a.bank && a.number);
+    return accounts.length ? JSON.stringify({ holder: $("#sHolder").value.trim(), email: $("#sBEmail").value.trim(), accounts }) : null;
+  };
   $("#setForm").onsubmit = async (e) => {
     e.preventDefault();
     const patch = {
@@ -475,7 +495,7 @@ async function ajustes() {
       eta_window_minutes: Number($("#sWin").value) || 30, transfer_extra_minutes: Number($("#sTrx").value) || 0,
       open_lead_minutes: Number($("#sOpenLead").value) || 0, reward_max_value: Number($("#sReward").value) || 0,
       ...("review_stamp" in s ? { review_stamp: $("#sRevStamp").checked } : {}),
-      whatsapp_number: $("#sWa").value.trim() || null, bank_info: $("#sBank").value.trim() || null, updated_at: new Date().toISOString(),
+      whatsapp_number: $("#sWa").value.trim() || null, bank_info: bankJSON(), updated_at: new Date().toISOString(),
     };
     const { error } = await sb.from("settings").update(patch).eq("id", true);
     if (error) return rpcErr(error);

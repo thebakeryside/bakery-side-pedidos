@@ -58,6 +58,21 @@
   .linked { display: grid; gap: 8px; }
   .link-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; color: inherit; text-decoration: none; }
   .link-row small { display: block; color: var(--text-2); font-size: 13px; margin-top: 2px; }
+  .bank { display: grid; gap: 10px; }
+  .bank-hint { margin: 0; font-size: 13.5px; padding: 8px 10px; border-radius: 10px; background: rgb(78 138 62 / .1); color: #2f5a24; }
+  .bank-who { display: grid; gap: 2px; padding: 12px; border-radius: 12px; background: var(--surface-2); }
+  .bank-who .lbl { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text-2); }
+  .bank-who b { font-size: 16px; }
+  .bank-who .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 14px; color: var(--text-2); overflow-wrap: anywhere; }
+  .bank-list { display: grid; gap: 8px; }
+  .bank-acc { display: grid; grid-template-columns: 40px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--line); border-left: 4px solid var(--bc); border-radius: 12px; background: var(--surface); }
+  .bank-acc .dot { width: 40px; height: 40px; border-radius: 10px; background: var(--bc); color: var(--bt, #fff); display: grid; place-items: center; font-weight: 800; font-size: 17px; }
+  .bank-acc .tx { display: grid; line-height: 1.25; min-width: 0; }
+  .bank-acc small { color: var(--text-2); font-size: 12.5px; }
+  .bank-acc .num { font-size: 16px; font-weight: 700; letter-spacing: .03em; }
+  .copy { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; color: var(--text); white-space: nowrap; }
+  .copy:active { transform: scale(.97); }
+  .bank-amt { margin: 0; font-size: 13.5px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
   .pinbox { margin-top: 16px; border: 2px solid var(--tostado); border-radius: 14px; padding: 14px; display: grid; gap: 6px; justify-items: center; text-align: center; background: rgb(198 138 78 / .06); }
   .pinbox .lbl { font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--text-2); font-weight: 700; }
   .pinnum { display: flex; gap: 8px; }

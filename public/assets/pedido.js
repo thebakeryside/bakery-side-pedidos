@@ -1,4 +1,4 @@
-import { sb, api, $, money, esc, hhmm, when, dayLabel, orderRange, STATUS } from "./common.js";
+import { sb, api, $, money, esc, hhmm, when, dayLabel, orderRange, parseBank, STATUS } from "./common.js";
 import { openPayphone } from "./payphone.js";
 
 const token = new URLSearchParams(location.search).get("t") || localStorage.getItem("tbs_ultimo_pedido");
@@ -115,16 +115,35 @@ function render(o) {
   if (!["entregado", "cancelado"].includes(o.status) && !unpaid) timer = setTimeout(load, 20000);
 }
 
+const BANK_COLORS = [[/pichincha/i, "#FFDD00"], [/guayaquil/i, "#D2006E"], [/pac[ií]fico/i, "#0072CE"], [/amazonas/i, "#00A651"], [/produbanco/i, "#00843D"], [/bolivariano/i, "#003B71"], [/internacional/i, "#E30613"]];
+const bankColor = (n) => (BANK_COLORS.find(([re]) => re.test(n)) || [0, "#C68A4E"])[1];
+const bankInitial = (n) => (String(n).replace(/^banco\s+(del?\s+)?/i, "")[0] || "B").toUpperCase();
+
 // Opciones para pagar sin tarjeta: QR de DeUna, QR de PeiGo y transferencia
 function renderPayOptions(info) {
   const opts = [];
   if (info.qr?.deuna) opts.push(["deuna", "DeUna"]);
   if (info.qr?.peigo) opts.push(["peigo", "PeiGo"]);
-  if (info.bank_info) opts.push(["banco", "Transferencia"]);
+  const bank = parseBank(info.bank_info);
+  if (bank && bank.accounts.length) opts.push(["banco", "Transferencia directa"]);
   if (!opts.length) { $("#payTabs").innerHTML = ""; $("#payPane").innerHTML = `<p class="muted small">Escríbenos por WhatsApp y te enviamos cómo pagar.</p>`; return; }
   const show = (k) => {
     $("#payTabs").querySelectorAll("button").forEach((b) => b.setAttribute("aria-selected", b.dataset.k === k));
-    if (k === "banco") { $("#payPane").innerHTML = `<div class="note" style="white-space:pre-line">${esc(info.bank_info)}</div><p class="muted small" style="margin:8px 0 0">Monto exacto: <b class="tabnum">${money(info.total)}</b> · Referencia: ${esc(info.code)}</p>`; return; }
+    if (k === "banco") {
+      // Transferencia dentro del mismo banco: solo nombre y correo (sin cédula)
+      const copyBtn = (v, lbl) => `<button type="button" class="copy" data-copy="${esc(v)}" aria-label="Copiar ${esc(lbl)}">Copiar</button>`;
+      $("#payPane").innerHTML = `<div class="bank">
+        <p class="bank-hint">Transfiere <b>desde tu mismo banco</b> a una de estas cuentas: es inmediato y no te pide cédula.</p>
+        <div class="bank-who"><span class="lbl">A nombre de</span><b>${esc(bank.holder)}</b>${bank.email ? `<span class="row"><span>${esc(bank.email)}</span>${copyBtn(bank.email, "correo")}</span>` : ""}</div>
+        <div class="bank-list">${bank.accounts.map((a) => `<div class="bank-acc" style="--bc:${bankColor(a.bank)};--bt:${/pichincha/i.test(a.bank) ? "#1C1714" : "#fff"}">
+          <span class="dot" aria-hidden="true">${esc(bankInitial(a.bank))}</span>
+          <span class="tx"><b>${esc(a.bank)}</b><small>Cuenta de ${esc(String(a.type || "ahorros").toLowerCase())}</small><span class="num tabnum">${esc(a.number)}</span></span>
+          ${copyBtn(a.number, "número de cuenta")}</div>`).join("")}</div>
+        <p class="bank-amt">Monto exacto <b class="tabnum">${money(info.total)}</b> · Referencia <b>${esc(info.code)}</b> ${copyBtn(info.code, "referencia")}</p>
+      </div>`;
+      $("#payPane").querySelectorAll("[data-copy]").forEach((b) => (b.onclick = () => navigator.clipboard?.writeText(b.dataset.copy).then(() => { b.textContent = "¡Copiado!"; setTimeout(() => (b.textContent = "Copiar"), 1500); })));
+      return;
+    }
     const url = info.qr[k], name = k === "deuna" ? "DeUna" : "PeiGo";
     $("#payPane").innerHTML = `<div class="qrbox"><img src="${esc(url)}" alt="Código QR de ${name} de The Bakery Side" width="220" height="220">
       <div><p class="small" style="margin:0"><b>Desde otro celular:</b> abre ${name} y escanea el código.</p>

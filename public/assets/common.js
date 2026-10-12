@@ -77,3 +77,20 @@ export const STATUS = {
   entregado: "Entregado",
   cancelado: "Cancelado",
 };
+
+// Datos de "Transferencia directa": se guardan como JSON en settings.bank_info
+// { holder, email, accounts: [{ bank, type, number }] }. Si hay texto antiguo, se interpreta.
+export function parseBank(raw) {
+  const t = String(raw || "").trim();
+  if (!t) return null;
+  if (t.startsWith("{")) { try { const j = JSON.parse(t); return { holder: j.holder || "", email: j.email || "", accounts: Array.isArray(j.accounts) ? j.accounts : [] }; } catch {} }
+  const lines = t.split("\n").map((l) => l.trim()).filter((l) => l && l !== ".");
+  const out = { holder: "", email: "", accounts: [] };
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i].replace(/^[^\p{L}\p{N}]+/u, "");
+    if (/@/.test(l)) out.email = l;
+    else if (/^banco/i.test(l)) { const m = (lines[i + 1] || "").match(/(ahorros|corriente)[^\d]*([\d-]+)/i); out.accounts.push({ bank: l, type: m ? (m[1].toLowerCase() === "corriente" ? "Corriente" : "Ahorros") : "Ahorros", number: m ? m[2] : "" }); if (m) i++; }
+    else if (!out.holder && !/^\d+$/.test(l)) out.holder = l;
+  }
+  return out;
+}

@@ -155,3 +155,6 @@ button.chip:hover { border-color: var(--crema-2); color: var(--crema); }
 .more .meta { margin-top: 8px; }
 .meta a { color: inherit; }
 .linknote { font-size: 13.5px; background: var(--tinta-3); border-radius: 8px; padding: 7px 10px; color: var(--crema); }
+.bank-rows { display: grid; gap: 6px; }
+.bank-row { display: grid; grid-template-columns: minmax(0, 1.4fr) 120px minmax(0, 1fr) auto; gap: 6px; }
+@media (max-width: 640px) { .bank-row { grid-template-columns: 1fr 1fr; } }
