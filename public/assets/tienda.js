@@ -389,9 +389,9 @@ function syncWhen() {
 }
 $$('input[name="when"]').forEach((r) => r.addEventListener("change", syncWhen));
 
-const splitAddr = () => isSplit() ? (state.saved?.addrs || []).find((a) => String(a.id) === $("#splitAddr").value) : null;
+const secondAddr = () => isSplit() ? (state.saved?.addrs || []).find((a) => String(a.id) === $("#splitAddr").value) : null;
 $("#splitAddr").addEventListener("change", async () => {
-  const a = splitAddr(); state.quote2 = null; renderSummary();
+  const a = secondAddr(); state.quote2 = null; renderSummary();
   if (a) { try { state.quote2 = await api("cotizar", { lat: a.lat, lng: a.lng }); } catch (e) { toast(e.message); } renderSummary(); }
 });
 function maxLeadHours() { return Math.max(0, ...[...state.cart.keys()].map((k) => product(keyId(k)).lead_hours)); }
@@ -563,7 +563,7 @@ function renderSummary() {
   if (!state.cfg) return;
   const fee = state.quote?.delivery_fee;
   const split = isSplit();
-  const fee2 = split && splitAddr() ? state.quote2?.delivery_fee : fee; // la segunda entrega puede ir a otra dirección
+  const fee2 = split && secondAddr() ? state.quote2?.delivery_fee : fee; // la segunda entrega puede ir a otra dirección
   const fees = fee != null && (!split || fee2 != null) ? fee + (split ? fee2 : 0) : null; // dos entregas = dos envíos completos
   const sub = subtotal();
   const disc = $("#useBday")?.checked ? Math.min(4, sub) : 0;
@@ -576,7 +576,7 @@ function renderSummary() {
       (reward ? `<div class="line"><span>1 × Postre sorpresa (regalo)</span><span class="tabnum">$0.00</span></div>` : "") +
       `<div class="line"><span>Envío</span><span class="tabnum">${fee != null ? money(fee) : "—"}</span></div>` +
       `<p class="sum-h">Entrega 2${laterRange() ? ` <span>${laterRange()}</span>` : ""}</p>` + leadKeys().map((k) => line(k, state.cart.get(k))).join("") +
-      `<div class="line"><span>Envío${splitAddr() ? ` a ${esc(splitAddr().label)}` : ""}</span><span class="tabnum">${fee2 != null ? money(fee2) : "—"}</span></div>`;
+      `<div class="line"><span>Envío${secondAddr() ? ` a ${esc(secondAddr().label)}` : ""}</span><span class="tabnum">${fee2 != null ? money(fee2) : "—"}</span></div>`;
   } else {
     body = [...state.cart].map(([k, q]) => line(k, q)).join("") +
       (reward ? `<div class="line"><span>1 × Postre sorpresa (regalo)</span><span class="tabnum">$0.00</span></div>` : "") +
@@ -624,7 +624,7 @@ $("#orderForm").addEventListener("submit", async (e) => {
     scheduled_for: later ? localToISO($("#schedDate").value, $("#schedTime").value) : null,
     // dos entregas: el dulce entero va agendado como segundo pedido del mismo pago
     split: split ? { items: cartItems(leadKeys()), scheduled_for: localToISO($("#schedDate").value, $("#schedTime").value),
-      ...(splitAddr() ? { lat: splitAddr().lat, lng: splitAddr().lng, address: splitAddr().address, reference: splitAddr().reference || "" } : {}) } : null,
+      ...(secondAddr() ? { lat: secondAddr().lat, lng: secondAddr().lng, address: secondAddr().address, reference: secondAddr().reference || "" } : {}) } : null,
     customer_name: $("#cName").value, customer_phone: $("#cPhone").value,
     customer_email: state.acct ? null : $("#cEmail").value.trim(),
     recipient_name: $("#isGift").checked ? $("#rName").value : null,
