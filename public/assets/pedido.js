@@ -116,9 +116,10 @@ function render(o) {
 }
 
 // Logos oficiales (tomados de los sitios de cada banco); si no hay logo, va la inicial con color
-const BANK_LOGOS = [[/amazonas/i, "amazonas.png"], [/guayaquil/i, "guayaquil.svg"], [/pac[ií]fico/i, "pacifico.svg"], [/pichincha/i, "pichincha.svg"]];
-const BANK_COLORS = [[/amazonas/i, "#C8102E"], [/guayaquil/i, "#D2006E"], [/pac[ií]fico/i, "#009FDF"], [/pichincha/i, "#FFDD00"], [/produbanco/i, "#00843D"], [/bolivariano/i, "#003B71"], [/internacional/i, "#E30613"]];
+const BANK_LOGOS = [[/amazonas/i, "amazonas.png"], [/guayaquil/i, "guayaquil.svg"], [/machala/i, "machala.png", "#295135"], [/pac[ií]fico/i, "pacifico.svg"], [/pichincha/i, "pichincha.svg"]];
+const BANK_COLORS = [[/amazonas/i, "#C8102E"], [/guayaquil/i, "#D2006E"], [/machala/i, "#295135"], [/pac[ií]fico/i, "#009FDF"], [/pichincha/i, "#FFDD00"], [/produbanco/i, "#00843D"], [/bolivariano/i, "#003B71"], [/internacional/i, "#E30613"]];
 const bankLogo = (n) => (BANK_LOGOS.find(([re]) => re.test(n)) || [])[1];
+const bankTile = (n) => (BANK_LOGOS.find(([re]) => re.test(n)) || [])[2];
 const bankColor = (n) => (BANK_COLORS.find(([re]) => re.test(n)) || [0, "#C68A4E"])[1];
 const bankInitial = (n) => (String(n).replace(/^banco\s+(del?\s+)?/i, "")[0] || "B").toUpperCase();
 const bankSort = (n) => String(n).replace(/^banco\s+(del?\s+)?/i, "");
@@ -140,7 +141,7 @@ function renderPayOptions(info) {
       $("#payPane").innerHTML = `<div class="bank">
         <div class="bank-who"><span class="lbl">A nombre de</span><b>${esc(bank.holder)}</b>${bank.email ? `<span class="row"><span>${esc(bank.email)}</span>${copyBtn(bank.email, "correo")}</span>` : ""}</div>
         <div class="bank-list">${bank.accounts.map((a) => `<div class="bank-acc" style="--bc:${bankColor(a.bank)}">
-          ${bankLogo(a.bank) ? `<span class="dot logo" aria-hidden="true"><img src="/assets/banks/${bankLogo(a.bank)}" alt="" width="28" height="28"></span>` : `<span class="dot" aria-hidden="true">${esc(bankInitial(a.bank))}</span>`}
+          ${bankLogo(a.bank) ? `<span class="dot logo" aria-hidden="true"${bankTile(a.bank) ? ` style="background:${bankTile(a.bank)}"` : ""}><img src="/assets/banks/${bankLogo(a.bank)}" alt="" width="28" height="28"></span>` : `<span class="dot" aria-hidden="true">${esc(bankInitial(a.bank))}</span>`}
           <span class="tx"><b>${esc(a.bank)}</b><small>Cuenta de ${esc(String(a.type || "ahorros").toLowerCase())}</small><span class="num tabnum">${esc(a.number)}</span></span>
           ${copyBtn(a.number, "número de cuenta")}</div>`).join("")}</div>
         <p class="bank-amt">Monto exacto <b class="tabnum">${money(info.total)}</b> · Referencia <b>${esc(info.code)}</b> ${copyBtn(info.code, "referencia")}</p>
