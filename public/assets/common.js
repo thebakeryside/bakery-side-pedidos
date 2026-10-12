@@ -37,6 +37,14 @@ export const dayLabel = (d) => {
   return new Date(d).toLocaleDateString("es-EC", { weekday: "long", day: "numeric", month: "short", timeZone: TZ });
 };
 export const when = (d) => `${dayLabel(d)} ${hhmm(d)}`;
+// Rango de entrega que ve el cliente: "10h15 – 10h45".
+// Para "lo antes posible" el inicio se redondea hacia arriba a los 15 min; para agendados es la franja elegida.
+export const hm = (d) => hhmm(d).replace(":", "h");
+export function etaRange(iso, { window = 30, exact = false } = {}) {
+  const t = new Date(iso).getTime(), start = exact ? t : Math.ceil(t / 900000) * 900000;
+  return `${hm(start)} – ${hm(start + window * 60000)}`;
+}
+export const orderRange = (o, window = 30) => o.scheduled_for ? etaRange(o.scheduled_for, { window, exact: true }) : o.eta ? etaRange(o.eta, { window }) : "";
 
 // Fecha y hora de Guayaquil (UTC−5, sin horario de verano) → ISO UTC
 export function localToISO(dateStr, timeStr) {

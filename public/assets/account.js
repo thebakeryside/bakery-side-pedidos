@@ -38,25 +38,25 @@ export async function signInWithGoogle(returnTo = location.href) {
 export async function signOut() { await sb.auth.signOut(); cache = null; }
 
 // Tarjeta de sellos: como una tarjeta de cafetería. Cada sello ganado lleva la S de la marca;
-// la última casilla es la cookie de regalo.
-const COOKIE = `<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="19" fill="#D9A06A" stroke="#1C1714" stroke-width="2.5"/><circle cx="17" cy="18" r="3" fill="#1C1714"/><circle cx="29" cy="15" r="2.4" fill="#1C1714"/><circle cx="31" cy="27" r="3.2" fill="#1C1714"/><circle cx="19" cy="31" r="2.6" fill="#1C1714"/><circle cx="25" cy="23" r="1.8" fill="#1C1714"/></svg>`;
+// la última casilla es el postre sorpresa (un regalo con signo de pregunta).
+const GIFT = `<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="8" y="20" width="32" height="20" rx="3" fill="#D9A06A" stroke="#1C1714" stroke-width="2.5"/><rect x="6" y="13" width="36" height="8" rx="2" fill="#C68A4E" stroke="#1C1714" stroke-width="2.5"/><path d="M24 13v27" stroke="#1C1714" stroke-width="2.5"/><path d="M24 13c-3-6-10-6-9-1s9 1 9 1zm0 0c3-6 10-6 9-1s-9 1-9 1z" fill="#F6F7DE" stroke="#1C1714" stroke-width="2.2" stroke-linejoin="round"/><text x="24" y="36" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-weight="700" font-size="11" fill="#1C1714">?</text></svg>`;
 export function stampCard(stamps, { compact = false } = {}) {
   const n = Math.max(0, Math.min(STAMPS_TOTAL, stamps));
   const left = STAMPS_TOTAL - n;
   const dots = Array.from({ length: STAMPS_TOTAL }, (_, i) => {
     const on = i < n, last = i === STAMPS_TOTAL - 1;
-    if (last) return `<li class="stamp goal ${on ? "on" : ""}" style="--i:${i}" aria-hidden="true">${COOKIE}<small>Gratis</small></li>`;
+    if (last) return `<li class="stamp goal ${on ? "on" : ""}" style="--i:${i}" aria-hidden="true">${GIFT}<small>Sorpresa</small></li>`;
     return `<li class="stamp ${on ? "on" : ""}" style="--i:${i}" aria-hidden="true">${on ? `<img src="/assets/brand/s-crema.svg" alt="">` : `<span>${i + 1}</span>`}</li>`;
   }).join("");
-  const msg = left === 0 ? "¡Completaste tu tarjeta! Tu cookie te espera en el próximo pedido."
-    : left === 1 ? "¡Solo te falta 1 sello para tu cookie gratis!"
-    : `Llevas <b>${n}</b> de ${STAMPS_TOTAL}. Te faltan ${left} sellos para tu cookie gratis.`;
-  return `<div class="stampcard ${compact ? "compact" : ""}" role="img" aria-label="Tarjeta de sellos: ${n} de ${STAMPS_TOTAL}. ${left ? `Faltan ${left} para una cookie gratis` : "Completa"}">
+  const msg = left === 0 ? "¡Completaste tu tarjeta! Tu postre sorpresa te espera en el próximo pedido."
+    : left === 1 ? "¡Solo te falta 1 sello para tu postre sorpresa!"
+    : `Llevas <b>${n}</b> de ${STAMPS_TOTAL}. Te faltan ${left} sellos para tu postre sorpresa.`;
+  return `<div class="stampcard ${compact ? "compact" : ""}" role="img" aria-label="Tarjeta de sellos: ${n} de ${STAMPS_TOTAL}. ${left ? `Faltan ${left} para un postre sorpresa` : "Completa"}">
     <div class="stampcard-head"><img class="sc-logo" src="/assets/brand/tbs-tinta.svg" alt=""><span class="sc-title">Tarjeta de sellos</span></div>
     <ol class="stamps">${dots}</ol>
     <div class="sc-bar" aria-hidden="true"><span style="width:${(n / STAMPS_TOTAL) * 100}%"></span></div>
     <p class="stampnote">${msg}</p>
-    <ul class="sc-rules"><li><b>$10</b> en tu pedido = 1 sello</li><li><b>8 sellos</b> = 1 cookie gratis</li></ul>
+    <ul class="sc-rules"><li><b>$10</b> en tu pedido = 1 sello</li><li><b>8 sellos</b> = 1 postre sorpresa</li></ul>
   </div>`;
 }
 

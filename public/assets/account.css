@@ -66,3 +66,19 @@
 .form-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 @media (max-width: 560px) { .form-grid2 { grid-template-columns: 1fr; } .mini-stats b { font-size: 26px; } }
 @media (max-width: 420px) { .acct-tabs { flex-wrap: nowrap; gap: 4px; } .acct-tabs button { padding: 8px 12px; font-size: 14.5px; white-space: nowrap; } }
+
+/* Invitación a crear cuenta en el pedido */
+.join { display: grid; gap: 12px; margin-top: 12px; }
+.join-card { background: var(--tinta); color: var(--crema); border-radius: 16px; padding: 16px; display: grid; gap: 4px; }
+.join-t { font-size: 20px; line-height: 1.2; }
+.join-s { font-size: 13.5px; color: var(--crema-2); }
+.join-dots { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; margin: 12px 0 4px; }
+.join-dots span { aspect-ratio: 1; border-radius: 50%; border: 2px dashed var(--cacao); display: grid; place-items: center; font-weight: 700; font-size: 12px; color: var(--cacao); }
+.join-dots .on { background: var(--tostado); border: 2px solid var(--tostado); color: var(--tinta); }
+.join-dots .goal { border-color: var(--tostado); font-size: 15px; }
+.join-leg { display: flex; justify-content: space-between; gap: 8px; font-size: 11.5px; color: var(--crema-2); }
+.join-why { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: 14px; }
+.join-why li { display: flex; gap: 10px; align-items: flex-start; }
+.join-why li > span:first-child { flex: none; width: 28px; height: 28px; border-radius: 8px; background: var(--crema); display: grid; place-items: center; font-size: 14px; }
+.join-cta { display: grid; justify-items: center; gap: 6px; }
+.linkbtn { background: none; border: 0; padding: 6px; font: inherit; font-size: 14px; color: var(--text-2); text-decoration: underline; cursor: pointer; }

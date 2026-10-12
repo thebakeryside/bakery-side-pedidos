@@ -1,4 +1,4 @@
-import { sb, api, $, money, esc, hhmm, when, STATUS } from "./common.js";
+import { sb, api, $, money, esc, hhmm, when, dayLabel, orderRange, STATUS } from "./common.js";
 import { openPayphone } from "./payphone.js";
 
 const token = new URLSearchParams(location.search).get("t") || localStorage.getItem("tbs_ultimo_pedido");
@@ -27,7 +27,7 @@ function render(o) {
   else if (o.status === "entregado") head = `<p class="eyebrow">Pedido ${esc(o.code)}</p><div class="big">Entregado</div><p class="muted">${when(o.delivered_at)}</p>`;
   else if (unpaid) head = `<p class="eyebrow">Pedido ${esc(o.code)}</p><div class="big">Falta el pago</div><p class="muted">${o.payment_status === "fallido" ? "El último intento de pago no se aprobó." : "Tu pedido está guardado, pero aún no recibimos el pago."} Lo preparamos apenas se confirme.</p>`;
   else if (o.status === "por_confirmar") head = `<p class="eyebrow">Pedido ${esc(o.code)}</p><div class="big">Verificando tu transferencia</div><p class="muted">Recibimos tu comprobante. Te avisamos por correo apenas lo confirmemos.</p>`;
-  else head = `<p class="eyebrow">Pedido ${esc(o.code)} · ${o.scheduled_for ? "Entrega agendada" : "Llega aprox."}</p><div class="big tabnum">${o.scheduled_for ? when(o.scheduled_for) : hhmm(o.eta)}</div>`;
+  else head = `<p class="eyebrow">Pedido ${esc(o.code)} · ${o.scheduled_for ? `Entrega agendada · ${dayLabel(o.scheduled_for)}` : "Llega entre"}</p><div class="big tabnum range">${orderRange(o, o.eta_window || 30)}</div>`;
 
   const showSteps = !unpaid && !["cancelado", "por_confirmar"].includes(o.status);
   $("#root").innerHTML = `
@@ -39,7 +39,7 @@ function render(o) {
         </div>
         <div id="altPay" ${wantAlt ? "" : "hidden"}>
           <ol class="paysteps">
-            <li><span class="pn">1</span><div class="pbody"><b>Paga <span class="tabnum">${money(o.total)}</span></b>
+            <li><span class="pn">1</span><div class="pbody"><b>Paga <span class="tabnum">${money(o.group_total ?? o.total)}</span></b>
               <div class="paytabs" id="payTabs" role="tablist"></div>
               <div id="payPane" class="paypane"><p class="muted small">Cargando…</p></div></div></li>
             <li><span class="pn">2</span><div class="pbody"><b>Sube la captura del pago</b>
@@ -55,13 +55,16 @@ function render(o) {
           </ol>
         </div>
         <div id="cardPay" ${wantAlt ? "hidden" : ""}>
-          <button class="btn primary block" id="payNow">Pagar ${money(o.total)} con tarjeta</button>
+          <button class="btn primary block" id="payNow">Pagar ${money(o.group_total ?? o.total)} con tarjeta</button>
         </div>
         <p class="err" id="err" role="alert"></p></div>` : ""}
       ${o.delivery_pin ? `<div class="pinbox"><span class="lbl">Tu PIN de entrega</span><span class="pinnum tabnum" aria-label="PIN ${o.delivery_pin.split("").join(" ")}">${o.delivery_pin.split("").map((d) => `<i>${d}</i>`).join("")}</span>
         <small>${o.is_gift ? "Como es un regalo, compártelo con quien lo recibe. " : ""}Dáselo al motorizado solo cuando tengas el pedido en tus manos. Así confirmamos que llegó a ti.</small></div>` : ""}
       ${showSteps ? `<ol class="steps">${steps.map(([k, l, t, sub], i) => `<li class="${o.status === "entregado" || i < idx ? "done" : i === Math.ceil(idx) ? "now" : ""}"><span class="dot"></span><div><b>${l}</b><small>${esc(sub)}</small></div><span class="t">${t ? hhmm(t) : ""}</span></li>`).join("")}</ol>` : ""}
     </div>
+    ${o.linked?.length ? `<div class="panel linked"><p class="eyebrow">Va en dos entregas · un solo pago</p>
+      ${unpaid ? `<p class="small" style="margin:4px 0 8px">El pago de <b class="tabnum">${money(o.group_total)}</b> cubre las dos entregas.</p>` : ""}
+      ${o.linked.map((l) => `<a class="link-row" href="/pedido?t=${l.tracking_token}"><span><b>Pedido ${esc(l.code)}</b><small>${l.scheduled_for ? `${dayLabel(l.scheduled_for)}, ${orderRange(l, o.eta_window || 30)}` : `Llega entre ${orderRange(l, o.eta_window || 30)}`}</small></span><span aria-hidden="true">›</span></a>`).join("")}</div>` : ""}
     <div class="panel">
       <div class="lines">${o.items.map((i) => `<div class="line"><span>${i.quantity} × ${esc(i.name)}</span><span class="tabnum">${money(i.line_total)}</span></div>`).join("")}
       ${Number(o.subtotal) + Number(o.delivery_fee) - Number(o.total) > 0.004 ? `<div class="line"><span>Regalo de cumpleaños</span><span class="tabnum">−${money(Number(o.subtotal) + Number(o.delivery_fee) - Number(o.total))}</span></div>` : ""}

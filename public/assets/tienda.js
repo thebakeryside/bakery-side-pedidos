@@ -1,4 +1,4 @@
-import { sb, api, $, $$, money, esc, hhmm, dayLabel, localToISO, todayLocal, toast } from "./common.js";
+import { sb, api, $, $$, money, esc, hhmm, hm, etaRange, dayLabel, localToISO, todayLocal, toast } from "./common.js";
 import { openPayphone } from "./payphone.js";
 import { createMap } from "./mapa.js";
 import { captureRef, storedRef, currentUser, loadAccount, stampCard, stampsFor, googleButton, mountGoogle } from "./account.js";
@@ -210,7 +210,7 @@ function validKey(k) {
 }
 const lineName = (k) => { const n = keyOpts(k).map((c) => choiceOf(c)?.name).filter(Boolean); return product(keyId(k)).name + (n.length ? ` (${n.join(", ")})` : ""); };
 const linePrice = (k) => Number(product(keyId(k)).price) + keyOpts(k).reduce((s, c) => s + Number(choiceOf(c)?.price_delta || 0), 0);
-const cartItems = () => [...state.cart].map(([k, quantity]) => ({ product_id: keyId(k), quantity, options: keyOpts(k) }));
+const cartItems = (keys = [...state.cart.keys()]) => keys.map((k) => ({ product_id: keyId(k), quantity: state.cart.get(k), options: keyOpts(k) }));
 const product = (id) => state.products.find((p) => p.id === id);
 const subtotal = () => [...state.cart].reduce((s, [k, q]) => s + linePrice(k) * q, 0);
 
@@ -248,7 +248,7 @@ function renderCart() {
     ? lines.join("") + `<div class="line total"><span>Subtotal</span><span class="tabnum">${money(subtotal())}</span></div><p class="muted small" style="margin:0">El envío se calcula con tu ubicación.</p>`
     : `<div class="cart-empty"><b>Tu pedido está vacío</b><span class="muted small">Agrega algo rico del menú para empezar.</span></div>`;
   $("#goCheckout").disabled = !n;
-  $("#mbCount").textContent = n; $("#mbWord").textContent = n === 1 ? "producto" : "productos"; $("#mbTotal").textContent = money(subtotal());
+  $("#mbCount").textContent = n; $("#mbTotal").textContent = money(subtotal());
   $("#cartCount").textContent = n; $("#cartCount").hidden = !n;
   $("#mobileBar").hidden = !n || !$("#checkout").hidden;
   renderSummary();
@@ -268,7 +268,7 @@ function closeCart() { $("#cart").classList.remove("open"); $("#cartScrim").hidd
 function backToMenu() {
   $("#checkout").hidden = true; $(".layout").hidden = false; $(".intro").hidden = false; document.body.classList.remove("in-checkout"); renderCart(); scrollTo(0, 0);
 }
-$("#mbOpen").onclick = openCart;
+$("#mobileBar").onclick = openCart;
 $("#cartBtn").onclick = openCart;
 $("#closeCart").onclick = closeCart;
 $("#cartScrim").onclick = closeCart;
@@ -286,8 +286,17 @@ function openCheckout() {
   // cuándo
   $("#whenNow").disabled = !c.open_now;
   $("#nowHint").textContent = c.open_now ? "Te mostramos la hora estimada" : (c.next_open ? `Ahora no: abrimos ${whenLabel(c.next_open)} a las ${c.next_open.time}` : "Ahora no estamos atendiendo");
-  const needLead = [...state.cart.keys()].some((k) => product(keyId(k)).lead_hours > 0);
-  if (needLead) { $("#whenNow").disabled = true; $("#nowHint").textContent = "Tu pedido necesita agendarse"; }
+  const leadNames = [...new Set([...state.cart.keys()].filter((k) => product(keyId(k)).lead_hours > 0).map((k) => product(keyId(k)).name))];
+  const hasQuick = [...state.cart.keys()].some((k) => !product(keyId(k)).lead_hours);
+  // Dulce entero (24 h) junto a cosas para ahora: se puede pedir en dos entregas
+  const canSplit = leadNames.length > 0 && hasQuick && c.open_now;
+  $("#splitChoice").hidden = !canSplit;
+  if (leadNames.length) {
+    $("#whenNow").disabled = true;
+    $("#nowHint").textContent = `${listNames(leadNames)} se pide con 24 h de anticipación`;
+    $("#laterHint").textContent = "Todo junto, el día y hora que elijas";
+    $("#splitHint").textContent = `Lo demás ahora y ${listNames(leadNames)} el día que elijas · 2 envíos`;
+  } else { $("#laterHint").textContent = "Elige día y hora de entrega"; }
   ($("#whenNow").disabled ? $("#whenLater") : $("#whenNow")).checked = true;
   syncWhen(); fillDates();
   // pago
@@ -317,13 +326,25 @@ function renderAcctBox() {
     return;
   }
   if (state.guest) {
-    box.innerHTML = `<p class="muted small" style="margin:6px 0 0">Pedido como invitado. <a href="#" id="wantGoogle">Entrar con Google y sumar sellos</a></p>`;
+    box.innerHTML = `<p class="muted small" style="margin:6px 0 0">Pedido sin cuenta. <a href="#" id="wantGoogle">Crear cuenta y ganar un postre sorpresa</a></p>`;
     $("#wantGoogle").onclick = (e) => { e.preventDefault(); state.guest = false; renderAcctBox(); };
     return;
   }
-  box.innerHTML = `<div class="guest-or">
-      <p><b>Entra con Google y empieza con 2 sellos de regalo.</b> <span class="muted small">Ganas 1 sello por cada $10, una cookie gratis al llegar a 8, y guardamos tus datos para la próxima.</span></p>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">${googleButton()}<button class="btn ghost" type="button" id="asGuest">Seguir como invitado</button></div>
+  // Invitación a crear cuenta: se entiende mirando la tarjeta de sellos
+  const dots = Array.from({ length: 8 }, (_, i) => i < 2 ? `<span class="on">S</span>` : i === 7 ? `<span class="goal" aria-label="Postre sorpresa">🎁</span>` : `<span>${i + 1}</span>`).join("");
+  box.innerHTML = `<div class="join">
+      <div class="join-card">
+        <b class="join-t">Un postre sorpresa te espera</b>
+        <span class="join-s">Crea tu cuenta y te regalamos los 2 primeros sellos.</span>
+        <div class="join-dots" aria-hidden="true">${dots}</div>
+        <div class="join-leg"><span>2 de regalo hoy</span><span>8 sellos = postre sorpresa</span></div>
+      </div>
+      <ul class="join-why">
+        <li><span>💵</span><span><b>1 sello por cada $10</b> de tu pedido</span></li>
+        <li><span>🎂</span><span><b>$4 de regalo</b> en tu mes de cumpleaños</span></li>
+        <li><span>⚡</span><span><b>La próxima vez pides más rápido:</b> guardamos tu dirección</span></li>
+      </ul>
+      <div class="join-cta">${googleButton()}<button class="linkbtn" type="button" id="asGuest">Pedir sin cuenta</button></div>
     </div>`;
   try { localStorage.setItem(CART_KEY, JSON.stringify([...state.cart])); } catch {}
   mountGoogle(box, async () => { await refreshAccount(); toast("¡Listo! Ya sumas sellos con este pedido."); }, (e) => toast(e.message));
@@ -333,25 +354,35 @@ function renderAcctBox() {
 function renderPerks() {
   const box = $("#perksBox"), a = state.acct;
   if (!a) { box.innerHTML = ""; return; }
-  const cookies = state.products.filter((p) => a.cookies.includes(p.name));
   let h = `<div style="margin-top:14px">${stampCard(a.stamps, { compact: true })}</div>`;
-  if (a.rewards_available && cookies.length) {
-    h += `<div class="perk ready" style="margin-top:10px"><div style="flex:1"><b>Tienes una cookie gratis</b>
-      <label class="f" for="rewardPick" style="margin-top:6px">Elige tu cookie <span class="hint">(opcional)</span></label>
-      <select class="in" id="rewardPick"><option value="">Guardarla para otro pedido</option>${cookies.map((p) => `<option value="${p.id}">${esc(p.name)}</option>`).join("")}</select></div></div>`;
+  if (a.rewards_available) {
+    h += `<label class="perk ready check" style="margin-top:10px"><input type="checkbox" id="useReward" checked><div><b>Usar mi postre sorpresa 🎁</b><span class="muted small">Cocina elige un postre especial para ti y lo agrega gratis a este pedido. Desmárcalo para guardarlo.</span></div></label>`;
   }
   if (a.birthday_available) {
     h += `<label class="perk ready check" style="margin-top:10px"><input type="checkbox" id="useBday"><div><b>Usar mi regalo de cumpleaños: −$4</b><span class="muted small">Disponible una vez durante tu mes.</span></div></label>`;
   }
   box.innerHTML = h;
-  $("#rewardPick")?.addEventListener("change", renderSummary);
+  $("#useReward")?.addEventListener("change", renderSummary);
   $("#useBday")?.addEventListener("change", renderSummary);
 }
 
-function syncWhen() { $("#scheduleBox").hidden = !$("#whenLater").checked; renderSummary(); }
+const listNames = (ns) => ns.length > 1 ? ns.slice(0, -1).join(", ") + " y " + ns.at(-1) : ns[0];
+const isSplit = () => $("#whenSplit").checked && !$("#splitChoice").hidden;
+const leadKeys = () => [...state.cart.keys()].filter((k) => product(keyId(k)).lead_hours > 0);
+const quickKeys = () => [...state.cart.keys()].filter((k) => !product(keyId(k)).lead_hours);
+function syncWhen() {
+  const later = $("#whenLater").checked, split = isSplit();
+  $("#scheduleBox").hidden = !(later || split);
+  $("#schedTimeLbl").textContent = split ? `Hora de entrega de ${listNames([...new Set(leadKeys().map((k) => product(keyId(k)).name))])}` : "Hora de entrega";
+  $("#splitNote").hidden = !split;
+  if (split) $("#splitNote").textContent = "Pagas todo junto una sola vez. Cada entrega tiene su envío, su seguimiento y su PIN.";
+  fillDates(); if (state.loc) requestQuote(); else renderSummary();
+}
 $$('input[name="when"]').forEach((r) => r.addEventListener("change", syncWhen));
 
 function maxLeadHours() { return Math.max(0, ...[...state.cart.keys()].map((k) => product(keyId(k)).lead_hours)); }
+// Minutos para confirmar una transferencia (se suman a la hora de llegada)
+const payExtra = () => ($("#payTransfer")?.checked ? Number(state.cfg.transfer_extra || 0) : 0);
 function fillDates() {
   const opts = [];
   for (let i = 0; i <= 30; i++) { // se puede agendar hasta un mes antes
@@ -371,8 +402,10 @@ function timesFor(date) {
   if (!h) return [];
   const [oh, om] = h.open.split(":").map(Number), [ch, cm] = h.close.split(":").map(Number);
   const earliest = Date.now() + Math.max(60 * 60000, maxLeadHours() * 3600000);
+  // con la tienda cerrada, el primer día se entrega desde 1 hora después de abrir
+  const first = c.first_slot && c.first_slot.day === date ? c.first_slot.minutes : 0;
   const out = [];
-  for (let m = oh * 60 + om; m <= ch * 60 + cm; m += c.slot_minutes) {
+  for (let m = Math.max(oh * 60 + om, first); m <= ch * 60 + cm; m += c.slot_minutes) {
     const t = `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
     const at = new Date(localToISO(date, t)).getTime();
     if (at >= earliest && at <= Date.now() + 30 * 86400000 - 5 * 60000) out.push(t);
@@ -381,7 +414,8 @@ function timesFor(date) {
 }
 function fillTimes() {
   const ts = timesFor($("#schedDate").value);
-  $("#schedTime").innerHTML = ts.map((t) => `<option value="${t}">${t}</option>`).join("");
+  const win = Number(state.cfg.eta_window || 30);
+  $("#schedTime").innerHTML = ts.map((t) => `<option value="${t}">${etaRange(localToISO($("#schedDate").value, t), { window: win, exact: true })}</option>`).join("");
   renderSummary();
 }
 $("#schedDate").addEventListener("change", fillTimes);
@@ -428,10 +462,10 @@ function requestQuote() {
   quoteTimer = setTimeout(async () => {
     const my = ++quoteSeq;
     try {
-      const q = await api("cotizar", { lat: state.loc.lat, lng: state.loc.lng, items: cartItems() });
+      const q = await api("cotizar", { lat: state.loc.lat, lng: state.loc.lng, items: isSplit() ? cartItems(quickKeys()) : cartItems() });
       if (my !== quoteSeq) return;
       state.quote = q;
-      $("#quoteBox").innerHTML = `Envío <b>${money(q.delivery_fee)}</b> · ${q.distance_km.toFixed(1)} km${q.eta_if_now ? ` · si sale ahora, llega aprox. <b>${hhmm(q.eta_if_now)}</b>` : ""}${state.cfg.busy_extra && q.eta_if_now ? `<br>Hoy tenemos muchos pedidos, por eso la entrega toma un poco más.` : ""}`;
+      renderQuote();
     } catch (e) {
       if (my !== quoteSeq) return;
       state.quote = null; $("#quoteBox").innerHTML = `<span class="err">${esc(e.message)}</span>`;
@@ -440,27 +474,50 @@ function requestQuote() {
   }, 350);
 }
 
+// Envío y, solo si el pedido es para ahora con la tienda abierta, el rango de llegada
+function renderQuote() {
+  const q = state.quote; if (!q) return;
+  const now = ($("#whenNow").checked || isSplit()) && state.cfg.open_now && q.eta_if_now;
+  $("#quoteBox").innerHTML = `Envío <b>${money(q.delivery_fee)}</b>${isSplit() ? " por entrega" : ""} · ${q.distance_km.toFixed(1)} km${now ? ` · ${isSplit() ? "lo de ahora " : ""}llega entre <b>${nowRange()}</b>` : ""}${state.cfg.busy_extra && now ? `<br>Hoy tenemos muchos pedidos, por eso la entrega toma un poco más.` : ""}`;
+}
+const nowRange = () => etaRange(new Date(new Date(state.quote.eta_if_now).getTime() + payExtra() * 60000).toISOString(), { window: Number(state.cfg.eta_window || 30) });
+function laterRange() {
+  if (!$("#schedTime").value) return "";
+  const iso = localToISO($("#schedDate").value, $("#schedTime").value);
+  return `${dayLabel(iso)}, ${etaRange(iso, { window: Number(state.cfg.eta_window || 30), exact: true })}`;
+}
+
 // ---------- resumen ----------
 function renderSummary() {
   if (!state.cfg) return;
   const fee = state.quote?.delivery_fee;
+  const split = isSplit();
+  const fees = fee != null ? fee * (split ? 2 : 1) : null; // dos entregas = dos envíos completos
   const sub = subtotal();
   const disc = $("#useBday")?.checked ? Math.min(4, sub) : 0;
-  const freeId = Number($("#rewardPick")?.value || 0);
-  const free = freeId ? product(freeId) : null;
-  let whenTxt = "";
-  if ($("#whenLater").checked && $("#schedTime").value) whenTxt = `Entrega ${dayLabel(localToISO($("#schedDate").value, $("#schedTime").value))} a las ${$("#schedTime").value}`;
-  else if (state.quote?.eta_if_now) whenTxt = `Llega aprox. a las ${hhmm(state.quote.eta_if_now)}`;
-  $("#summary").innerHTML =
-    [...state.cart].map(([k, q]) => `<div class="line"><span>${q} × ${esc(lineName(k))}</span><span class="tabnum">${money(linePrice(k) * q)}</span></div>`).join("") +
-    (free ? `<div class="line"><span>1 × ${esc(free.name)} (regalo)</span><span class="tabnum">$0.00</span></div>` : "") +
+  const reward = $("#useReward")?.checked;
+  const line = (k, q) => `<div class="line"><span>${q} × ${esc(lineName(k))}</span><span class="tabnum">${money(linePrice(k) * q)}</span></div>`;
+  const now = state.quote?.eta_if_now && state.cfg.open_now ? `Llega entre ${nowRange()}` : "";
+  let body;
+  if (split) {
+    body = `<p class="sum-h">Entrega 1 · ahora${now ? ` <span>${now.replace("Llega entre", "")}</span>` : ""}</p>` + quickKeys().map((k) => line(k, state.cart.get(k))).join("") +
+      (reward ? `<div class="line"><span>1 × Postre sorpresa (regalo)</span><span class="tabnum">$0.00</span></div>` : "") +
+      `<div class="line"><span>Envío</span><span class="tabnum">${fee != null ? money(fee) : "—"}</span></div>` +
+      `<p class="sum-h">Entrega 2${laterRange() ? ` <span>${laterRange()}</span>` : ""}</p>` + leadKeys().map((k) => line(k, state.cart.get(k))).join("") +
+      `<div class="line"><span>Envío</span><span class="tabnum">${fee != null ? money(fee) : "—"}</span></div>`;
+  } else {
+    body = [...state.cart].map(([k, q]) => line(k, q)).join("") +
+      (reward ? `<div class="line"><span>1 × Postre sorpresa (regalo)</span><span class="tabnum">$0.00</span></div>` : "") +
+      `<div class="line"><span>Envío</span><span class="tabnum">${fee != null ? money(fee) : "—"}</span></div>`;
+  }
+  const whenTxt = split ? "" : $("#whenLater").checked ? (laterRange() ? `Entrega ${laterRange()}` : "") : now;
+  $("#summary").innerHTML = body +
     (disc ? `<div class="line"><span>Regalo de cumpleaños</span><span class="tabnum">−${money(disc)}</span></div>` : "") +
-    `<div class="line"><span>Envío</span><span class="tabnum">${fee != null ? money(fee) : "—"}</span></div>` +
-    `<div class="line total"><span>Total</span><span class="tabnum">${fee != null ? money(sub - disc + fee) : money(sub - disc) + " + envío"}</span></div>` +
+    `<div class="line total"><span>Total</span><span class="tabnum">${fees != null ? money(sub - disc + fees) : money(sub - disc) + " + envío"}</span></div>` +
     (whenTxt ? `<p class="muted small">${whenTxt}</p>` : "") +
     (state.acct ? `<p class="small" style="color:var(--accent-ink);margin:0;font-weight:600">Este pedido te da ${stampsFor(sub - disc)} ${stampsFor(sub - disc) === 1 ? "sello" : "sellos"}.</p>` : "");
   const card = $("#payCard").checked;
-  $("#payBtn").textContent = fee != null ? `${card ? "Pagar" : "Confirmar pedido de"} ${money(sub - disc + fee)}` : card ? "Pagar" : "Confirmar pedido";
+  $("#payBtn").textContent = fees != null ? `${card ? "Pagar" : "Confirmar pedido de"} ${money(sub - disc + fees)}` : card ? "Pagar" : "Confirmar pedido";
 }
 
 // ---------- extras del formulario ----------
@@ -469,7 +526,7 @@ $("#isGift").onchange = (e) => {
   if (e.target.checked && !$("#giftFrom").value) $("#giftFrom").value = $("#cName").value.trim(); // por defecto, quien compra
 };
 $("#wantInvoice").onchange = (e) => ($("#invoiceBox").hidden = !e.target.checked);
-function syncPay() { $("#transferBox").hidden = !$("#payTransfer").checked; renderSummary(); }
+function syncPay() { $("#transferBox").hidden = !$("#payTransfer").checked; renderQuote(); renderSummary(); }
 $$('input[name="pay"]').forEach((r) => r.addEventListener("change", syncPay));
 
 // ---------- enviar ----------
@@ -478,8 +535,8 @@ $("#orderForm").addEventListener("submit", async (e) => {
   const err = $("#formErr"); err.textContent = "";
   const bad = (msg, el) => { err.textContent = msg; el?.focus(); };
   if (!state.cart.size) return bad("Tu carrito está vacío.");
-  const later = $("#whenLater").checked;
-  if (later && !$("#schedTime").value) return bad("Elige un día y una hora de entrega.", $("#schedDate"));
+  const later = $("#whenLater").checked, split = isSplit();
+  if ((later || split) && !$("#schedTime").value) return bad("Elige un día y una hora de entrega.", $("#schedDate"));
   if (!state.loc) return bad("Marca tu ubicación en el mapa.", $("#locateMe"));
   if (!state.quote) return bad("Aún no tenemos el costo de envío para esa ubicación.");
   if (!$("#address").value.trim()) return bad("Escribe la dirección de entrega.", $("#address"));
@@ -490,9 +547,11 @@ $("#orderForm").addEventListener("submit", async (e) => {
   const pay = $("#payCard").checked ? "tarjeta" : "transferencia";
 
   const body = {
-    items: cartItems(), lat: state.loc.lat, lng: state.loc.lng,
+    items: split ? cartItems(quickKeys()) : cartItems(), lat: state.loc.lat, lng: state.loc.lng,
     address: fullAddress(), reference: $("#reference").value,
     scheduled_for: later ? localToISO($("#schedDate").value, $("#schedTime").value) : null,
+    // dos entregas: el dulce entero va agendado como segundo pedido del mismo pago
+    split: split ? { items: cartItems(leadKeys()), scheduled_for: localToISO($("#schedDate").value, $("#schedTime").value) } : null,
     customer_name: $("#cName").value, customer_phone: $("#cPhone").value,
     customer_email: state.acct ? null : $("#cEmail").value.trim(),
     recipient_name: $("#isGift").checked ? $("#rName").value : null,
@@ -503,7 +562,7 @@ $("#orderForm").addEventListener("submit", async (e) => {
     invoice_id_number: $("#invId").value, invoice_name: $("#invName").value, invoice_email: $("#invEmail").value,
     payment_method: pay,
     use_birthday: Boolean($("#useBday")?.checked),
-    reward_product_id: Number($("#rewardPick")?.value || 0) || null,
+    use_reward: Boolean($("#useReward")?.checked),
     ref: storedRef(),
   };
   try { localStorage.setItem(PROFILE_KEY, JSON.stringify({ cName: body.customer_name, cPhone: body.customer_phone, cEmail: $("#cEmail").value.trim(), address: $("#address").value.trim(), locLabel: state.locLabel, reference: body.reference, ...state.loc })); } catch {}

@@ -29,7 +29,7 @@ async function render() {
     <div class="mini-stats" style="margin-bottom:16px">
       <div><b class="tabnum">${Math.min(acc.stamps, 8)}/8</b><span>sellos</span></div>
       <div><b class="tabnum">${paid.length}</b><span>${paid.length === 1 ? "pedido" : "pedidos"}</span></div>
-      <div><b class="tabnum">${acc.rewards_available || 0}</b><span>${acc.rewards_available === 1 ? "cookie de regalo" : "cookies de regalo"}</span></div>
+      <div><b class="tabnum">${acc.rewards_available || 0}</b><span>${acc.rewards_available === 1 ? "postre de regalo" : "postres de regalo"}</span></div>
     </div>
     <nav class="acct-tabs" role="tablist" aria-label="Secciones de tu cuenta">
       ${[["inicio", "Recompensas"], ["pedidos", "Mis pedidos"], ["datos", "Mis datos"]].map(([k, l]) => `<button role="tab" type="button" data-t="${k}" aria-selected="${tab === k}">${l}</button>`).join("")}
@@ -49,8 +49,8 @@ function paneInicio(acc) {
   $("#pane").innerHTML = `
     <div class="acct-grid">
       <div style="display:grid;gap:14px">${stampCard(acc.stamps)}
-        <div class="perk ${acc.rewards_available ? "ready" : ""}"><div><b>${acc.rewards_available ? `Tienes ${acc.rewards_available === 1 ? "una cookie gratis" : acc.rewards_available + " cookies gratis"}` : "Cookie gratis"}</b>
-          <span class="muted small">${acc.rewards_available ? "Elígela al pagar tu próximo pedido: Midnight, Snowlemon, Snowchocolate o Chocochip." : "Al completar los 8 sellos ganas una cookie a elección."}</span></div></div>
+        <div class="perk ${acc.rewards_available ? "ready" : ""}"><div><b>${acc.rewards_available ? `Tienes ${acc.rewards_available === 1 ? "un postre sorpresa" : acc.rewards_available + " postres sorpresa"} 🎁` : "Postre sorpresa"}</b>
+          <span class="muted small">${acc.rewards_available ? "Se agrega gratis en tu próximo pedido. Cocina elige un postre especial para ti." : "Al completar los 8 sellos ganas un postre sorpresa que elige cocina."}</span></div></div>
       </div>
       <div style="display:grid;gap:14px">
         <div class="perk ${acc.birthday_available ? "ready" : ""}"><div style="flex:1"><b>Regalo de cumpleaños: $4</b>
@@ -127,7 +127,7 @@ function renderGuest() {
     <div class="acct-grid">
       <div style="display:grid;gap:14px">
         <div><p class="eyebrow">Recompensas The Bakery Side</p><h1 class="display" style="font-size:clamp(40px,8vw,60px)">Empieza con 2 sellos de regalo</h1></div>
-        <p class="muted">Crea tu cuenta con Google en un toque. Ganas 1 sello por cada $10, una cookie gratis al completar 8 sellos y $4 en tu mes de cumpleaños.</p>
+        <p class="muted">Crea tu cuenta con Google en un toque. Te regalamos 2 sellos al empezar, ganas 1 sello por cada $10, un postre sorpresa al completar 8 y $4 en tu mes de cumpleaños.</p>
         <div>${googleButton()}</div>
         <p class="muted small">¿Prefieres no crear cuenta? Puedes <a href="/">pedir como invitado</a>, pero no acumularás sellos.</p>
       </div>

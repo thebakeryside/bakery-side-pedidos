@@ -1,8 +1,8 @@
-import { sb, $, $$, money, esc, hhmm, when, toast, waLink, STATUS } from "./common.js";
+import { sb, $, $$, money, esc, hhmm, when, dayLabel, orderRange, toast, waLink, STATUS } from "./common.js";
 import { requireLogin, loginHTML } from "./auth.js";
 
 $("#loginSlot").innerHTML = loginHTML("Mis entregas");
-let rider = null, orders = [];
+let rider = null, orders = [], win = 30;
 
 requireLogin(async (user) => {
   const { data } = await sb.from("riders").select("*").eq("user_id", user.id).maybeSingle();
@@ -11,6 +11,8 @@ requireLogin(async (user) => {
     $("#view").innerHTML = `<div class="panel"><h2 class="display" style="font-size:32px">Sin entregas asignadas</h2><p class="muted">Tu correo ${esc(user.email)} no está registrado como motorizado activo. Pide a la cocina que te agregue con este correo.</p></div>`;
     return;
   }
+  const { data: st } = await sb.from("settings").select("eta_window_minutes").maybeSingle();
+  win = Number(st?.eta_window_minutes || 30);
   await load();
   sb.channel("moto").on("postgres_changes", { event: "*", schema: "public", table: "orders" }, async (p) => {
     const was = orders.some((o) => o.id === p.new?.id);
@@ -49,7 +51,7 @@ function draw() {
 }
 
 function card(o) {
-  const t = o.status === "entregado" ? `Entregado ${hhmm(o.delivered_at)}` : (o.scheduled_for ? when(o.scheduled_for) : hhmm(o.eta));
+  const t = o.status === "entregado" ? `Entregado ${hhmm(o.delivered_at)}` : (o.scheduled_for ? `${dayLabel(o.scheduled_for)} · ${orderRange(o, win)}` : orderRange(o, win));
   const to = o.recipient_name || o.customer_name, phone = o.recipient_phone || o.customer_phone;
   let act = "";
   if (!o.rider_accepted_at && o.status !== "entregado") act = `<button class="btn primary" data-a="aceptar" data-id="${o.id}">Aceptar entrega</button><button class="btn ghost" data-a="rechazar" data-id="${o.id}">No puedo</button>`;
@@ -67,7 +69,7 @@ function card(o) {
       <span class="lbl">Entregar a ${esc(to)}</span>
       <span class="addr">${esc(o.address)}</span>
       <span>${esc(o.reference || "Sin referencia")}</span>
-      <span class="lbl" style="margin-top:6px">${o.status === "entregado" ? "" : o.scheduled_for ? "Entrega agendada" : "Debe llegar a las"}</span>
+      <span class="lbl" style="margin-top:6px">${o.status === "entregado" ? "" : o.scheduled_for ? "Entrega agendada" : "Debe llegar entre"}</span>
       <span class="time tabnum">${esc(t)}</span>
       <span class="small">${Number(o.distance_km).toFixed(1)} km · ganas ${money(o.delivery_fee)} · ya está pagado, no cobres nada</span>
     </div>

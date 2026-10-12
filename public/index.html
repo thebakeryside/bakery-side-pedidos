@@ -84,11 +84,14 @@
     <span><b id="closedTitle">Estamos descansando</b> · <span id="closedText"></span></span>
   </div>
 
-  <ol class="how" aria-label="Cómo pedir">
-    <li><span class="how-n">1</span><div><b>Elige tus antojos</b><span>Postres, cookies y bebidas hechos en casa.</span></div></li>
-    <li><span class="how-n">2</span><div><b>Marca dónde te lo llevamos</b><span>Ves el envío exacto y la hora de llegada antes de pagar.</span></div></li>
-    <li><span class="how-n">3</span><div><b>Paga en línea</b><span>Con tarjeta o transferencia. Puedes agendarlo o mandarlo de regalo.</span></div></li>
-  </ol>
+  <section class="how" aria-label="Cómo pedir">
+    <p class="how-t">Pedir es así de fácil</p>
+    <ol>
+      <li><span class="how-ic"><i>1</i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M5 8h14l-1.3 12H6.3z"/><path d="M9 8a3 3 0 0 1 6 0"/></svg></span><b>Elige</b><span>tus postres y bebidas</span></li>
+      <li><span class="how-ic"><i>2</i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 21s-7-6.1-7-11.5A7 7 0 0 1 19 9.5C19 14.9 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg></span><b>Tu dirección</b><span>ves envío y hora antes de pagar</span></li>
+      <li><span class="how-ic"><i>3</i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="17" r="2.5"/><circle cx="18" cy="17" r="2.5"/><path d="M8.5 17h6.5l2-6h-4M13 6h3l1.5 5"/></svg></span><b>Paga y recibe</b><span>tarjeta, Deuna o transferencia</span></li>
+    </ol>
+  </section>
 
   <div class="layout">
     <section aria-labelledby="menuTitle">
@@ -116,11 +119,13 @@
         <div class="step-title"><span class="n">1</span><h2>¿Cuándo lo quieres?</h2></div>
         <div class="choices">
           <label class="choice"><input type="radio" name="when" value="now" id="whenNow"><div><b>Lo antes posible</b><span id="nowHint">Te mostramos la hora estimada</span></div></label>
-          <label class="choice"><input type="radio" name="when" value="later" id="whenLater"><div><b>Agendar</b><span>Elige día y hora de entrega</span></div></label>
+          <label class="choice"><input type="radio" name="when" value="later" id="whenLater"><div><b>Agendar</b><span id="laterHint">Elige día y hora de entrega</span></div></label>
+          <label class="choice" id="splitChoice" hidden><input type="radio" name="when" value="split" id="whenSplit"><div><b>En dos entregas</b><span id="splitHint">Lo demás ahora y el dulce entero el día que elijas</span></div></label>
         </div>
+        <p class="note small" id="splitNote" hidden></p>
         <div class="row2" id="scheduleBox" hidden>
           <div><label class="f" for="schedDate">Día</label><select class="in" id="schedDate"></select></div>
-          <div><label class="f" for="schedTime">Hora de entrega</label><select class="in" id="schedTime"></select></div>
+          <div><label class="f" for="schedTime" id="schedTimeLbl">Hora de entrega</label><select class="in" id="schedTime"></select></div>
         </div>
       </div>
 
@@ -207,10 +212,10 @@
 <a class="wa-fab" id="waFab" hidden target="_blank" rel="noopener" aria-label="Escríbenos por WhatsApp"><svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path fill="currentColor" d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2c-1.5 0-3-.4-4.3-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.7.8-.8 1-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.3-.4.3-.4.8-1.4.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.8 11.9 11.9 0 0 0 4.6 4c1.7.7 2.4.8 3.2.7.5-.1 1.5-.6 1.8-1.2s.2-1.1.1-1.2l-.5-.3z"/></svg><span>¿Dudas? Escríbenos</span></a>
 
 <div class="cart-scrim" id="cartScrim" hidden></div>
-<div class="mobilebar" id="mobileBar" hidden>
-  <span><b id="mbCount">0</b> <span id="mbWord">productos</span> · <span id="mbTotal" class="tabnum">$0.00</span></span>
-  <button class="btn primary" type="button" id="mbOpen">Ver pedido</button>
-</div>
+<!-- Botón flotante del carrito (celular), como en las apps de delivery -->
+<button class="cartfab" id="mobileBar" type="button" hidden aria-label="Ver mi carrito">
+  <span class="cf-n tabnum" id="mbCount">0</span><span class="cf-t">Ver mi carrito</span><span class="cf-p tabnum" id="mbTotal">$0.00</span>
+</button>
 
 <!-- Opciones del producto (por ejemplo, endulzante) -->
 <div class="modal" id="optModal" hidden role="dialog" aria-modal="true" aria-labelledby="optTitle">

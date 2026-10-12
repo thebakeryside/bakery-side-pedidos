@@ -79,6 +79,14 @@ async function riderSubs(riderId: number | null) {
 const money = (n: unknown) => "$" + Number(n).toFixed(2);
 const hhmm = (d: string) => new Date(d).toLocaleTimeString("es-EC", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Guayaquil" });
 const dayHm = (d: string) => new Date(d).toLocaleString("es-EC", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Guayaquil" });
+const dayOnly = (d: string) => new Date(d).toLocaleDateString("es-EC", { weekday: "long", day: "numeric", month: "long", timeZone: "America/Guayaquil" });
+const hmx = (ms: number) => hhmm(new Date(ms).toISOString()).replace(":", "h");
+// Rango que ve el cliente: agendado = su franja; "lo antes posible" = desde la hora estimada redondeada a 15 min
+function rangeOf(o: any, win: number) {
+  const exact = Boolean(o.scheduled_for), t = new Date(o.scheduled_for || o.eta).getTime();
+  const start = exact ? t : Math.ceil(t / 900000) * 900000;
+  return `${hmx(start)} – ${hmx(start + win * 60000)}`;
+}
 const short = (t: string, n = 60) => (t.length > n ? t.slice(0, n - 1) + "…" : t);
 
 
@@ -98,13 +106,14 @@ async function orderPin(id: string) {
   return data?.pin as string | undefined;
 }
 
-function mailHtml(o: any, m: { title: string; lead: string; pin?: string; step: number; extra?: string }) {
+function mailHtml(o: any, m: { title: string; lead: string; pin?: string; step: number; extra?: string; win?: number; linked?: string }) {
   const first = escH(String(o.customer_name).split(" ")[0]);
   const link = `${SITE}/pedido?t=${o.tracking_token}`;
   const steps = ["Pago confirmado", "En preparación", "Listo", "En camino", "Entregado"];
   const bar = m.step >= 0 ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:22px 0 6px"><tr>${steps.map((st, i) => `<td align="center" width="20%" style="font-size:11px;color:${i <= m.step ? "#1C1714" : "#a39a90"};font-weight:${i === m.step ? "bold" : "normal"};padding:0 2px"><div style="height:6px;border-radius:3px;background:${i <= m.step ? "#C68A4E" : "#EDE8DA"};margin-bottom:6px"></div>${st}</td>`).join("")}</tr></table>` : "";
   const items = (o.order_items ?? []).map((i: any) => `<tr><td style="padding:4px 0;font-size:14px;color:#1C1714">${i.quantity} × ${escH(i.name)}</td><td align="right" style="padding:4px 0;font-size:14px;color:#554741">${money(i.line_total ?? 0)}</td></tr>`).join("");
-  const when = o.scheduled_for ? `Entrega agendada: <b>${escH(dayHm(o.scheduled_for))}</b>` : o.eta ? `Llega aprox. a las <b>${escH(hhmm(o.eta))}</b>` : "";
+  const win = m.win ?? 30;
+  const when = o.scheduled_for ? `Entrega el <b>${escH(dayOnly(o.scheduled_for))}</b>, entre <b>${escH(rangeOf(o, win))}</b>` : o.eta ? `Llega entre <b>${escH(rangeOf(o, win))}</b>` : "";
   const pin = m.pin ? `<div style="margin:20px 0;border:2px solid #C68A4E;border-radius:14px;padding:16px;text-align:center;background:#FBF6EE">
       <div style="font-size:11px;letter-spacing:2px;color:#8a7f76;font-weight:bold">TU PIN DE ENTREGA</div>
       <div style="font-size:38px;letter-spacing:12px;font-weight:bold;color:#1C1714;margin:6px 0 4px;font-family:'Courier New',monospace">${escH(m.pin)}</div>
@@ -118,6 +127,7 @@ function mailHtml(o: any, m: { title: string; lead: string; pin?: string; step: 
     ${bar}
     ${when && m.step >= 0 && m.step < 4 ? `<p style="margin:14px 0 0;font-size:15px;color:#1C1714">${when}</p>` : ""}
     ${pin}
+    ${m.linked ? `<p style="margin:14px 0 0;font-size:14px;color:#554741;background:#FBF6EE;border-radius:10px;padding:10px 12px">${m.linked}</p>` : ""}
     ${m.extra ?? ""}
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:18px;border-top:1px solid #EDE8DA;padding-top:10px">${items}
       <tr><td style="padding:4px 0;font-size:14px;color:#554741">Envío</td><td align="right" style="padding:4px 0;font-size:14px;color:#554741">${money(o.delivery_fee)}</td></tr>
@@ -149,6 +159,12 @@ async function mailCustomer(o: any, event: string) {
       m = { subject: `Tu pedido ${o.code} fue cancelado`, title: "Pedido cancelado", lead: `cancelamos tu pedido${o.cancel_reason ? ` (${escH(o.cancel_reason)})` : ""}. Si ya habías pagado, te devolvemos el dinero. Escríbenos si tienes dudas.`, step: -1 }; break;
   }
   if (!m) return false;
+  const { data: st } = await db.from("settings").select("eta_window_minutes").maybeSingle();
+  (m as any).win = Number(st?.eta_window_minutes ?? 30);
+  if (o.group_id && (event === "pagado" || event === "pago_confirmado")) {
+    const { data: sib } = await db.from("orders").select("code,scheduled_for,eta").eq("group_id", o.group_id).neq("id", o.id);
+    if (sib?.length) (m as any).linked = `Tu pago incluye otra entrega: ${sib.map((x: any) => `pedido <b>${escH(x.code)}</b> ${x.scheduled_for ? `el ${escH(dayOnly(x.scheduled_for))} entre ${escH(rangeOf(x, (m as any).win))}` : "para hoy"}`).join(" y ")}. Te avisamos de cada una por separado.`;
+  }
   const r = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${RESEND_KEY}`, "Content-Type": "application/json", "Idempotency-Key": `${o.id}-${event}` },

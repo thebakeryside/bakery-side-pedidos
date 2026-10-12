@@ -429,6 +429,17 @@ async function ajustes() {
         ${f("sSlotCap", "Pedidos máximos por franja de 30 min", s.slot_capacity, "number", 'min="1"')}
       </div>
       <p class="muted small">Los horarios por día y los feriados están en la pestaña «Horarios».</p>
+      <h3 class="group-title">Hora de entrega que ve el cliente</h3>
+      <div class="form-grid">
+        ${f("sWin", "Ancho del rango (min)", s.eta_window_minutes ?? 30, "number", 'min="10" max="120" step="5"')}
+        ${f("sTrx", "Minutos extra en transferencias", s.transfer_extra_minutes ?? 5, "number", 'min="0" max="60"')}
+        ${f("sOpenLead", "Si piden con la tienda cerrada, entregar desde (min después de abrir)", s.open_lead_minutes ?? 60, "number", 'min="0" max="240" step="15"')}
+      </div>
+      <p class="muted small">Ejemplo: si el cálculo da 10h07, el cliente ve <b id="winEx"></b>.</p>
+      <h3 class="group-title">Tarjeta de sellos</h3>
+      <div class="form-grid">
+        ${f("sReward", "Valor máximo del postre sorpresa $", s.reward_max_value ?? 4, "number", 'min="0" max="50" step="0.5"')}
+      </div>
       <h3 class="group-title">Envío</h3>
       <div class="form-grid">
         ${f("sBase", "Envío base $", s.fee_base, "number", 'step="0.05" min="0"')}
@@ -452,12 +463,16 @@ async function ajustes() {
     $("#feeEx").textContent = money(Math.ceil(raw / 0.25 - 1e-9) * 0.25);
   };
   ["#sBase", "#sIncl", "#sPerKm"].forEach((k) => $(k).addEventListener("input", ex)); ex();
+  const winEx = () => { const w = Number($("#sWin").value) || 30, end = 10 * 60 + 15 + w; $("#winEx").textContent = `10h15 – ${Math.floor(end / 60)}h${String(end % 60).padStart(2, "0")}`; };
+  $("#sWin").addEventListener("input", winEx); winEx();
   renderQrAdmin();
   $("#setForm").onsubmit = async (e) => {
     e.preventDefault();
     const patch = {
       slot_capacity: Number($("#sSlotCap").value), fee_base: Number($("#sBase").value), fee_included_km: Number($("#sIncl").value),
       fee_per_km: Number($("#sPerKm").value), max_km: Number($("#sMaxKm").value),
+      eta_window_minutes: Number($("#sWin").value) || 30, transfer_extra_minutes: Number($("#sTrx").value) || 0,
+      open_lead_minutes: Number($("#sOpenLead").value) || 0, reward_max_value: Number($("#sReward").value) || 0,
       whatsapp_number: $("#sWa").value.trim() || null, bank_info: $("#sBank").value.trim() || null, updated_at: new Date().toISOString(),
     };
     const { error } = await sb.from("settings").update(patch).eq("id", true);
@@ -499,7 +514,7 @@ async function clientes() {
   if (error) return ($("#view").innerHTML = `<p class="err">${esc(error.message)}</p>`);
   $("#view").innerHTML = `<div class="panel">
     <h2 class="display" style="font-size:30px">Clientes y sellos</h2>
-    <p class="muted small">Clientes con cuenta de Google. Puedes sumar o quitar sellos, por ejemplo para compensar un reclamo. Al llegar a 8 se crea su cookie gratis automáticamente.</p>
+    <p class="muted small">Clientes con cuenta de Google. Puedes sumar o quitar sellos, por ejemplo para compensar un reclamo. Al llegar a 8 se crea su postre sorpresa automáticamente.</p>
     <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Cliente</th><th>Pedidos</th><th>Gastado</th><th>Sellos</th><th>Cookies</th><th>Ajustar</th></tr></thead><tbody>
     ${data.map((c) => `<tr><td><b>${esc(c.full_name || "Sin nombre")}</b><br><span class="muted small">${esc(c.email || "")}${c.phone ? " · " + esc(c.phone) : ""}</span></td>
       <td class="tabnum">${c.orders}</td><td class="tabnum">${money(c.spent)}</td><td class="tabnum"><b>${c.stamps}/8</b></td><td class="tabnum">${c.rewards}</td>

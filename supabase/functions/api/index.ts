@@ -35,12 +35,13 @@ type Settings = {
   max_km: number; slot_minutes: number; slot_capacity: number;
   whatsapp_number: string | null; bank_info: string | null;
   map_provider: "osm" | "google"; route_factor: number;
+  eta_window_minutes?: number; transfer_extra_minutes?: number; open_lead_minutes?: number; reward_max_value?: number;
 };
 
 async function getSettings(): Promise<Settings> {
   const { data, error } = await db.from("settings").select("*").single();
   if (error) throw error;
-  for (const k of ["fee_base", "fee_included_km", "fee_per_km", "fee_round_to", "max_km", "route_factor"]) {
+  for (const k of ["fee_base", "fee_included_km", "fee_per_km", "fee_round_to", "max_km", "route_factor", "reward_max_value"]) {
     // numeric llega como string
     (data as Record<string, unknown>)[k] = Number((data as Record<string, unknown>)[k]);
   }
@@ -175,18 +176,24 @@ async function priceCart(items: Item[]) {
   return { lines, subtotal: Math.round(subtotal * 100) / 100, prep, lead, prods: prods! };
 }
 
-async function validateSchedule(s: Settings, scheduled: string | null, prep: number, lead: number, travel: number) {
+// extra = minutos para confirmar una transferencia
+async function validateSchedule(s: Settings, scheduled: string | null, prep: number, lead: number, travel: number, extra = 0) {
   const now = new Date();
   if (!s.store_open) fail("La tienda está cerrada temporalmente. Vuelve pronto.");
   if (!scheduled) {
     if (lead > 0) fail("Uno de tus productos necesita pedirse con anticipación. Agenda la entrega.");
     if (!isOpenAt(now, s)) fail("Ahora estamos fuera del horario de pedidos. Agenda tu entrega.");
-    return { scheduled_for: null, eta: new Date(now.getTime() + (5 + prep + travel + busyExtra(s)) * 60000) };
+    return { scheduled_for: null, eta: new Date(now.getTime() + (5 + prep + travel + busyExtra(s) + extra) * 60000) };
   }
   const when = new Date(scheduled);
   if (isNaN(when.getTime())) fail("La hora de entrega no es válida.");
-  const earliest = now.getTime() + Math.max((5 + prep + travel + busyExtra(s)) * 60000, lead * 3600000);
+  const earliest = now.getTime() + Math.max((5 + prep + travel + busyExtra(s) + extra) * 60000, lead * 3600000);
   if (when.getTime() < earliest) fail("Esa hora ya no alcanza. Elige una franja más tarde.");
+  // Pedido hecho con la tienda cerrada: ese primer día se entrega desde 1 hora después de abrir
+  const first = firstSlotWhenClosed(s);
+  if (first && localDay(when) === first.day && localMinutes(when) < first.minutes) {
+    fail(`Ese día empezamos a entregar desde las ${String(Math.floor(first.minutes / 60)).padStart(2, "0")}h${String(first.minutes % 60).padStart(2, "0")}. Elige una franja más tarde.`);
+  }
   if (when.getTime() > now.getTime() + 30 * 86400000) fail("Puedes agendar hasta 30 días antes.");
   if (!isOpenAt(when, s)) fail(`Ese día atendemos ${hoursText(when, s)}. Elige otra hora.`);
   if (localMinutes(when) % s.slot_minutes !== 0) fail("Elige una de las franjas disponibles.");
@@ -214,9 +221,9 @@ async function orderByToken(token: string) {
   return data!;
 }
 
-function payphoneParams(o: Record<string, any>, attempt: number) {
+function payphoneParams(o: Record<string, any>, attempt: number, amount?: number) {
   if (!PAYPHONE_TOKEN || !PAYPHONE_STORE_ID) fail("El pago con tarjeta aún no está configurado. Elige transferencia o intenta más tarde.");
-  const cents = Math.round(Number(o.total) * 100);
+  const cents = Math.round(Number(amount ?? o.total) * 100);
   return {
     token: PAYPHONE_TOKEN,
     storeId: PAYPHONE_STORE_ID,
@@ -239,7 +246,7 @@ async function userFrom(req: Request): Promise<User> {
   const { data } = await db.auth.getUser(t);
   return data?.user ?? null;
 }
-const COOKIES = ["Midnight Cookies", "Snowlemon Cookies", "Snowchocolate Cookies", "Chocochip Cookies"];
+const SURPRISE = "Postre sorpresa";
 const nowLocal = () => toLocal(new Date());
 
 // Agotados y porciones del día: solo aplican a pedidos que se entregan hoy
@@ -315,7 +322,7 @@ async function accountSummary(c: Record<string, any>) {
     stamps: (led ?? []).reduce((s: number, r: any) => s + r.delta, 0),
     rewards_available: reward ? (rewardsCount ?? 1) : 0,
     birthday_available: bday,
-    cookies: COOKIES,
+    reward_name: SURPRISE,
   };
 }
 
@@ -337,6 +344,12 @@ function nextOpen(s: Settings) {
   }
   return null;
 }
+// Si la tienda está cerrada ahora: el día en que vuelve a abrir y desde qué minuto se puede entregar
+function firstSlotWhenClosed(s: Settings) {
+  if (isOpenAt(new Date(), s)) return null;
+  const no = nextOpen(s);
+  return no ? { day: no.day, minutes: minutesOf(no.time) + Number(s.open_lead_minutes ?? 60) } : null;
+}
 function todayHours(s: Settings) {
   const h = hoursOn(localDay(new Date()), s);
   return h ? { open_time: h.open, close_time: h.close } : { open_time: null, close_time: null };
@@ -355,7 +368,7 @@ async function payQrs() {
 }
 
 // Crea un pedido (tienda o WhatsApp). staff = { paid, by } cuando lo registra cocina o master.
-async function makeOrder(b: any, cust: Record<string, any> | null, staff: { paid: boolean; by: string } | null) {
+async function makeOrder(b: any, cust: Record<string, any> | null, staff: { paid: boolean; by: string } | null, groupId: string | null = null, payLater = false) {
     const s = await getSettings();
     const cart = await priceCart(b.items);
     let discount = 0, useBday = false, reward: any = null;
@@ -363,15 +376,17 @@ async function makeOrder(b: any, cust: Record<string, any> | null, staff: { paid
       if (!(await birthdayEligible(cust))) fail("El regalo de cumpleaños no está disponible en este pedido.");
       useBday = true; discount = Math.min(4, cart.subtotal);
     }
-    if (cust && b.reward_product_id) {
+    if (cust && (b.use_reward || b.reward_product_id)) {
       reward = await availableReward(cust.user_id);
-      if (!reward) fail("No tienes una cookie de regalo disponible.");
-      const { data: ck } = await db.from("products").select("id,name,active").eq("id", Number(b.reward_product_id)).maybeSingle();
-      if (!ck || !ck.active || !COOKIES.includes(ck.name)) fail("Elige una de las cookies de regalo.");
-      cart.lines.push({ product_id: ck!.id, name: `${ck!.name} (regalo de tu tarjeta)`, unit_price: 0, quantity: 1, line_total: 0 });
+      if (!reward) fail("No tienes un postre de regalo disponible.");
+      // Premio de la tarjeta: postre sorpresa que elige cocina (producto oculto del menú)
+      const { data: ps } = await db.from("products").select("id").eq("name", SURPRISE).maybeSingle();
+      if (!ps) fail("El postre sorpresa no está disponible en este momento.");
+      cart.lines.push({ product_id: ps!.id, name: `${SURPRISE} (regalo de tu tarjeta)`, unit_price: 0, quantity: 1, line_total: 0 });
     }
     const q = await quote(s, Number(b.lat), Number(b.lng));
-    const sched = await validateSchedule(s, b.scheduled_for || null, cart.prep, cart.lead, q.travel_min);
+    const payExtra = !staff && b.payment_method === "transferencia" ? Number(s.transfer_extra_minutes ?? 5) : 0;
+    const sched = await validateSchedule(s, b.scheduled_for || null, cart.prep, cart.lead, q.travel_min, payExtra);
     const limited = checkStock(cart, localDay(sched.scheduled_for ? new Date(sched.scheduled_for) : new Date()));
     const method = staff ? "transferencia" : b.payment_method === "tarjeta" ? "tarjeta" : b.payment_method === "transferencia" ? "transferencia" : fail("Elige cómo pagar.");
     const name = clean(b.customer_name, 80) || fail("Escribe tu nombre.");
@@ -400,6 +415,7 @@ async function makeOrder(b: any, cust: Record<string, any> | null, staff: { paid
       // correo para avisar cada paso: el de la cuenta de Google o el que escribió el cliente
       customer_email: (/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(clean(b.customer_email, 120)) ? clean(b.customer_email, 120).toLowerCase() : null) || cust?.email || null,
     };
+    if (groupId) row.group_id = groupId;
     if (staff) {
       row.channel = "whatsapp";
       row.payment_ref = `Pedido por WhatsApp · registrado por ${staff.by}`;
@@ -432,21 +448,37 @@ async function makeOrder(b: any, cust: Record<string, any> | null, staff: { paid
       }).eq("user_id", cust.user_id);
     }
 
-    const out: Record<string, unknown> = { code: o.code, tracking_token: o.tracking_token, total, delivery_fee: q.fee, subtotal: cart.subtotal, discount };
-    if (staff) {
-      // nada más: cocina manda el enlace por WhatsApp o ya está pagado
-    } else if (method === "tarjeta") {
-      const pp = payphoneParams(o, 1);
-      await db.from("orders").update({ payment_ref: pp.clientTransactionId }).eq("id", o.id);
-      out.payphone = pp;
-    } else {
-      const path = `${o.id}/${crypto.randomUUID()}`;
-      const { data: up, error: e3 } = await db.storage.from("comprobantes").createSignedUploadUrl(path);
-      if (e3) throw e3;
-      out.upload = { path, token: up.token };
-    }
-    return out;
+    const out: Record<string, unknown> = { code: o.code, tracking_token: o.tracking_token, total, delivery_fee: q.fee, subtotal: cart.subtotal, discount, _order: o };
+    if (staff || payLater) return out; // cocina manda el enlace por WhatsApp o ya está pagado; en dos entregas se cobra aparte
+    return await startPayment(o, method, total, out);
 }
+
+// Deja listo el cobro: Payphone (tarjeta) o permiso para subir el comprobante (transferencia)
+async function startPayment(o: Record<string, any>, method: string, amount: number, out: Record<string, unknown>) {
+  out.total = amount;
+  if (method === "tarjeta") {
+    const pp = payphoneParams(o, 1, amount);
+    await db.from("orders").update({ payment_ref: pp.clientTransactionId }).eq("id", o.id);
+    out.payphone = pp;
+  } else {
+    const path = `${o.id}/${crypto.randomUUID()}`;
+    const { data: up, error: e3 } = await db.storage.from("comprobantes").createSignedUploadUrl(path);
+    if (e3) throw e3;
+    out.upload = { path, token: up.token };
+  }
+  delete out._order;
+  return out;
+}
+
+// Total a cobrar: si el pedido va en dos entregas, se cobra todo junto
+async function groupTotal(o: Record<string, any>) {
+  if (!o.group_id) return Number(o.total);
+  const { data } = await db.from("orders").select("total,status").eq("group_id", o.group_id);
+  return Math.round((data ?? []).filter((x) => x.status !== "cancelado").reduce((t, x) => t + Number(x.total), 0) * 100) / 100;
+}
+// Aplica un cambio al pedido y, si es de dos entregas, a la otra también
+const updateGroup = (o: Record<string, any>, patch: Record<string, unknown>) =>
+  o.group_id ? db.from("orders").update(patch).eq("group_id", o.group_id).neq("status", "cancelado") : db.from("orders").update(patch).eq("id", o.id);
 
 async function staffName(user: User) {
   if (!user) fail("Inicia sesión.");
@@ -478,6 +510,10 @@ const actions: Record<string, (b: any, user: User) => Promise<unknown>> = {
       busy_extra: busyExtra(s),
       days: nextDays(s, 31),
       next_open: nextOpen(s),
+      eta_window: Number(s.eta_window_minutes ?? 30),
+      transfer_extra: Number(s.transfer_extra_minutes ?? 5),
+      first_slot: firstSlotWhenClosed(s),
+      reward_max: Number(s.reward_max_value ?? 4),
     };
   },
 
@@ -494,7 +530,23 @@ const actions: Record<string, (b: any, user: User) => Promise<unknown>> = {
 
   async crear(b, user) {
     const cust = user ? await ensureCustomer(user, b.ref) : null;
-    return await makeOrder(b, cust, null);
+    if (!b.split) return await makeOrder(b, cust, null);
+    // Dos entregas en un solo pago: lo de ahora y lo agendado (por ejemplo, un dulce entero para mañana)
+    const sp = b.split;
+    if (!sp.scheduled_for) fail("Elige el día y la hora de la segunda entrega.");
+    if (!Array.isArray(sp.items) || !sp.items.length) fail("La segunda entrega está vacía.");
+    const gid = crypto.randomUUID();
+    const later = await makeOrder({
+      ...b, items: sp.items, scheduled_for: sp.scheduled_for,
+      lat: sp.lat ?? b.lat, lng: sp.lng ?? b.lng, address: sp.address ?? b.address, reference: sp.reference ?? b.reference,
+      use_birthday: false, use_reward: false, reward_product_id: null,
+    }, cust, null, gid, true);
+    let now: Record<string, any>;
+    try { now = await makeOrder(b, cust, null, gid, true); }
+    catch (e) { await db.from("orders").delete().eq("id", (later._order as any).id); throw e; }
+    const total = Math.round((Number(now.total) + Number(later.total)) * 100) / 100;
+    const out = await startPayment(now._order as any, b.payment_method === "tarjeta" ? "tarjeta" : "transferencia", total, { ...now });
+    return { ...out, linked: { code: later.code, tracking_token: later.tracking_token, total: later.total, delivery_fee: later.delivery_fee } };
   },
 
   // Pedido que cocina o master registra por WhatsApp (datos mínimos)
@@ -504,6 +556,7 @@ const actions: Record<string, (b: any, user: User) => Promise<unknown>> = {
     const phone = normPhone(b.customer_phone);
     const { data: cust } = await db.from("customers").select("*").eq("phone", phone).limit(1).maybeSingle();
     const res = await makeOrder({ ...b, customer_phone: phone, invoice_type: "consumidor_final", use_birthday: false, reward_product_id: null }, cust ?? null, { paid: Boolean(b.paid), by });
+    delete res._order;
     return res;
   },
 
@@ -556,9 +609,11 @@ const actions: Record<string, (b: any, user: User) => Promise<unknown>> = {
     if (o.payment_status === "pagado") fail("Este pedido ya está pagado.");
     if (o.status === "cancelado") fail("Este pedido fue cancelado.");
     const n = Number(String(o.payment_ref ?? "").split("-").pop()) || 0;
-    const pp = payphoneParams(o, n + 1);
+    const total = await groupTotal(o);
+    const pp = payphoneParams(o, n + 1, total);
     await db.from("orders").update({ payment_method: "tarjeta", payment_ref: pp.clientTransactionId, payment_status: "pendiente" }).eq("id", o.id);
-    return { code: o.code, tracking_token: o.tracking_token, total: Number(o.total), payphone: pp };
+    if (o.group_id) await db.from("orders").update({ payment_method: "tarjeta" }).eq("group_id", o.group_id).neq("id", o.id);
+    return { code: o.code, tracking_token: o.tracking_token, total, payphone: pp };
   },
 
   // Payphone redirige a /pago?id=...&clientTransactionId=...
@@ -577,12 +632,14 @@ const actions: Record<string, (b: any, user: User) => Promise<unknown>> = {
       body: JSON.stringify({ id, clientTxId }),
     });
     const p = await r.json().catch(() => ({}));
-    const approved = p?.statusCode === 3 && Number(p?.amount) === Math.round(Number(o.total) * 100);
+    const approved = p?.statusCode === 3 && Number(p?.amount) === Math.round((await groupTotal(o)) * 100);
     if (approved) {
-      await db.from("orders").update({
-        payment_status: "pagado", status: "confirmado", paid_at: new Date().toISOString(),
-        payment_ref: `${clientTxId} | Payphone ${p.transactionId} | ${p.cardBrand ?? ""} ${p.lastDigits ?? ""}`.trim(),
-      }).eq("id", o.id);
+      const ref = `${clientTxId} | Payphone ${p.transactionId} | ${p.cardBrand ?? ""} ${p.lastDigits ?? ""}`.trim();
+      const paidAt = new Date().toISOString();
+      await db.from("orders").update({ payment_status: "pagado", status: "confirmado", paid_at: paidAt, payment_ref: ref }).eq("id", o.id);
+      // la otra entrega del mismo pago también queda pagada
+      if (o.group_id) await db.from("orders").update({ payment_status: "pagado", status: "confirmado", paid_at: paidAt, payment_ref: `${ref} (pago junto con ${o.code})` })
+        .eq("group_id", o.group_id).neq("id", o.id).neq("status", "cancelado");
       return { ok: true, code: o.code, tracking_token: o.tracking_token };
     }
     await db.from("orders").update({ payment_status: "fallido" }).eq("id", o.id);
@@ -595,7 +652,7 @@ const actions: Record<string, (b: any, user: User) => Promise<unknown>> = {
     const o = await orderByToken(b.tracking_token);
     if (o.payment_status === "pagado" || o.status === "cancelado") fail("Este pedido ya no necesita pago.");
     const s = await getSettings();
-    return { code: o.code, total: Number(o.total), bank_info: s.bank_info, qr: await payQrs() };
+    return { code: o.code, total: await groupTotal(o), bank_info: s.bank_info, qr: await payQrs() };
   },
 
   // Permiso para subir un comprobante a un pedido aún no pagado
@@ -616,10 +673,10 @@ const actions: Record<string, (b: any, user: User) => Promise<unknown>> = {
     const { data: files } = await db.storage.from("comprobantes").list(o.id);
     if (!files?.some((f) => `${o.id}/${f.name}` === path)) fail("No recibimos la foto del comprobante. Inténtalo de nuevo.");
     if (o.payment_status === "pagado" || o.status === "cancelado") fail("Este pedido ya no necesita comprobante.");
-    await db.from("orders").update({
+    await updateGroup(o, {
       transfer_receipt_path: path, payment_ref: clean(b.reference, 60) || null, payment_method: "transferencia",
       payment_status: "en_revision", status: "por_confirmar",
-    }).eq("id", o.id);
+    });
     return { ok: true, code: o.code, tracking_token: o.tracking_token };
   },
 };

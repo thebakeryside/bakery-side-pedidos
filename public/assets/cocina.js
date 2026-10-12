@@ -1,4 +1,4 @@
-import { sb, $, $$, money, esc, hhmm, when, toast, waLink, STATUS, todayLocal } from "./common.js";
+import { sb, $, $$, money, esc, hhmm, when, dayLabel, orderRange, toast, waLink, STATUS, todayLocal } from "./common.js";
 import { requireLogin, loginHTML } from "./auth.js";
 import { renderManual } from "./manual.js";
 
@@ -114,7 +114,7 @@ function waText(o) {
   const msgs = {
     pendiente_pago: `Hola ${first}, vimos tu pedido ${o.code} en The Bakery Side pero aún no se completó el pago. Puedes pagarlo aquí: ${link}`,
     por_confirmar: `Hola ${first}, recibimos tu comprobante del pedido ${o.code}. Lo estamos verificando. Seguimiento: ${link}`,
-    confirmado: `Hola ${first}, ¡confirmamos tu pedido ${o.code}! ${o.scheduled_for ? `Lo entregamos ${when(o.scheduled_for)}.` : `Llega aprox. a las ${hhmm(o.eta)}.`}${pin ? ` Tu PIN de entrega es ${pin}: dáselo al motorizado solo cuando tengas el pedido en tus manos.` : ""} Seguimiento: ${link}`,
+    confirmado: `Hola ${first}, ¡confirmamos tu pedido ${o.code}! ${o.scheduled_for ? `Lo entregamos ${dayLabel(o.scheduled_for).toLowerCase()} entre ${orderRange(o, win())}.` : `Llega entre ${orderRange(o, win())}.`}${pin ? ` Tu PIN de entrega es ${pin}: dáselo al motorizado solo cuando tengas el pedido en tus manos.` : ""} Seguimiento: ${link}`,
     preparando: `Hola ${first}, tu pedido ${o.code} ya se está preparando. Seguimiento: ${link}`,
     listo: `Hola ${first}, tu pedido ${o.code} está listo y sale en minutos. Seguimiento: ${link}`,
     en_camino: `Hola ${first}, tu pedido ${o.code} va en camino${r ? ` con ${r}` : ""}.${pin ? ` Ten a mano tu PIN de entrega: ${pin}.` : ""} Seguimiento: ${link}`,
@@ -131,6 +131,7 @@ const ICON = {
   pin: `<svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.1-7-11.5A7 7 0 0 1 19 9.5C19 14.9 12 21 12 21z" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="9.5" r="2.5" fill="currentColor"/></svg>`,
   gift: `<svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11h16v9H4zM3 7h18v4H3zM12 7v13M12 7S10.5 3 8 3.6 7.6 7 12 7zm0 0s1.5-4 4-3.4S16.4 7 12 7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>`,
 };
+const linkedCodes = (o) => S.orders.filter((x) => x.group_id === o.group_id && x.id !== o.id).map((x) => `${esc(x.code)}${x.scheduled_for ? ` (${dayLabel(x.scheduled_for)})` : " (ahora)"}`).join(", ") || "otro pedido";
 function relTime(o) {
   if (["entregado", "cancelado", "pendiente_pago"].includes(o.status)) return "";
   const at = new Date(o.scheduled_for || o.eta).getTime(), m = Math.round((at - Date.now()) / 60000);
@@ -153,8 +154,12 @@ function itemLine(i) {
   const m = String(i.name).match(/^(.*?) \(([^()]*)\)$/); // "Cold Brew (11oz) (Stevia)" → opción aparte
   return m ? `<li><b class="q">${i.quantity}</b><span>${esc(m[1])}<em>${esc(m[2])}</em></span></li>` : `<li><b class="q">${i.quantity}</b><span>${esc(i.name)}</span></li>`;
 }
+const win = () => Number(S.settings?.eta_window_minutes || 30);
+const travelMin = (km) => Math.max(8, Math.round(Number(km) / 25 * 60 + 5)); // igual que el servidor
+// Nueva hora de llegada contando desde ahora (al confirmar el pago o al empezar a preparar)
+const etaFromNow = (o, prepLeft) => o.scheduled_for || new Date(Date.now() + (prepLeft + travelMin(o.distance_km)) * 60000).toISOString();
 function card(o) {
-  const t = o.scheduled_for ? when(o.scheduled_for) : `Llega ${hhmm(o.eta)}`;
+  const t = o.scheduled_for ? `${dayLabel(o.scheduled_for)} · ${orderRange(o, win())}` : `Entre ${orderRange(o, win())}`;
   const riderOpts = `<option value="">Asignar motorizado…</option>` + S.riders.filter((r) => r.active).map((r) => `<option value="${r.id}" ${o.rider_id === r.id ? "selected" : ""}>${esc(r.full_name)}</option>`).join("");
   const pin = S.pins.get(o.id);
   // acción principal según el estado (una sola, grande)
@@ -173,6 +178,8 @@ function card(o) {
     <div class="owhen tabnum">${esc(t)} ${relTime(o)}</div>
     <ul class="kitems">${o.order_items.map(itemLine).join("")}</ul>
     ${o.gift_message || o.recipient_name ? `<div class="gift">${ICON.gift}<div><b>Regalo${o.recipient_name ? ` para ${esc(o.recipient_name)}` : ""}</b><span class="from">De parte de: <b>${esc(o.gift_from || o.customer_name)}</b></span>${o.gift_message ? `<span>Tarjeta: “${esc(o.gift_message)}”</span>` : `<span>Sin mensaje: solo la firma.</span>`}</div></div>` : ""}
+    ${o.group_id ? `<div class="linknote">🔗 Pago junto con ${linkedCodes(o)} (dos entregas)</div>` : ""}
+    ${o.order_items.some((i) => /^Postre sorpresa/.test(i.name)) ? `<div class="linknote">🎁 Incluye postre sorpresa de regalo: elige uno de hasta ${money(S.settings?.reward_max_value ?? 4)}</div>` : ""}
     <div class="chips">${payChip(o)}${riderChip(o)}<span class="chip">${ICON.pin}${Number(o.distance_km).toFixed(1)} km</span>${pin?.attempts >= 5 && canForce ? `<span class="chip bad">PIN bloqueado</span>` : ""}</div>
     ${main || assign ? `<div class="acts main">${main}${assign}</div>` : ""}
     <details class="more">
@@ -223,8 +230,17 @@ document.addEventListener("click", async (e) => {
       if (error) return toast("No pudimos abrir el comprobante.");
       window.open(data.signedUrl, "_blank", "noopener"); break;
     }
-    case "confirmPay": return upd(id, { payment_status: "pagado", status: "confirmado", paid_at: now }, `${o.code}: pago confirmado`);
-    case "prep": return upd(id, { status: "preparando", prep_started_at: now, eta: o.scheduled_for || new Date(Date.now() + (o.prep_minutes + 15) * 60000).toISOString() }, `${o.code} en preparación`);
+    case "confirmPay": {
+      // la hora de llegada se cuenta desde que se confirma el pago; si son dos entregas, se confirman ambas
+      const patch = { payment_status: "pagado", status: "confirmado", paid_at: now };
+      if (!o.group_id) return upd(id, { ...patch, eta: etaFromNow(o, 5 + o.prep_minutes) }, `${o.code}: pago confirmado`);
+      for (const g of S.orders.filter((x) => x.group_id === o.group_id && x.status !== "cancelado")) {
+        const { error } = await sb.from("orders").update({ ...patch, eta: etaFromNow(g, 5 + g.prep_minutes) }).eq("id", g.id);
+        if (error) return toast("No se pudo guardar: " + error.message);
+      }
+      toast(`${o.code}: pago confirmado (las dos entregas)`); await loadOrders(); render(); return;
+    }
+    case "prep": return upd(id, { status: "preparando", prep_started_at: now, eta: etaFromNow(o, o.prep_minutes) }, `${o.code} en preparación`);
     case "ready": return upd(id, { status: "listo", ready_at: now }, `${o.code} listo`);
     case "forceAsk": $(`[data-force="${id}"]`).hidden = false; $(`[data-freason="${id}"]`).focus(); break;
     case "force": {
