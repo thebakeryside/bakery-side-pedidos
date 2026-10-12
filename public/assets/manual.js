@@ -85,7 +85,7 @@ export async function renderManual(view) {
         <h2 class="mtitle"><span>4</span> Pago</h2>
         <div class="chips" role="radiogroup" aria-label="Pago">
           <label class="chip"><input type="radio" name="mPay" value="link" checked> Mandarle el enlace de pago</label>
-          <label class="chip"><input type="radio" name="mPay" value="paid"> Ya pagó (DeUna, PeiGo o transferencia)</label>
+          <label class="chip"><input type="radio" name="mPay" value="paid"> Ya pagó (transferencia, PeiGo o DeUna)</label>
         </div>
         <div id="mSum" class="msum"></div>
         <button class="btn primary big" id="mGo" style="margin-top:12px">Registrar pedido</button>
@@ -256,7 +256,7 @@ function done(res, body, paid) {
   const lines = [...st.cart].map(([k, q]) => `${q}× ${lName(k)}`).join("\n");
   const whenTxt = body.scheduled_for ? `Entrega: ${when(body.scheduled_for)}` : st.quote?.eta_if_now ? `Llega aprox. a las ${hhmm(st.quote.eta_if_now)}` : "";
   const msg = `¡Hola ${first}! 🧁 Tu pedido ${res.code} en The Bakery Side:\n${lines}\nEnvío: ${money(res.delivery_fee)}\nTotal: ${money(res.total)}\n${whenTxt}\n\n` +
-    (paid ? `¡Pago recibido, gracias! Sigue tu pedido aquí: ${link}` : `Paga aquí con tarjeta, DeUna o PeiGo y sigue tu pedido: ${link}`);
+    (paid ? `¡Pago recibido, gracias! Sigue tu pedido aquí: ${link}` : `Paga aquí con tarjeta, transferencia, PeiGo o DeUna y sigue tu pedido: ${link}`);
   $("#mForm").hidden = true;
   $("#mDone").innerHTML = `
     <div class="panel mdone">

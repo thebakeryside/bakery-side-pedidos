@@ -35,7 +35,7 @@ function render(o) {
       ${unpaid ? `<div class="paybox">
         <div class="payseg" role="tablist" aria-label="Forma de pago">
           <button type="button" role="tab" id="segCard" aria-selected="${!wantAlt}">Tarjeta</button>
-          <button type="button" role="tab" id="segAlt" aria-selected="${wantAlt}">DeUna, PeiGo o transferencia</button>
+          <button type="button" role="tab" id="segAlt" aria-selected="${wantAlt}">Transferencia, PeiGo o DeUna</button>
         </div>
         <div id="altPay" ${wantAlt ? "" : "hidden"}>
           <ol class="paysteps">
@@ -115,17 +115,22 @@ function render(o) {
   if (!["entregado", "cancelado"].includes(o.status) && !unpaid) timer = setTimeout(load, 20000);
 }
 
-const BANK_COLORS = [[/pichincha/i, "#FFDD00"], [/guayaquil/i, "#D2006E"], [/pac[ií]fico/i, "#0072CE"], [/amazonas/i, "#00A651"], [/produbanco/i, "#00843D"], [/bolivariano/i, "#003B71"], [/internacional/i, "#E30613"]];
+// Logos oficiales (tomados de los sitios de cada banco); si no hay logo, va la inicial con color
+const BANK_LOGOS = [[/amazonas/i, "amazonas.png"], [/guayaquil/i, "guayaquil.svg"], [/pac[ií]fico/i, "pacifico.svg"], [/pichincha/i, "pichincha.svg"]];
+const BANK_COLORS = [[/amazonas/i, "#C8102E"], [/guayaquil/i, "#D2006E"], [/pac[ií]fico/i, "#009FDF"], [/pichincha/i, "#FFDD00"], [/produbanco/i, "#00843D"], [/bolivariano/i, "#003B71"], [/internacional/i, "#E30613"]];
+const bankLogo = (n) => (BANK_LOGOS.find(([re]) => re.test(n)) || [])[1];
 const bankColor = (n) => (BANK_COLORS.find(([re]) => re.test(n)) || [0, "#C68A4E"])[1];
 const bankInitial = (n) => (String(n).replace(/^banco\s+(del?\s+)?/i, "")[0] || "B").toUpperCase();
+const bankSort = (n) => String(n).replace(/^banco\s+(del?\s+)?/i, "");
 
-// Opciones para pagar sin tarjeta: QR de DeUna, QR de PeiGo y transferencia
+// Opciones para pagar sin tarjeta: transferencia, QR de PeiGo y QR de DeUna
 function renderPayOptions(info) {
   const opts = [];
-  if (info.qr?.deuna) opts.push(["deuna", "DeUna"]);
-  if (info.qr?.peigo) opts.push(["peigo", "PeiGo"]);
   const bank = parseBank(info.bank_info);
   if (bank && bank.accounts.length) opts.push(["banco", "Transferencia directa"]);
+  if (info.qr?.peigo) opts.push(["peigo", "PeiGo"]);
+  if (info.qr?.deuna) opts.push(["deuna", "DeUna"]);
+  if (bank) bank.accounts.sort((a, b) => bankSort(a.bank).localeCompare(bankSort(b.bank), "es", { sensitivity: "base" }));
   if (!opts.length) { $("#payTabs").innerHTML = ""; $("#payPane").innerHTML = `<p class="muted small">Escríbenos por WhatsApp y te enviamos cómo pagar.</p>`; return; }
   const show = (k) => {
     $("#payTabs").querySelectorAll("button").forEach((b) => b.setAttribute("aria-selected", b.dataset.k === k));
@@ -133,10 +138,9 @@ function renderPayOptions(info) {
       // Transferencia dentro del mismo banco: solo nombre y correo (sin cédula)
       const copyBtn = (v, lbl) => `<button type="button" class="copy" data-copy="${esc(v)}" aria-label="Copiar ${esc(lbl)}">Copiar</button>`;
       $("#payPane").innerHTML = `<div class="bank">
-        <p class="bank-hint">Transfiere <b>desde tu mismo banco</b> a una de estas cuentas: es inmediato y no te pide cédula.</p>
         <div class="bank-who"><span class="lbl">A nombre de</span><b>${esc(bank.holder)}</b>${bank.email ? `<span class="row"><span>${esc(bank.email)}</span>${copyBtn(bank.email, "correo")}</span>` : ""}</div>
-        <div class="bank-list">${bank.accounts.map((a) => `<div class="bank-acc" style="--bc:${bankColor(a.bank)};--bt:${/pichincha/i.test(a.bank) ? "#1C1714" : "#fff"}">
-          <span class="dot" aria-hidden="true">${esc(bankInitial(a.bank))}</span>
+        <div class="bank-list">${bank.accounts.map((a) => `<div class="bank-acc" style="--bc:${bankColor(a.bank)}">
+          ${bankLogo(a.bank) ? `<span class="dot logo" aria-hidden="true"><img src="/assets/banks/${bankLogo(a.bank)}" alt="" width="28" height="28"></span>` : `<span class="dot" aria-hidden="true">${esc(bankInitial(a.bank))}</span>`}
           <span class="tx"><b>${esc(a.bank)}</b><small>Cuenta de ${esc(String(a.type || "ahorros").toLowerCase())}</small><span class="num tabnum">${esc(a.number)}</span></span>
           ${copyBtn(a.number, "número de cuenta")}</div>`).join("")}</div>
         <p class="bank-amt">Monto exacto <b class="tabnum">${money(info.total)}</b> · Referencia <b>${esc(info.code)}</b> ${copyBtn(info.code, "referencia")}</p>
