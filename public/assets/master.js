@@ -20,7 +20,7 @@ $$(".tabs [data-tab]").forEach((b) => b.addEventListener("click", () => { S.tab 
 
 function render() {
   $$(".tabs [data-tab]").forEach((b) => b.setAttribute("aria-selected", b.dataset.tab === S.tab));
-  ({ ventas, nuevo: () => renderManual($("#view")), motorizados, accesos, menu, clientes, horarios, ajustes })[S.tab]();
+  ({ ventas, nuevo: () => renderManual($("#view")), motorizados, accesos, menu, clientes, resenas, horarios, ajustes })[S.tab]();
 }
 
 // Confirmación dentro de la página (el navegador no muestra ventanas de confirmar aquí)
@@ -440,6 +440,7 @@ async function ajustes() {
       <div class="form-grid">
         ${f("sReward", "Valor máximo del postre sorpresa $", s.reward_max_value ?? 4, "number", 'min="0" max="50" step="0.5"')}
       </div>
+      <label class="check" style="margin-top:8px"><input type="checkbox" id="sRevStamp" ${s.review_stamp !== false ? "checked" : ""}> Campaña: 1 sello por cada reseña con compra comprobada (al publicarla)</label>
       <h3 class="group-title">Envío</h3>
       <div class="form-grid">
         ${f("sBase", "Envío base $", s.fee_base, "number", 'step="0.05" min="0"')}
@@ -473,6 +474,7 @@ async function ajustes() {
       fee_per_km: Number($("#sPerKm").value), max_km: Number($("#sMaxKm").value),
       eta_window_minutes: Number($("#sWin").value) || 30, transfer_extra_minutes: Number($("#sTrx").value) || 0,
       open_lead_minutes: Number($("#sOpenLead").value) || 0, reward_max_value: Number($("#sReward").value) || 0,
+      ...("review_stamp" in s ? { review_stamp: $("#sRevStamp").checked } : {}),
       whatsapp_number: $("#sWa").value.trim() || null, bank_info: $("#sBank").value.trim() || null, updated_at: new Date().toISOString(),
     };
     const { error } = await sb.from("settings").update(patch).eq("id", true);
@@ -506,6 +508,36 @@ async function renderQrAdmin() {
     if (error) return rpcErr(error);
     toast("QR quitado"); renderQrAdmin();
   })));
+}
+
+// ---------- reseñas: se revisan antes de publicarse ----------
+async function resenas() {
+  const [{ data, error }, { data: prods }] = await Promise.all([
+    sb.from("reviews").select("*").order("status").order("updated_at", { ascending: false }).limit(200),
+    sb.from("products").select("id,name"),
+  ]);
+  if (error) return ($("#view").innerHTML = `<div class="panel"><p class="muted">Las reseñas se activan cuando corras el archivo 017_resenas.sql en Supabase.</p></div>`);
+  const pn = new Map((prods || []).map((p) => [p.id, p.name]));
+  const pend = data.filter((r) => r.status === "pendiente"), rest = data.filter((r) => r.status !== "pendiente");
+  const cnt = $("#cntRev"); cnt.hidden = !pend.length; cnt.textContent = pend.length;
+  const card = (r) => `<article class="ocard" data-s="${r.status === "publicada" ? "entregado" : r.status === "oculta" ? "cancelado" : "por_confirmar"}">
+    <div class="ohead"><b>${esc(pn.get(r.product_id) || "Producto")}</b><span class="st">${r.status === "pendiente" ? "Por revisar" : r.status === "publicada" ? "Publicada" : "Oculta"}</span></div>
+    <div><span style="color:var(--tostado);font-size:18px">${"★".repeat(r.rating)}</span><span style="opacity:.35;font-size:18px">${"★".repeat(5 - r.rating)}</span></div>
+    <div class="meta"><span><b>${esc(r.author || "Cliente")}</b> · ${r.verified ? "✓ Compra comprobada" : "Sin compra comprobada"}${r.stamp_granted ? " · sello entregado" : ""}</span>
+      ${r.comment ? `<span style="color:var(--crema)">“${esc(r.comment)}”</span>` : `<span class="muted">Sin comentario</span>`}</div>
+    <div class="acts">${r.status !== "publicada" ? `<button class="btn small primary" data-rv="${r.id}" data-st="publicada">Publicar${r.verified && !r.stamp_granted ? " y dar sello" : ""}</button>` : ""}
+      ${r.status !== "oculta" ? `<button class="btn small ghost" data-rv="${r.id}" data-st="oculta">Ocultar</button>` : ""}</div>
+  </article>`;
+  $("#view").innerHTML = `<div class="panel"><h2 class="display" style="font-size:30px">Reseñas</h2>
+    <p class="muted small">Revisa cada reseña antes de publicarla (malas palabras, datos personales, etc.). Las de compra comprobada suman 1 sello al cliente al publicarlas, si la campaña está activa en Ajustes. Las estrellas de la tienda solo cuentan las comprobadas.</p></div>
+    ${pend.length ? `<h2 class="group-title">Por revisar (${pend.length})</h2><div class="cards">${pend.map(card).join("")}</div>` : `<div class="panel"><p class="muted" style="margin:0">No hay reseñas por revisar.</p></div>`}
+    ${rest.length ? `<h2 class="group-title">Revisadas</h2><div class="cards">${rest.map(card).join("")}</div>` : ""}`;
+  $$("[data-rv]").forEach((b) => (b.onclick = async () => {
+    b.disabled = true;
+    const { error: e } = await sb.rpc("moderate_review", { p_id: Number(b.dataset.rv), p_status: b.dataset.st });
+    if (e) { b.disabled = false; return rpcErr(e); }
+    toast(b.dataset.st === "publicada" ? "Reseña publicada" : "Reseña oculta"); resenas();
+  }));
 }
 
 // ---------- clientes y sellos ----------

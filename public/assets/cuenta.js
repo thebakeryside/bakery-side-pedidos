@@ -1,12 +1,13 @@
 import { sb, api, $, money, esc, when, dayLabel, orderRange, toast, STATUS } from "./common.js";
 import { captureRef, currentUser, loadAccount, setAccount, signOut, stampCard, googleButton, mountGoogle, STAMPS_TOTAL } from "./account.js";
 import { createMap } from "./mapa.js";
+import { reviewForm } from "./reviews.js";
 
 captureRef();
 const root = $("#root");
 
 const TAB_KEY = "tbs_cuenta_tab";
-let tab = (() => { try { return sessionStorage.getItem(TAB_KEY) || "inicio"; } catch { return "inicio"; } })();
+let tab = new URLSearchParams(location.search).get("tab") || (() => { try { return sessionStorage.getItem(TAB_KEY) || "inicio"; } catch { return "inicio"; } })();
 
 async function render() {
   const u = await currentUser();
@@ -55,7 +56,7 @@ function birthdayInfo(birthday, available, first) {
   return { big: days === 1 ? "1 día" : `${days} días`, title: "Para tu cumpleaños", text: `El ${dayTxt}. Ese mes te esperan $4 de regalo.` };
 }
 
-function paneInicio(acc) {
+function paneInicio(acc, orders = []) {
   const c = acc.customer;
   const first = (c.full_name || "").split(" ")[0];
   const link = `${location.origin}/?ref=${c.referral_code}`;
@@ -74,6 +75,7 @@ function paneInicio(acc) {
         <div class="rw-bar"><i style="width:${(n / STAMPS_TOTAL) * 100}%"></i></div>
         <small>1 sello por cada $10 · un pedido de $20 te da 2</small>
       </div>
+      ${orders.some((o) => o.status === "entregado") ? `<button type="button" class="rate-banner as-btn" id="goRate"><b>🎁 HOY: gana 1 sello por cada reseña</b><span>Califica lo que ya probaste en «Mis pedidos» ›</span></button>` : ""}
       ${acc.rewards_available ? Array.from({ length: Math.min(3, acc.rewards_available) }, () => `<div class="rw-ticket"><div class="l" aria-hidden="true">🎁</div><div class="r"><b>Postre sorpresa</b><span>Se agrega gratis con tu próximo pedido (con cualquier producto). Cocina elige algo especial para ti.</span><em>Listo para usar</em></div></div>`).join("") : ""}
       <div class="rw-tiles">
         <div class="rw-tile ${acc.birthday_available ? "ready" : ""}"><span class="ic" aria-hidden="true">🎂</span>${bd ? `<span class="bd-count">${bd.big === "🎉" ? "🎉" : `<small>Faltan</small>${bd.big}`}</span>` : ""}<b>${bd?.title || "$4 en tu cumpleaños"}</b><span>${bday}</span>${c.birthday ? "" : `<button class="btn small" type="button" id="toDatos">Agregar</button>`}</div>
@@ -83,6 +85,7 @@ function paneInicio(acc) {
       </div>
     </div>`;
   $("#copyRef").onclick = () => navigator.clipboard?.writeText(link).then(() => toast("Enlace copiado"), () => toast(link));
+  $("#goRate")?.addEventListener("click", () => { tab = "pedidos"; try { sessionStorage.setItem(TAB_KEY, tab); } catch {} render(); });
   $("#toDatos")?.addEventListener("click", () => { tab = "datos"; try { sessionStorage.setItem(TAB_KEY, tab); } catch {} render(); });
 }
 
@@ -97,9 +100,14 @@ async function panePedidos(_acc, orders) {
   const ids = [...new Set(shown.flatMap((o) => o.order_items.map((i) => i.product_id)).filter(Boolean))];
   const { data: prods } = ids.length ? await sb.from("products").select("id,name,image_url").in("id", ids) : { data: [] };
   const img = new Map((prods || []).map((p) => [p.id, p]));
+  // mis reseñas (si la tabla aún no existe, no se muestra la opción de calificar)
+  const { data: myRevs, error: rvErr } = await sb.from("reviews").select("product_id,status");
+  const rev = new Map((myRevs || []).map((r) => [r.product_id, r.status]));
+  const canRate = !rvErr;
+  const toRate = canRate ? [...new Set(shown.filter((o) => o.status === "entregado").flatMap((o) => o.order_items.filter((i) => i.product_id && Number(i.line_total) > 0).map((i) => i.product_id)))].filter((id) => !rev.has(id)) : [];
   const initials = (t) => t.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
   const active = (o) => !["entregado", "cancelado", "pendiente_pago"].includes(o.status);
-  $("#pane").innerHTML = `<div class="ol">${shown.map((o) => {
+  $("#pane").innerHTML = `<div class="ol">${toRate.length ? `<div class="rate-banner"><b>🎁 HOY: califica lo que compraste y gana 1 sello por cada reseña</b><span>Toca «Calificar» en tus pedidos entregados. Sumamos el sello cuando la publicamos.</span></div>` : ""}${shown.map((o) => {
     const items = o.order_items.filter((i) => Number(i.line_total) > 0 || !/regalo/i.test(i.name));
     const nItems = items.reduce((t, i) => t + i.quantity, 0);
     const sub = active(o) ? (o.scheduled_for ? `${dayLabel(o.scheduled_for)} · entre ${orderRange(o)}` : `Hoy · llega entre ${orderRange(o)}`)
@@ -108,10 +116,17 @@ async function panePedidos(_acc, orders) {
       <div class="top"><b>${esc(o.code)}</b><span class="st">${STATUS[o.status]}</span></div>
       <div class="d">${esc(sub)}</div>
       <div class="thumbs">${items.slice(0, 5).map((i) => { const p = img.get(i.product_id); return `<span title="${esc(i.name)}">${p?.image_url ? `<img src="${esc(p.image_url)}" alt="" loading="lazy">` : esc(initials(p?.name || i.name))}<i>${i.quantity}</i></span>`; }).join("")}${items.length > 5 ? `<span class="more">+${items.length - 5}</span>` : ""}</div>
+      ${canRate && o.status === "entregado" ? `<div class="rate-row">${[...new Map(items.filter((i) => i.product_id && Number(i.line_total) > 0).map((i) => [i.product_id, i])).values()].map((i) => {
+        const st = rev.get(i.product_id), nm = img.get(i.product_id)?.name || i.name;
+        return st ? `<span class="rated">${st === "publicada" ? "✓ Calificado" : st === "oculta" ? "Calificado" : "⏳ En revisión"} · ${esc(nm)}</span>`
+          : `<button type="button" class="chip-btn" data-rate="${i.product_id}" data-name="${esc(nm)}">★ Calificar ${esc(nm)}</button>`; }).join("")}</div><div class="rate-box"></div>` : ""}
       <div class="bot"><b class="tabnum">${money(o.total)}</b><span class="acts">
         <a class="btn small ghost" href="/pedido?t=${o.tracking_token}">Ver</a>
         ${active(o) ? `<a class="btn small primary" href="/pedido?t=${o.tracking_token}">Seguir pedido</a>` : `<button class="btn small primary" type="button" data-again="${o.code}">Volver a pedir</button>`}</span></div>
     </article>`; }).join("")}</div>`;
+  $("#pane").querySelectorAll("[data-rate]").forEach((b) => (b.onclick = () => {
+    reviewForm(b.closest(".oc").querySelector(".rate-box"), Number(b.dataset.rate), b.dataset.name, () => { b.outerHTML = `<span class="rated">⏳ En revisión · ${esc(b.dataset.name)}</span>`; });
+  }));
   $("#pane").querySelectorAll("[data-again]").forEach((b) => (b.onclick = () => {
     const o = orders.find((x) => x.code === b.dataset.again);
     const cart = new Map();

@@ -2,6 +2,7 @@ import { sb, api, $, $$, money, esc, hhmm, hm, etaRange, dayLabel, localToISO, t
 import { openPayphone } from "./payphone.js";
 import { createMap } from "./mapa.js";
 import { captureRef, storedRef, currentUser, loadAccount, stampCard, stampsFor, googleButton, mountGoogle } from "./account.js";
+import { loadRatings, reviewsPanel } from "./reviews.js";
 
 captureRef();
 
@@ -38,6 +39,8 @@ async function init() {
   if (wa) { $("#waFab").href = wa; $("#waFab").hidden = false; }
   try { JSON.parse(localStorage.getItem(CART_KEY) || "[]").forEach(([k, q]) => { k = String(k); if (state.products.some((p) => p.id === keyId(k)) && validKey(k)) state.cart.set(k, q); }); } catch {}
   renderCats(); renderMenu(); renderCart();
+  // estrellas de cada producto (llegan después para no frenar el menú)
+  loadRatings().then((r) => { state.ratings = r; state.products.forEach((p) => updateCard(p.id)); });
   await refreshAccount();
   if (new URLSearchParams(location.search).get("carrito") === "1") { history.replaceState(null, "", "/"); if (state.cart.size) openCart(); }
   if (new URLSearchParams(location.search).get("checkout") === "1" && state.cart.size) {
@@ -141,13 +144,19 @@ function photoCtrl(p, q, left, opts) {
   if (expanded !== p.id) return `<div class="pctrl"><button type="button" class="pc-count" data-a="expand" data-id="${p.id}" aria-label="${q} en tu pedido. Cambiar cantidad">${q}</button></div>`;
   return `<div class="pctrl"><div class="pc-step"><button type="button" data-a="-" data-id="${p.id}" aria-label="${q === 1 ? "Quitar" : "Quitar uno"}">${q === 1 ? TRASH : MINUS}</button><b>${q}</b><button type="button" data-a="${opts ? "pick" : "+"}" data-id="${p.id}" aria-label="Agregar uno"${full ? " disabled" : ""}>${PLUS}</button></div></div>`;
 }
+// Estrellas (solo reseñas comprobadas); al tocarlas se despliegan las reseñas debajo
+function rateRow(p) {
+  const r = state.ratings?.get(p.id);
+  if (r?.n) return `<button type="button" class="rate" data-a="reviews" data-id="${p.id}" aria-expanded="false"><b>★ ${Number(r.avg_rating).toFixed(1).replace(".", ",")}</b><span>(${r.n})</span> <u>Ver reseñas</u></button>`;
+  return `<button type="button" class="rate empty" data-a="reviews" data-id="${p.id}" aria-expanded="false">☆ <u>${r?.total ? "Ver reseñas" : "Sé el primero en opinar"}</u></button>`;
+}
 function itemCard(p) {
   const q = qtyOf(p.id), left = leftToday(p), opts = groupsOf(p.id).length > 0;
   const img = p.image_url ? `<img src="${esc(p.image_url)}" alt="${esc(p.name)}" loading="lazy">` : `<span class="can" aria-hidden="true">${esc(p.name.split(" ").map((w) => w[0]).join("").slice(0, 2))}</span>`;
   const lead = p.lead_hours ? `<span class="tag">Pedir con ${p.lead_hours} h de anticipación</span>` : "";
   const stock = left === 0 ? `<span class="tag">Agotado por hoy · vuelve mañana</span>` : left != null ? `<span class="tag">Quedan ${left} hoy</span>` : "";
   const hint = opts ? `<span class="optnote">Eliges ${groupsOf(p.id).map((g) => g.name.toLowerCase()).join(" y ")} al agregar</span>` : "";
-  return `<article class="item${left === 0 ? " soldout" : ""}${q ? " incart-on" : ""}" data-pid="${p.id}"><div class="ph">${img}${photoCtrl(p, q, left, opts)}</div><div class="body"><h3>${esc(p.name)}</h3>${servChip(p)}<p>${esc(p.description)}</p>${hint}${lead}${stock}<div class="foot"><span class="price">${money(p.price)}</span></div></div></article>`;
+  return `<article class="item${left === 0 ? " soldout" : ""}${q ? " incart-on" : ""}" data-pid="${p.id}"><div class="ph">${img}${photoCtrl(p, q, left, opts)}</div><div class="body"><h3>${esc(p.name)}</h3>${servChip(p)}<p>${esc(p.description)}</p>${rateRow(p)}${hint}${lead}${stock}<div class="foot"><span class="price">${money(p.price)}</span></div></div></article>`;
 }
 // Orden del menú: dulces enteros de mayor a menor precio; el resto en orden alfabético (x2, x6, x12 en orden)
 const byName = (a, b) => a.name.localeCompare(b.name, "es", { numeric: true, sensitivity: "base" });
@@ -160,6 +169,7 @@ function updateCard(id) {
   el.className = fresh.className;
   el.querySelector(".pctrl").replaceWith(fresh.querySelector(".pctrl"));
   el.querySelector(".foot").replaceWith(fresh.querySelector(".foot"));
+  const rate = el.querySelector(".rate"); if (rate && !el.querySelector(".rv")) rate.replaceWith(fresh.querySelector(".rate"));
 }
 function renderMenu() {
   const groups = state.cats
@@ -173,6 +183,13 @@ function renderMenu() {
 $("#menu").addEventListener("click", (e) => {
   const b = e.target.closest("[data-a]"); if (!b) return;
   const id = Number(b.dataset.id), a = b.dataset.a;
+  if (a === "reviews") {
+    const card = b.closest(".item"); let panel = card.querySelector(".rv");
+    if (panel) { panel.remove(); b.setAttribute("aria-expanded", "false"); return; }
+    panel = document.createElement("div"); panel.className = "rv";
+    card.querySelector(".body").append(panel); b.setAttribute("aria-expanded", "true");
+    return reviewsPanel(panel, product(id));
+  }
   if (a === "pick") { if (expanded === id) { expanded = null; clearTimeout(expTimer); updateCard(id); } return openPicker(product(id)); }
   if (a === "expand") { setExpanded(id); return; }
   if (a === "+" && qtyOf(id) > 0) expanded = id; // sigue mostrando − y + mientras ajusta

@@ -152,3 +152,28 @@ html { touch-action: manipulation; -webkit-text-size-adjust: 100%; text-size-adj
 button, a, [data-a] { -webkit-tap-highlight-color: transparent; }
 /* En iPhone, un campo con letra menor a 16px hace zoom al escribir: lo evitamos */
 @media (pointer: coarse) { input, select, textarea { font-size: 16px !important; } }
+
+/* Reseñas */
+.rate { display: inline-flex; align-items: baseline; gap: 4px; margin: 2px 0 6px; padding: 0; border: 0; background: none; font: inherit; font-size: 13px; color: var(--text-2); cursor: pointer; text-align: left; }
+.rate b { color: var(--tostado); font-size: 14px; }
+.rate u { text-decoration: underline; text-underline-offset: 2px; }
+.rate.empty { color: var(--text-2); }
+.rv { margin: 4px 0 8px; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); display: grid; gap: 10px; font-size: 13.5px; }
+.rv-item { display: grid; gap: 2px; }
+.rv-item + .rv-item { border-top: 1px solid var(--line); padding-top: 8px; }
+.rv-item p { margin: 0; line-height: 1.4; }
+.rv-top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.stars { color: var(--tostado); letter-spacing: 1px; }
+.stars span { color: #D9D2BE; }
+.rv-ok { font-size: 11.5px; font-weight: 700; color: #4E8A3E; }
+.rv-no { font-size: 11.5px; color: var(--text-2); }
+.rv-write { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; justify-content: space-between; }
+.rv-write .linkbtn { padding: 0; font-weight: 700; color: var(--text); }
+.rv-promo, .promo-pill { font-size: 12px; font-weight: 700; background: var(--tostado); color: var(--tinta); border-radius: 99px; padding: 3px 10px; }
+.rv-form { display: grid; gap: 8px; }
+.rv-pick { display: flex; gap: 4px; }
+.rv-pick button { border: 0; background: none; font-size: 30px; line-height: 1; color: #D9D2BE; cursor: pointer; padding: 0 2px; }
+.rv-pick button.on { color: var(--tostado); }
+.rv-acts { display: flex; gap: 6px; }
+.rv-thanks { margin: 0; font-weight: 600; }
+.linkbtn { background: none; border: 0; padding: 6px; font: inherit; font-size: 14px; color: var(--text-2); text-decoration: underline; cursor: pointer; }
