@@ -165,3 +165,4 @@
 .rate-box:empty { display: none; }
 .rate-box { padding: 10px; border-radius: 12px; background: var(--surface-2); }
 .rate-banner.as-btn { border: 0; font: inherit; text-align: left; cursor: pointer; }
+.rate-prog { margin: 0; font-size: 12.5px; font-weight: 600; color: var(--accent-ink); } .rate-prog.ok { color: #4E8A3E; }

@@ -440,7 +440,7 @@ async function ajustes() {
       <div class="form-grid">
         ${f("sReward", "Valor máximo del postre sorpresa $", s.reward_max_value ?? 4, "number", 'min="0" max="50" step="0.5"')}
       </div>
-      <label class="check" style="margin-top:8px"><input type="checkbox" id="sRevStamp" ${s.review_stamp !== false ? "checked" : ""}> Campaña: 1 sello por cada reseña con compra comprobada (al publicarla)</label>
+      <label class="check" style="margin-top:8px"><input type="checkbox" id="sRevStamp" ${s.review_stamp !== false ? "checked" : ""}> Campaña: 1 sello por pedido cuando el cliente califica todos sus productos</label>
       <h3 class="group-title">Envío</h3>
       <div class="form-grid">
         ${f("sBase", "Envío base $", s.fee_base, "number", 'step="0.05" min="0"')}
@@ -523,13 +523,13 @@ async function resenas() {
   const card = (r) => `<article class="ocard" data-s="${r.status === "publicada" ? "entregado" : r.status === "oculta" ? "cancelado" : "por_confirmar"}">
     <div class="ohead"><b>${esc(pn.get(r.product_id) || "Producto")}</b><span class="st">${r.status === "pendiente" ? "Por revisar" : r.status === "publicada" ? "Publicada" : "Oculta"}</span></div>
     <div><span style="color:var(--tostado);font-size:18px">${"★".repeat(r.rating)}</span><span style="opacity:.35;font-size:18px">${"★".repeat(5 - r.rating)}</span></div>
-    <div class="meta"><span><b>${esc(r.author || "Cliente")}</b> · ${r.verified ? "✓ Compra comprobada" : "Sin compra comprobada"}${r.stamp_granted ? " · sello entregado" : ""}</span>
+    <div class="meta"><span><b>${esc(r.author || "Cliente")}</b> · ${r.verified ? "✓ Compra comprobada" : "Sin compra comprobada"}</span>
       ${r.comment ? `<span style="color:var(--crema)">“${esc(r.comment)}”</span>` : `<span class="muted">Sin comentario</span>`}</div>
-    <div class="acts">${r.status !== "publicada" ? `<button class="btn small primary" data-rv="${r.id}" data-st="publicada">Publicar${r.verified && !r.stamp_granted ? " y dar sello" : ""}</button>` : ""}
+    <div class="acts">${r.status !== "publicada" ? `<button class="btn small primary" data-rv="${r.id}" data-st="publicada">Publicar</button>` : ""}
       ${r.status !== "oculta" ? `<button class="btn small ghost" data-rv="${r.id}" data-st="oculta">Ocultar</button>` : ""}</div>
   </article>`;
   $("#view").innerHTML = `<div class="panel"><h2 class="display" style="font-size:30px">Reseñas</h2>
-    <p class="muted small">Revisa cada reseña antes de publicarla (malas palabras, datos personales, etc.). Las de compra comprobada suman 1 sello al cliente al publicarlas, si la campaña está activa en Ajustes. Las estrellas de la tienda solo cuentan las comprobadas.</p></div>
+    <p class="muted small">Revisa cada reseña antes de publicarla (malas palabras, datos personales, etc.). Cuando todas las reseñas de un pedido entregado quedan publicadas, el cliente suma 1 sello (si la campaña está activa en Ajustes). Las estrellas de la tienda solo cuentan las comprobadas.</p></div>
     ${pend.length ? `<h2 class="group-title">Por revisar (${pend.length})</h2><div class="cards">${pend.map(card).join("")}</div>` : `<div class="panel"><p class="muted" style="margin:0">No hay reseñas por revisar.</p></div>`}
     ${rest.length ? `<h2 class="group-title">Revisadas</h2><div class="cards">${rest.map(card).join("")}</div>` : ""}`;
   $$("[data-rv]").forEach((b) => (b.onclick = async () => {

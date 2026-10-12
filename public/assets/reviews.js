@@ -3,7 +3,7 @@ import { sb, esc, toast } from "./common.js";
 import { currentUser } from "./account.js";
 
 export const stars = (n) => `<span class="stars" aria-label="${n} de 5 estrellas">${"★".repeat(Math.round(n))}<span>${"★".repeat(5 - Math.round(n))}</span></span>`;
-export const STAMP_PROMO = "🎁 Deja tu reseña y gana 1 sello";
+export const STAMP_PROMO = "🎁 Califica todo tu pedido y gana 1 sello";
 
 // Promedio por producto (solo reseñas comprobadas); si la tabla aún no existe, no hay estrellas
 export async function loadRatings() {
@@ -18,7 +18,7 @@ export function reviewForm(box, productId, productName, onDone) {
     <b>¿Qué tal estuvo ${esc(productName)}?</b>
     <div class="rv-pick" role="radiogroup" aria-label="Calificación">${[1, 2, 3, 4, 5].map((i) => `<button type="button" role="radio" aria-checked="false" data-r="${i}" aria-label="${i} ${i === 1 ? "estrella" : "estrellas"}">★</button>`).join("")}</div>
     <textarea class="in" maxlength="500" rows="3" placeholder="Cuéntanos qué te pareció (opcional)"></textarea>
-    <p class="muted small" style="margin:0">La revisamos antes de publicarla. Si lo compraste con nosotros, ganas 1 sello al publicarse.</p>
+    <p class="muted small" style="margin:0">La revisamos antes de publicarla. Si calificas todos los productos de tu pedido, ganas 1 sello.</p>
     <p class="err small" role="alert" style="margin:0"></p>
     <div class="rv-acts"><button class="btn small primary">Enviar reseña</button><button class="btn small ghost" type="button" data-x>Cancelar</button></div>
   </form>`;
@@ -33,7 +33,7 @@ export function reviewForm(box, productId, productName, onDone) {
     const btn = f.querySelector(".primary"); btn.disabled = true;
     const { data, error } = await sb.rpc("submit_review", { p_product: productId, p_rating: rating, p_comment: f.querySelector("textarea").value });
     if (error) { btn.disabled = false; err.textContent = /sesión/i.test(error.message) ? "Inicia sesión para opinar." : "No pudimos enviar tu reseña. Intenta de nuevo."; return; }
-    box.innerHTML = `<p class="rv-thanks">${data === "comprobada" ? "¡Gracias! La revisamos y, al publicarla, sumas 1 sello a tu tarjeta 🎁" : "¡Gracias por tu opinión! La revisamos antes de publicarla."}</p>`;
+    box.innerHTML = `<p class="rv-thanks">${data === "comprobada" ? "¡Gracias! La revisamos antes de publicarla. Califica todos los productos de tu pedido para ganar tu sello 🎁" : "¡Gracias por tu opinión! La revisamos antes de publicarla."}</p>`;
     toast("¡Gracias por tu reseña!");
     onDone?.(data);
   };

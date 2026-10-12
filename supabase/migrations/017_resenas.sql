@@ -2,7 +2,7 @@
 -- · Solo clientes con cuenta. "Compra comprobada" si tienen un pedido entregado con ese producto.
 -- · Todas se revisan antes de publicarse (cocina o master).
 -- · El promedio de estrellas cuenta solo las comprobadas y publicadas.
--- · Campaña: 1 sello por reseña comprobada (una por producto), al aprobarla.
+-- · Campaña: 1 sello por pedido cuando el cliente calificó TODOS los productos de ese pedido (y se publicaron).
 
 alter table public.settings add column if not exists review_stamp boolean not null default true;
 
@@ -53,21 +53,49 @@ end $$;
 revoke execute on function public.submit_review(bigint, int, text) from public, anon;
 grant execute on function public.submit_review(bigint, int, text) to authenticated;
 
--- Cocina o master aprueba u oculta; al aprobar una comprobada se da el sello (una vez)
+-- Sello por pedido calificado completo: se marca en el pedido para darlo una sola vez
+alter table public.orders add column if not exists review_stamp_at timestamptz;
+
+-- Da el sello a cada pedido entregado de ese cliente en el que ya calificó todos los productos
+-- (reseñas publicadas y escritas después de la entrega, para que un pedido nuevo pida reseñas nuevas)
+create or replace function private.review_stamps(p_user uuid) returns int
+language plpgsql security definer set search_path = public, private as $$
+declare o record; n int := 0; give boolean;
+begin
+  select review_stamp into give from public.settings limit 1;
+  if not coalesce(give, false) then return 0; end if;
+  for o in
+    select ord.id from public.orders ord
+     where ord.user_id = p_user and ord.status = 'entregado' and ord.review_stamp_at is null
+       and not exists (
+         select 1 from public.order_items i
+          where i.order_id = ord.id and i.line_total > 0
+            and not exists (select 1 from public.reviews r
+                             where r.user_id = p_user and r.product_id = i.product_id and r.status = 'publicada'
+                               and r.updated_at >= coalesce(ord.delivered_at, ord.created_at)))
+       and exists (select 1 from public.order_items i where i.order_id = ord.id and i.line_total > 0)
+  loop
+    perform private.grant_stamps(p_user, 1, 'resena', o.id);
+    update public.orders set review_stamp_at = now() where id = o.id;
+    n := n + 1;
+  end loop;
+  return n;
+end $$;
+revoke execute on function private.review_stamps(uuid) from public, anon, authenticated;
+
+-- Cocina o master aprueba u oculta; al publicar revisa si algún pedido quedó calificado completo
+drop function if exists public.moderate_review(bigint, text);
 create or replace function public.moderate_review(p_id bigint, p_status text)
-returns void language plpgsql security definer set search_path = public, private as $$
-declare r public.reviews; give boolean;
+returns int language plpgsql security definer set search_path = public, private as $$
+declare r public.reviews;
 begin
   if not (private.is_admin() or private.is_master()) then raise exception 'Sin permiso'; end if;
   if p_status not in ('publicada', 'oculta') then raise exception 'Estado no válido'; end if;
   update public.reviews set status = p_status, approved_at = case when p_status = 'publicada' then now() else approved_at end
    where id = p_id returning * into r;
   if r.id is null then raise exception 'Reseña no encontrada'; end if;
-  select review_stamp into give from public.settings limit 1;
-  if p_status = 'publicada' and r.verified and not r.stamp_granted and coalesce(give, false) then
-    perform private.grant_stamps(r.user_id, 1, 'resena', null);
-    update public.reviews set stamp_granted = true where id = r.id;
-  end if;
+  if p_status = 'publicada' then return private.review_stamps(r.user_id); end if;
+  return 0;
 end $$;
 revoke execute on function public.moderate_review(bigint, text) from public, anon;
 grant execute on function public.moderate_review(bigint, text) to authenticated;
