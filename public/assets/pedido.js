@@ -35,7 +35,7 @@ function render(o) {
       ${unpaid ? `<div class="paybox">
         <div class="payseg" role="tablist" aria-label="Forma de pago">
           <button type="button" role="tab" id="segCard" aria-selected="${!wantAlt}">Tarjeta</button>
-          <button type="button" role="tab" id="segAlt" aria-selected="${wantAlt}">Deuna, Peigo o transferencia</button>
+          <button type="button" role="tab" id="segAlt" aria-selected="${wantAlt}">DeUna, PeiGo o transferencia</button>
         </div>
         <div id="altPay" ${wantAlt ? "" : "hidden"}>
           <ol class="paysteps">
@@ -115,17 +115,17 @@ function render(o) {
   if (!["entregado", "cancelado"].includes(o.status) && !unpaid) timer = setTimeout(load, 20000);
 }
 
-// Opciones para pagar sin tarjeta: QR de Deuna, QR de Peigo y transferencia
+// Opciones para pagar sin tarjeta: QR de DeUna, QR de PeiGo y transferencia
 function renderPayOptions(info) {
   const opts = [];
-  if (info.qr?.deuna) opts.push(["deuna", "Deuna"]);
-  if (info.qr?.peigo) opts.push(["peigo", "Peigo"]);
+  if (info.qr?.deuna) opts.push(["deuna", "DeUna"]);
+  if (info.qr?.peigo) opts.push(["peigo", "PeiGo"]);
   if (info.bank_info) opts.push(["banco", "Transferencia"]);
   if (!opts.length) { $("#payTabs").innerHTML = ""; $("#payPane").innerHTML = `<p class="muted small">Escríbenos por WhatsApp y te enviamos cómo pagar.</p>`; return; }
   const show = (k) => {
     $("#payTabs").querySelectorAll("button").forEach((b) => b.setAttribute("aria-selected", b.dataset.k === k));
     if (k === "banco") { $("#payPane").innerHTML = `<div class="note" style="white-space:pre-line">${esc(info.bank_info)}</div><p class="muted small" style="margin:8px 0 0">Monto exacto: <b class="tabnum">${money(info.total)}</b> · Referencia: ${esc(info.code)}</p>`; return; }
-    const url = info.qr[k], name = k === "deuna" ? "Deuna" : "Peigo";
+    const url = info.qr[k], name = k === "deuna" ? "DeUna" : "PeiGo";
     $("#payPane").innerHTML = `<div class="qrbox"><img src="${esc(url)}" alt="Código QR de ${name} de The Bakery Side" width="220" height="220">
       <div><p class="small" style="margin:0"><b>Desde otro celular:</b> abre ${name} y escanea el código.</p>
       <p class="small" style="margin:6px 0 0"><b>Desde este celular:</b> guarda la imagen y en ${name} elige escanear desde tu galería.</p>

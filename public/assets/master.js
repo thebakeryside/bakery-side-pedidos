@@ -451,10 +451,10 @@ async function ajustes() {
       <h3 class="group-title">Pagos y contacto</h3>
       ${f("sWa", "WhatsApp del negocio", s.whatsapp_number, "tel")}
       <label class="f">Códigos QR de cobro</label>
-      <p class="muted small" style="margin:0 0 8px">Sube la imagen del QR de tu negocio en Deuna y en Peigo. El cliente lo ve solo después de hacer su pedido, y así no tienes que publicar tu cédula.</p>
+      <p class="muted small" style="margin:0 0 8px">Sube la imagen del QR de tu negocio en DeUna y en PeiGo. El cliente lo ve solo después de hacer su pedido, y así no tienes que publicar tu cédula.</p>
       <div class="qr-admin" id="qrAdmin"><p class="muted small">Cargando…</p></div>
       <label class="f" for="sBank">Datos para transferencia bancaria <span class="hint">(opcional; solo los ve quien ya hizo un pedido)</span></label>
-      <textarea class="in" id="sBank" placeholder="Déjalo vacío si prefieres cobrar solo por Deuna o Peigo">${esc(s.bank_info ?? "")}</textarea>
+      <textarea class="in" id="sBank" placeholder="Déjalo vacío si prefieres cobrar solo por DeUna o PeiGo">${esc(s.bank_info ?? "")}</textarea>
       <button class="btn primary" style="margin-top:14px">Guardar ajustes</button>
     </form>`;
   const ex = () => {
@@ -481,13 +481,13 @@ async function ajustes() {
   };
 }
 
-// QR de Deuna y Peigo (storage público productos/pagos/deuna y productos/pagos/peigo)
+// QR de DeUna y PeiGo (storage público productos/pagos/deuna y productos/pagos/peigo)
 async function renderQrAdmin() {
   const box = $("#qrAdmin"); if (!box) return;
   const { data } = await sb.storage.from("productos").list("pagos");
   const has = Object.fromEntries((data ?? []).map((f) => [f.name, f.updated_at || f.created_at]));
   const url = (k) => `${sb.storage.from("productos").getPublicUrl(`pagos/${k}`).data.publicUrl}?v=${encodeURIComponent(has[k] || "")}`;
-  box.innerHTML = [["deuna", "Deuna"], ["peigo", "Peigo"]].map(([k, n]) => `
+  box.innerHTML = [["deuna", "DeUna"], ["peigo", "PeiGo"]].map(([k, n]) => `
     <div class="qr-slot confirm-host">
       ${has[k] ? `<img src="${esc(url(k))}" alt="QR de ${n}">` : `<div class="qr-empty">Sin QR</div>`}
       <div style="display:grid;gap:6px"><b>${n}</b>
