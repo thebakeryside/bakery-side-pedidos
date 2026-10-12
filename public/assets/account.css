@@ -104,3 +104,51 @@
 .chip-btn[aria-pressed="true"] { background: var(--inverse); color: var(--on-inverse); border-color: var(--inverse); }
 .confirm-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding-top: 6px; }
 .sec-h .btn { white-space: nowrap; flex: none; }
+
+/* Mi cuenta: recompensas */
+.rw { display: grid; gap: 12px; max-width: 720px; }
+.rw-hero { background: var(--tinta); color: var(--crema); border-radius: 18px; padding: 18px; display: grid; gap: 6px; }
+.rw-k { font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--tostado); }
+.rw-t { font-size: 22px; line-height: 1.2; }
+.rw-dots { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; margin-top: 8px; max-width: 420px; }
+.rw-dots span { aspect-ratio: 1; border-radius: 50%; border: 2px dashed var(--cacao); display: grid; place-items: center; font-weight: 700; font-size: 13px; color: var(--cacao); }
+.rw-dots .on { background: var(--tostado); border: 2px solid var(--tostado); color: var(--tinta); }
+.rw-dots .g { border-color: var(--tostado); font-size: 16px; }
+.rw-dots .g.on { background: var(--crema); }
+.rw-bar { height: 8px; border-radius: 99px; background: var(--tinta-3); overflow: hidden; margin-top: 8px; max-width: 420px; }
+.rw-bar i { display: block; height: 100%; background: var(--tostado); border-radius: 99px; }
+.rw-hero small { font-size: 12.5px; color: var(--crema-2); }
+.rw-ticket { display: flex; border-radius: 16px; overflow: hidden; background: var(--crema); border: 2px solid var(--tostado); }
+.rw-ticket .l { flex: none; width: 74px; display: grid; place-items: center; font-size: 30px; background: var(--tostado); }
+.rw-ticket .r { padding: 12px 14px; border-left: 2px dashed var(--tostado); display: grid; gap: 3px; }
+.rw-ticket b { font-size: 16px; }
+.rw-ticket span { font-size: 13px; color: var(--text-2); }
+.rw-ticket em { justify-self: start; font-style: normal; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; background: var(--tinta); color: var(--crema); border-radius: 99px; padding: 3px 9px; margin-top: 2px; }
+.rw-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 360px) { .rw-tiles { grid-template-columns: 1fr; } }
+.rw-tile { border: 1px solid var(--line); border-radius: 16px; padding: 12px; display: grid; gap: 4px; align-content: start; background: var(--surface); }
+.rw-tile.ready { border-color: var(--tostado); background: var(--accent-soft); }
+.rw-tile .ic { width: 38px; height: 38px; border-radius: 10px; background: var(--crema); display: grid; place-items: center; font-size: 18px; }
+.rw-tile b { font-size: 14.5px; line-height: 1.25; }
+.rw-tile > span:not(.ic) { font-size: 12.5px; color: var(--text-2); line-height: 1.35; }
+.rw-tile .btn { margin-top: 4px; justify-content: center; }
+.rw-tile .btn.wa { background: #25D366; border-color: #25D366; color: #0b3d1f; }
+.rw-tile .linkbtn { font-size: 12.5px; padding: 2px; }
+
+/* Mi cuenta: pedidos */
+.ol { display: grid; gap: 10px; max-width: 720px; }
+.oc { --c: var(--tostado); --bg: rgb(198 138 78 / .14); position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: 16px; padding: 12px 12px 12px 18px; background: var(--surface); display: grid; gap: 4px; }
+.oc::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--c); }
+.oc.ok { --c: #4E8A3E; --bg: #EAF4E4; }
+.oc.bad { --c: #B4473A; --bg: #F8E6E3; }
+.oc.warn { --c: #B7862B; --bg: #FBF1DC; }
+.oc .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.oc .st { font-size: 11.5px; font-weight: 700; border-radius: 99px; padding: 3px 9px; background: var(--bg); color: var(--c); }
+.oc .d { font-size: 13px; color: var(--text-2); }
+.oc .thumbs { display: flex; gap: 8px; margin: 6px 0 4px; flex-wrap: wrap; }
+.oc .thumbs span { position: relative; width: 46px; height: 46px; border-radius: 10px; background: var(--crema); display: grid; place-items: center; font-size: 12px; font-weight: 700; color: #8a7f76; }
+.oc .thumbs img { width: 100%; height: 100%; object-fit: cover; border-radius: 10px; }
+.oc .thumbs i { position: absolute; right: -5px; top: -5px; background: var(--tinta); color: #fff; font-style: normal; font-size: 10.5px; font-weight: 700; border-radius: 99px; padding: 1px 6px; }
+.oc .bot { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.oc .bot > b { font-size: 17px; }
+.oc .acts { display: flex; gap: 6px; }

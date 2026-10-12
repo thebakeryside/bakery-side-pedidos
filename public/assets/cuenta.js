@@ -1,5 +1,5 @@
-import { sb, api, $, money, esc, when, toast, STATUS } from "./common.js";
-import { captureRef, currentUser, loadAccount, setAccount, signOut, stampCard, googleButton, mountGoogle } from "./account.js";
+import { sb, api, $, money, esc, when, dayLabel, orderRange, toast, STATUS } from "./common.js";
+import { captureRef, currentUser, loadAccount, setAccount, signOut, stampCard, googleButton, mountGoogle, STAMPS_TOTAL } from "./account.js";
 import { createMap } from "./mapa.js";
 
 captureRef();
@@ -15,7 +15,7 @@ async function render() {
   try { acc = await loadAccount(true); }
   catch (e) { root.innerHTML = `<div class="panel"><p class="err">${esc(e.message)}</p></div>`; return; }
   const c = acc.customer;
-  const q = (cols) => sb.from("orders").select(`code,status,total,created_at,scheduled_for,tracking_token,payment_status,order_items(${cols})`)
+  const q = (cols) => sb.from("orders").select(`code,status,total,created_at,scheduled_for,eta,delivered_at,tracking_token,payment_status,order_items(${cols})`)
     .eq("user_id", u.id).order("created_at", { ascending: false }).limit(50);
   let { data: orders, error: oe } = await q("product_id,name,quantity,line_total,options");
   if (oe) ({ data: orders } = await q("product_id,name,quantity,line_total"));
@@ -26,11 +26,6 @@ async function render() {
     <div class="acct-top">
       <div><p class="eyebrow">Mi cuenta</p><h1 class="display">Hola${first ? ", " + esc(first) : ""}</h1></div>
       <button class="btn small ghost" id="out" type="button">Cerrar sesión</button>
-    </div>
-    <div class="mini-stats" style="margin-bottom:16px">
-      <div><b class="tabnum">${Math.min(acc.stamps, 8)}/8</b><span>sellos</span></div>
-      <div><b class="tabnum">${paid.length}</b><span>${paid.length === 1 ? "pedido" : "pedidos"}</span></div>
-      <div><b class="tabnum">${acc.rewards_available || 0}</b><span>${acc.rewards_available === 1 ? "postre de regalo" : "postres de regalo"}</span></div>
     </div>
     <nav class="acct-tabs" role="tablist" aria-label="Secciones de tu cuenta">
       ${[["inicio", "Recompensas"], ["pedidos", "Mis pedidos"], ["datos", "Mis datos"]].map(([k, l]) => `<button role="tab" type="button" data-t="${k}" aria-selected="${tab === k}">${l}</button>`).join("")}
@@ -47,40 +42,57 @@ function paneInicio(acc) {
   const c = acc.customer;
   const link = `${location.origin}/?ref=${c.referral_code}`;
   const monthName = (m) => new Date(2026, m - 1, 1).toLocaleDateString("es-EC", { month: "long" });
+  const n = Math.max(0, Math.min(STAMPS_TOTAL, acc.stamps)), left = STAMPS_TOTAL - n;
+  const dots = Array.from({ length: STAMPS_TOTAL }, (_, i) => i === STAMPS_TOTAL - 1 ? `<span class="g ${n >= STAMPS_TOTAL ? "on" : ""}" aria-hidden="true">🎁</span>` : i < n ? `<span class="on" aria-hidden="true">S</span>` : `<span aria-hidden="true">${i + 1}</span>`).join("");
+  const title = left === 0 ? "¡Completaste tu tarjeta!" : left === 1 ? "¡Te falta 1 sello para tu postre sorpresa!" : `Te faltan ${left} sellos para tu postre sorpresa`;
+  const bday = c.birthday ? (acc.birthday_available ? "¡Feliz cumpleaños! Úsalo este mes" : `Disponible todo ${monthName(Number(c.birthday.slice(5, 7)))}`) : "Agrega tu cumpleaños en «Mis datos»";
   $("#pane").innerHTML = `
-    <div class="acct-grid">
-      <div style="display:grid;gap:14px">${stampCard(acc.stamps)}
-        <div class="perk ${acc.rewards_available ? "ready" : ""}"><div><b>${acc.rewards_available ? `Tienes ${acc.rewards_available === 1 ? "un postre sorpresa" : acc.rewards_available + " postres sorpresa"} 🎁` : "Postre sorpresa"}</b>
-          <span class="muted small">${acc.rewards_available ? "Se agrega gratis en tu próximo pedido. Cocina elige un postre especial para ti." : "Al completar los 8 sellos ganas un postre sorpresa que elige cocina."}</span></div></div>
+    <div class="rw">
+      <div class="rw-hero" role="img" aria-label="Tarjeta de sellos: ${n} de ${STAMPS_TOTAL}">
+        <span class="rw-k">Tu tarjeta de sellos</span>
+        <b class="rw-t">${title}</b>
+        <div class="rw-dots">${dots}</div>
+        <div class="rw-bar"><i style="width:${(n / STAMPS_TOTAL) * 100}%"></i></div>
+        <small>1 sello por cada $10 · un pedido de $20 te da 2</small>
       </div>
-      <div style="display:grid;gap:14px">
-        <div class="perk ${acc.birthday_available ? "ready" : ""}"><div style="flex:1"><b>Regalo de cumpleaños: $4</b>
-          <span class="muted small">${c.birthday ? (acc.birthday_available ? "¡Feliz cumpleaños! Úsalo en un pedido este mes." : `Lo tendrás disponible todo ${monthName(Number(c.birthday.slice(5, 7)))}.`) : "Agrega tu cumpleaños en «Mis datos» y recibe $4 de descuento durante todo tu mes."}</span>
-        </div></div>
-        <div class="panel" style="display:grid;gap:8px">
-          <h2 class="display" style="font-size:26px">Invita a un amigo</h2>
-          <p class="muted small" style="margin:0">Tu amigo empieza con 3 sellos y tú ganas 1 cuando paga su primer pedido.</p>
-          <div class="reflink"><input class="in" id="refLink" value="${esc(link)}" readonly aria-label="Tu enlace de invitación">
-            <button class="btn small" id="copyRef" type="button">Copiar</button></div>
-          <a class="btn small primary" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(`Te regalo 3 sellos en The Bakery Side 🧁 Pide aquí: ${link}`)}">Compartir por WhatsApp</a>
-        </div>
+      ${acc.rewards_available ? Array.from({ length: Math.min(3, acc.rewards_available) }, () => `<div class="rw-ticket"><div class="l" aria-hidden="true">🎁</div><div class="r"><b>Postre sorpresa</b><span>Ganaste uno: se agrega gratis en tu próximo pedido. Cocina elige algo especial para ti.</span><em>Listo para usar</em></div></div>`).join("") : ""}
+      <div class="rw-tiles">
+        <div class="rw-tile ${acc.birthday_available ? "ready" : ""}"><span class="ic" aria-hidden="true">🎂</span><b>$4 en tu cumpleaños</b><span>${bday}</span>${c.birthday ? "" : `<button class="btn small" type="button" id="toDatos">Agregar</button>`}</div>
+        <div class="rw-tile"><span class="ic" aria-hidden="true">💌</span><b>Invita a un amigo</b><span>Empieza con 3 sellos y tú ganas 1 cuando pague su primer pedido</span>
+          <a class="btn small wa" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(`Te regalo 3 sellos en The Bakery Side 🧁 Pide aquí: ${link}`)}">Compartir</a>
+          <button class="linkbtn" type="button" id="copyRef">Copiar enlace</button></div>
       </div>
     </div>`;
-  $("#copyRef").onclick = () => navigator.clipboard?.writeText(link).then(() => toast("Enlace copiado"), () => { $("#refLink").select(); toast("Copia el enlace seleccionado"); });
+  $("#copyRef").onclick = () => navigator.clipboard?.writeText(link).then(() => toast("Enlace copiado"), () => toast(link));
+  $("#toDatos")?.addEventListener("click", () => { tab = "datos"; try { sessionStorage.setItem(TAB_KEY, tab); } catch {} render(); });
 }
 
-function panePedidos(_acc, orders) {
+const STATE_COLOR = { entregado: "ok", cancelado: "bad", pendiente_pago: "warn", por_confirmar: "warn" };
+async function panePedidos(_acc, orders) {
   const shown = orders.filter((o) => o.status !== "pendiente_pago" || Date.now() - new Date(o.created_at) < 86400000);
-  $("#pane").innerHTML = shown.length ? `<div style="display:grid;gap:10px">${shown.map((o) => {
+  if (!shown.length) {
+    $("#pane").innerHTML = `<div class="panel"><p class="muted" style="margin:0">Aún no tienes pedidos. Tu primer pedido de $10 o más ya suma sellos.</p><a class="btn primary" href="/" style="margin-top:12px">Ver el menú</a></div>`;
+    return;
+  }
+  // fotos de los productos para las miniaturas
+  const ids = [...new Set(shown.flatMap((o) => o.order_items.map((i) => i.product_id)).filter(Boolean))];
+  const { data: prods } = ids.length ? await sb.from("products").select("id,name,image_url").in("id", ids) : { data: [] };
+  const img = new Map((prods || []).map((p) => [p.id, p]));
+  const initials = (t) => t.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+  const active = (o) => !["entregado", "cancelado", "pendiente_pago"].includes(o.status);
+  $("#pane").innerHTML = `<div class="ol">${shown.map((o) => {
     const items = o.order_items.filter((i) => Number(i.line_total) > 0 || !/regalo/i.test(i.name));
-    return `<article class="order-card">
-      <div class="row"><b>${esc(o.code)}</b><span class="st st-${o.status}">${STATUS[o.status]}</span></div>
-      <div class="row"><span class="muted small">${when(o.scheduled_for || o.created_at)}</span><b class="tabnum">${money(o.total)}</b></div>
-      <div class="items">${items.map((i) => `${i.quantity}× ${esc(i.name)}`).join(" · ")}</div>
-      <div class="acts"><a class="btn small" href="/pedido?t=${o.tracking_token}">Ver detalle</a>
-        <button class="btn small primary" type="button" data-again="${o.code}">Volver a pedir</button></div>
-    </article>`; }).join("")}</div>`
-    : `<div class="panel"><p class="muted" style="margin:0">Aún no tienes pedidos. Tu primer pedido de $10 o más ya suma sellos.</p><a class="btn primary" href="/" style="margin-top:12px">Ver el menú</a></div>`;
+    const nItems = items.reduce((t, i) => t + i.quantity, 0);
+    const sub = active(o) ? (o.scheduled_for ? `${dayLabel(o.scheduled_for)} · entre ${orderRange(o)}` : `Hoy · llega entre ${orderRange(o)}`)
+      : `${dayLabel(o.delivered_at || o.scheduled_for || o.created_at)} · ${nItems} ${nItems === 1 ? "producto" : "productos"}`;
+    return `<article class="oc ${STATE_COLOR[o.status] || "go"}">
+      <div class="top"><b>${esc(o.code)}</b><span class="st">${STATUS[o.status]}</span></div>
+      <div class="d">${esc(sub)}</div>
+      <div class="thumbs">${items.slice(0, 5).map((i) => { const p = img.get(i.product_id); return `<span title="${esc(i.name)}">${p?.image_url ? `<img src="${esc(p.image_url)}" alt="" loading="lazy">` : esc(initials(p?.name || i.name))}<i>${i.quantity}</i></span>`; }).join("")}${items.length > 5 ? `<span class="more">+${items.length - 5}</span>` : ""}</div>
+      <div class="bot"><b class="tabnum">${money(o.total)}</b><span class="acts">
+        <a class="btn small ghost" href="/pedido?t=${o.tracking_token}">Ver</a>
+        ${active(o) ? `<a class="btn small primary" href="/pedido?t=${o.tracking_token}">Seguir pedido</a>` : `<button class="btn small primary" type="button" data-again="${o.code}">Volver a pedir</button>`}</span></div>
+    </article>`; }).join("")}</div>`;
   $("#pane").querySelectorAll("[data-again]").forEach((b) => (b.onclick = () => {
     const o = orders.find((x) => x.code === b.dataset.again);
     const cart = new Map();
