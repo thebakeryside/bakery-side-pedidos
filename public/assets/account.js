@@ -64,7 +64,7 @@ export function stampCard(stamps, { compact = false } = {}) {
 export const stampsFor = (subtotal) => Math.floor(Math.max(0, subtotal) / 10);
 
 // Botón oficial de Google: el ingreso ocurre en esta página, así Google muestra thebakeryside.com
-export const googleButton = () => `<div class="gsi-slot" data-gsi></div>`;
+export const googleButton = (theme = "filled_black") => `<div class="gsi-slot" data-gsi data-theme="${theme}"></div>`;
 
 let gsiLoading;
 function loadGsi() {
@@ -103,7 +103,7 @@ export async function mountGoogle(root, onSignedIn, onError = () => {}) {
     });
     for (const el of slots) {
       el.innerHTML = "";
-      window.google.accounts.id.renderButton(el, { theme: "filled_black", size: "large", shape: "pill", text: "continue_with", locale: "es", width: Math.min(320, Math.max(220, el.clientWidth || 300)) });
+      window.google.accounts.id.renderButton(el, { theme: el.dataset.theme || "filled_black", size: "large", shape: "pill", text: "continue_with", locale: "es", width: Math.min(320, Math.max(220, el.clientWidth || 300)) });
     }
   } catch (e) {
     // Respaldo: el ingreso por redirección de siempre

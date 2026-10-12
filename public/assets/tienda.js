@@ -364,16 +364,17 @@ function renderAcctBox() {
   box.innerHTML = `<div class="join">
       <div class="join-card">
         <b class="join-t">Un postre sorpresa te espera</b>
-        <span class="join-s">Crea tu cuenta y te regalamos los 2 primeros sellos.</span>
+        <span class="join-s">Continúa con Google y te regalamos los 2 primeros sellos.</span>
         <div class="join-dots" aria-hidden="true">${dots}</div>
         <div class="join-leg"><span>2 de regalo hoy</span><span>8 sellos = postre sorpresa</span></div>
+        <div class="join-go">${googleButton("outline")}<small>Gratis, en un toque. Sin contraseñas.</small></div>
       </div>
       <ul class="join-why">
         <li><span>💵</span><span><b>1 sello por cada $10</b> de tu pedido</span></li>
         <li><span>🎂</span><span><b>$4 de regalo</b> en tu mes de cumpleaños</span></li>
         <li><span>⚡</span><span><b>La próxima vez pides más rápido:</b> guardamos tu dirección</span></li>
       </ul>
-      <div class="join-cta">${googleButton()}<button class="linkbtn" type="button" id="asGuest">Pedir sin cuenta</button></div>
+      <div class="join-cta"><button class="linkbtn" type="button" id="asGuest">Prefiero pedir sin cuenta</button></div>
     </div>`;
   try { localStorage.setItem(CART_KEY, JSON.stringify([...state.cart])); } catch {}
   mountGoogle(box, async () => { await refreshAccount(); toast("¡Listo! Ya sumas sellos con este pedido."); }, (e) => toast(e.message));
