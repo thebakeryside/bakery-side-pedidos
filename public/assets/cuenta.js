@@ -128,6 +128,7 @@ async function paneDatos(acc) {
         <label class="f" for="dBday">Cumpleaños <span class="hint">${c.birthday ? "(ya registrado)" : "(solo se puede guardar una vez)"}</span></label>
         <input class="in" id="dBday" type="date" value="${esc(c.birthday || "")}" ${c.birthday ? "disabled" : ""} max="${new Date().toISOString().slice(0, 10)}" style="max-width:220px">
         <p class="muted small" style="margin:12px 0 0">Correo de tu cuenta: ${esc(c.email || "")}</p>
+        <label class="check" style="margin-top:10px"><input type="checkbox" id="dPromo" ${c.marketing_opt_in ? "checked" : ""}> Quiero recibir promociones y novedades por WhatsApp y correo</label>
         <button class="btn primary" style="margin-top:14px">Guardar</button>
       </form>
       ${ready ? `
@@ -142,6 +143,11 @@ async function paneDatos(acc) {
         <div id="invForm"></div>
       </section>` : ""}
     </div>`;
+  $("#dPromo").onchange = async (e) => {
+    const { error } = await sb.rpc("set_marketing", { p_opt: e.target.checked });
+    if (error) { e.target.checked = !e.target.checked; return toast("No se pudo guardar."); }
+    toast(e.target.checked ? "¡Listo! Te avisaremos de las novedades" : "Ya no te enviaremos promociones");
+  };
   $("#dataForm").onsubmit = async (e) => {
     e.preventDefault();
     const body = { full_name: $("#dName").value.trim(), phone: $("#dPhone").value.trim() || undefined };

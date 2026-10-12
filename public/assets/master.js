@@ -510,17 +510,26 @@ async function renderQrAdmin() {
 
 // ---------- clientes y sellos ----------
 async function clientes() {
-  const { data, error } = await sb.rpc("master_customers");
+  const [{ data, error }, { data: optRows }] = await Promise.all([sb.rpc("master_customers"), sb.from("customers").select("user_id,marketing_opt_in")]);
   if (error) return ($("#view").innerHTML = `<p class="err">${esc(error.message)}</p>`);
+  const opt = new Map((optRows || []).map((r) => [r.user_id, r.marketing_opt_in]));
+  const optList = data.filter((c) => opt.get(c.user_id));
   $("#view").innerHTML = `<div class="panel">
     <h2 class="display" style="font-size:30px">Clientes y sellos</h2>
     <p class="muted small">Clientes con cuenta de Google. Puedes sumar o quitar sellos, por ejemplo para compensar un reclamo. Al llegar a 8 se crea su postre sorpresa automáticamente.</p>
-    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Cliente</th><th>Pedidos</th><th>Gastado</th><th>Sellos</th><th>Cookies</th><th>Ajustar</th></tr></thead><tbody>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Cliente</th><th>Pedidos</th><th>Gastado</th><th>Sellos</th><th>Postres</th><th>Promos</th><th>Ajustar</th></tr></thead><tbody>
     ${data.map((c) => `<tr><td><b>${esc(c.full_name || "Sin nombre")}</b><br><span class="muted small">${esc(c.email || "")}${c.phone ? " · " + esc(c.phone) : ""}</span></td>
-      <td class="tabnum">${c.orders}</td><td class="tabnum">${money(c.spent)}</td><td class="tabnum"><b>${c.stamps}/8</b></td><td class="tabnum">${c.rewards}</td>
+      <td class="tabnum">${c.orders}</td><td class="tabnum">${money(c.spent)}</td><td class="tabnum"><b>${c.stamps}/8</b></td><td class="tabnum">${c.rewards}</td><td>${opt.get(c.user_id) ? `<span class="chip ok">Sí</span>` : `<span class="muted small">No</span>`}</td>
       <td><div style="display:flex;gap:4px"><button class="btn small ghost" data-adj="-1" data-u="${c.user_id}" aria-label="Quitar un sello">−1</button><button class="btn small" data-adj="1" data-u="${c.user_id}" aria-label="Sumar un sello">+1</button></div></td></tr>`).join("")
-      || `<tr><td colspan="6" class="muted">Aún no hay clientes con cuenta.</td></tr>`}
-    </tbody></table></div></div>`;
+      || `<tr><td colspan="7" class="muted">Aún no hay clientes con cuenta.</td></tr>`}
+    </tbody></table></div>
+    <h3 class="group-title">Aceptan promociones (${optList.length})</h3>
+    <p class="muted small">Solo a estos clientes puedes enviarles publicidad por WhatsApp o correo; los demás no dieron su permiso.</p>
+    ${optList.length ? `<div class="acts"><button class="btn small" type="button" id="cpPhones">Copiar WhatsApp</button><button class="btn small" type="button" id="cpMails">Copiar correos</button></div>` : ""}
+    </div>`;
+  const copy = (txt, msg) => navigator.clipboard?.writeText(txt).then(() => toast(msg), () => toast("No se pudo copiar."));
+  $("#cpPhones")?.addEventListener("click", () => copy(optList.map((c) => c.phone).filter(Boolean).join("\n"), "Números copiados"));
+  $("#cpMails")?.addEventListener("click", () => copy(optList.map((c) => c.email).filter(Boolean).join(", "), "Correos copiados"));
   $$("[data-adj]").forEach((b) => (b.onclick = async () => {
     b.disabled = true;
     const { error } = await sb.rpc("master_adjust_stamps", { p_user: b.dataset.u, p_delta: Number(b.dataset.adj) });

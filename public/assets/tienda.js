@@ -309,6 +309,7 @@ function openCheckout() {
   try { const p = JSON.parse(localStorage.getItem(PROFILE_KEY) || "{}"); for (const k of ["cName", "cPhone", "cEmail", "address", "reference"]) if (p[k] && !$("#" + k).value) $("#" + k).value = k === "address" ? splitAddr(p[k]) : p[k]; if (p.locLabel && !state.locLabel) setLocLabel(p.locLabel); if (p.lat && !state.loc) state.loc = { lat: p.lat, lng: p.lng }; } catch {}
   setupMap();
   renderAcctBox(); renderPerks(); loadSaved();
+  $("#promoBox").hidden = !state.acct || Boolean(state.acct.customer?.marketing_opt_in);
   renderSummary();
 }
 
@@ -646,6 +647,7 @@ $("#orderForm").addEventListener("submit", async (e) => {
   try {
     const res = await api("crear", body);
     await saveNewOnes(body);
+    if ($("#wantPromo").checked && !$("#promoBox").hidden) { try { await sb.rpc("set_marketing", { p_opt: true }); } catch {} }
     try { localStorage.setItem("tbs_ultimo_pedido", res.tracking_token); localStorage.removeItem(CART_KEY); } catch {}
     if (pay === "tarjeta") {
       btn.textContent = `Pagar ${money(res.total)}`; btn.disabled = false;
