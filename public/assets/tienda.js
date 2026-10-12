@@ -248,6 +248,7 @@ function renderCart() {
     ? lines.join("") + `<div class="line total"><span>Subtotal</span><span class="tabnum">${money(subtotal())}</span></div><p class="muted small" style="margin:0">El envío se calcula con tu ubicación.</p>`
     : `<div class="cart-empty"><b>Tu pedido está vacío</b><span class="muted small">Agrega algo rico del menú para empezar.</span></div>`;
   $("#goCheckout").disabled = !n;
+  $("#goCheckout").textContent = n ? `Continuar · ${money(subtotal())}` : "Continuar";
   $("#mbCount").textContent = n; $("#mbTotal").textContent = money(subtotal());
   $("#cartCount").textContent = n; $("#cartCount").hidden = !n;
   $("#mobileBar").hidden = !n || !$("#checkout").hidden;

@@ -76,7 +76,7 @@
 .cline .rm:hover { color: var(--error); }
 .cart-empty { display: grid; gap: 4px; justify-items: start; padding: 6px 0; }
 @media (max-width: 899px) {
-  .cart { position: fixed; inset: auto 0 0 0; z-index: 40; border-radius: 18px 18px 0 0; max-height: 82vh; overflow: auto; padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateY(105%); transition: transform .25s ease; box-shadow: 0 -10px 30px rgb(28 23 20 / .2); }
+  .cart { position: fixed; inset: auto 0 0 0; z-index: 40; border-radius: 18px 18px 0 0; max-height: 82vh; overflow: hidden; display: flex; flex-direction: column; gap: 12px; padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateY(105%); transition: transform .25s ease; box-shadow: 0 -10px 30px rgb(28 23 20 / .2); }
   .cart.open { transform: none; }
   .cart-scrim { position: fixed; inset: 0; z-index: 39; background: rgb(28 23 20 / .4); }
 }
@@ -210,3 +210,9 @@ body.light .wrap { max-width: 1260px; }
 .saved-chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 8px 0 4px; }
 .saved-chips .sc-lbl { width: 100%; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--accent-ink); }
 #saveAddrLabel { margin-top: 6px; }
+
+/* carrito: la lista hace scroll y "Continuar" queda siempre visible abajo */
+@media (max-width: 899px) {
+  .cart #cartLines { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-right: 2px; }
+  .cart #goCheckout { flex: none; min-height: 52px; font-size: 16.5px; box-shadow: 0 -10px 16px -8px rgb(28 23 20 / .15); }
+}
