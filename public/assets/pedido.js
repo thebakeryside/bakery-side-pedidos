@@ -1,4 +1,4 @@
-import { sb, api, $, money, esc, hhmm, when, dayLabel, orderRange, parseBank, STATUS } from "./common.js";
+import { sb, api, $, money, esc, hhmm, when, dayLabel, orderRange, parseBank, STATUS, socialLinks, SOCIAL } from "./common.js";
 import { openPayphone } from "./payphone.js";
 
 const token = new URLSearchParams(location.search).get("t") || localStorage.getItem("tbs_ultimo_pedido");
@@ -62,6 +62,9 @@ function render(o) {
         <small>${o.is_gift ? "Como es un regalo, compártelo con quien lo recibe. " : ""}Dáselo al motorizado solo cuando tengas el pedido en tus manos. Así confirmamos que llegó a ti.</small></div>` : ""}
       ${showSteps ? `<ol class="steps">${steps.map(([k, l, t, sub], i) => `<li class="${o.status === "entregado" || i < idx ? "done" : i === Math.ceil(idx) ? "now" : ""}"><span class="dot"></span><div><b>${l}</b><small>${esc(sub)}</small></div><span class="t">${t ? hhmm(t) : ""}</span></li>`).join("")}</ol>` : ""}
     </div>
+    ${o.status === "entregado" ? `<div class="panel share-card"><h3>¿Te gustó?</h3>
+      <p class="small">Compártelo en tus historias y etiquétanos en <b>${SOCIAL.handle}</b>. ¡Nos encanta ver tus fotos!</p>
+      <div class="social">${socialLinks()}</div></div>` : ""}
     ${o.linked?.length ? `<div class="panel linked"><p class="eyebrow">Va en dos entregas · un solo pago</p>
       ${unpaid ? `<p class="small" style="margin:4px 0 8px">El pago de <b class="tabnum">${money(o.group_total)}</b> cubre las dos entregas.</p>` : ""}
       ${o.linked.map((l) => `<a class="link-row" href="/pedido?t=${l.tracking_token}"><span><b>Pedido ${esc(l.code)}</b><small>${l.scheduled_for ? `${dayLabel(l.scheduled_for)}, ${orderRange(l, o.eta_window || 30)}` : `Llega entre ${orderRange(l, o.eta_window || 30)}`}</small></span><span aria-hidden="true">›</span></a>`).join("")}</div>` : ""}
@@ -70,6 +73,7 @@ function render(o) {
       ${Number(o.subtotal) + Number(o.delivery_fee) - Number(o.total) > 0.004 ? `<div class="line"><span>Regalo de cumpleaños</span><span class="tabnum">−${money(Number(o.subtotal) + Number(o.delivery_fee) - Number(o.total))}</span></div>` : ""}
       <div class="line"><span>Envío</span><span class="tabnum">${money(o.delivery_fee)}</span></div>
       <div class="line total"><span>Total</span><span class="tabnum">${money(o.total)}</span></div></div>
+      ${o.status === "entregado" ? "" : `<div class="social-wrap" style="margin:12px 0"><span class="lbl">Síguenos</span><div class="social">${socialLinks()}</div></div>`}
       ${cfg?.whatsapp ? `<a class="btn block" href="https://wa.me/${cfg.whatsapp.replace(/\D/g, "").replace(/^0/, "593")}?text=${encodeURIComponent("Hola, consulto por mi pedido " + o.code)}" target="_blank" rel="noopener">Escribir por WhatsApp</a>` : ""}
     </div>`;
 

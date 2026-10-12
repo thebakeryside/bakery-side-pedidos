@@ -1,4 +1,4 @@
-import { sb, api, $, money, esc, when, dayLabel, orderRange, toast, STATUS } from "./common.js";
+import { sb, api, $, money, esc, when, dayLabel, orderRange, toast, STATUS, mountSocial } from "./common.js";
 import { captureRef, currentUser, loadAccount, setAccount, signOut, stampCard, googleButton, mountGoogle, STAMPS_TOTAL } from "./account.js";
 import { createMap } from "./mapa.js";
 import { reviewForm } from "./reviews.js";
@@ -321,3 +321,6 @@ let started = false;
 sb.auth.onAuthStateChange((ev) => {
   if (ev === "INITIAL_SESSION" || (ev === "SIGNED_IN" && started)) { started = true; render(); }
 });
+
+mountSocial();
+api("config").then((c) => mountSocial(c.whatsapp)).catch(() => {});

@@ -177,3 +177,16 @@ button, a, [data-a] { -webkit-tap-highlight-color: transparent; }
 .rv-acts { display: flex; gap: 6px; }
 .rv-thanks { margin: 0; font-weight: 600; }
 .linkbtn { background: none; border: 0; padding: 6px; font: inherit; font-size: 14px; color: var(--text-2); text-decoration: underline; cursor: pointer; }
+
+/* Redes sociales */
+.social-wrap { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
+.social-wrap .lbl { font-family: "Bebas Neue", sans-serif; font-size: 20px; letter-spacing: .02em; color: var(--text); }
+.social { display: flex; flex-wrap: wrap; gap: 8px; }
+.soc { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 12px 0 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--text); font-weight: 600; font-size: 14px; text-decoration: none; transition: background .15s, border-color .15s; }
+.soc:hover { border-color: var(--tostado, #C68A4E); background: rgb(198 138 78 / .08); }
+.soc:focus-visible { outline: 2px solid var(--tostado, #C68A4E); outline-offset: 2px; }
+.soc svg { flex: none; }
+.share-card { text-align: center; }
+.share-card h3 { margin: 0 0 4px; font-family: "Bebas Neue", sans-serif; font-weight: 400; font-size: 26px; letter-spacing: .02em; }
+.share-card p { margin: 0 0 12px; }
+.share-card .social { justify-content: center; }

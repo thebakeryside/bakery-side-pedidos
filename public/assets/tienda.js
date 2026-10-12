@@ -1,4 +1,4 @@
-import { sb, api, $, $$, money, esc, hhmm, hm, etaRange, dayLabel, localToISO, todayLocal, toast } from "./common.js";
+import { sb, api, $, $$, money, esc, hhmm, hm, etaRange, dayLabel, localToISO, todayLocal, toast, mountSocial } from "./common.js";
 import { openPayphone } from "./payphone.js";
 import { createMap } from "./mapa.js";
 import { captureRef, storedRef, currentUser, loadAccount, stampCard, stampsFor, googleButton, mountGoogle } from "./account.js";
@@ -37,6 +37,7 @@ async function init() {
   renderStatus(c);
   const wa = waLink(c.whatsapp, "Hola The Bakery Side, tengo una consulta 🙂");
   if (wa) { $("#waFab").href = wa; $("#waFab").hidden = false; }
+  mountSocial(c.whatsapp);
   try { JSON.parse(localStorage.getItem(CART_KEY) || "[]").forEach(([k, q]) => { k = String(k); if (state.products.some((p) => p.id === keyId(k)) && validKey(k)) state.cart.set(k, q); }); } catch {}
   renderCats(); renderMenu(); renderCart();
   // estrellas de cada producto (llegan después para no frenar el menú)
