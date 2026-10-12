@@ -206,3 +206,7 @@ body.light .wrap { max-width: 1260px; }
 .sum-h { margin: 10px 0 4px; font-size: 12.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--accent-ink); display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .sum-h:first-child { margin-top: 0; }
 .sum-h span { text-transform: none; letter-spacing: 0; color: var(--text-2); font-weight: 600; }
+/* chips de direcciones y facturas guardadas */
+.saved-chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 8px 0 4px; }
+.saved-chips .sc-lbl { width: 100%; font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--accent-ink); }
+#saveAddrLabel { margin-top: 6px; }

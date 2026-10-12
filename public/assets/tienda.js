@@ -307,7 +307,7 @@ function openCheckout() {
   // datos guardados del cliente
   try { const p = JSON.parse(localStorage.getItem(PROFILE_KEY) || "{}"); for (const k of ["cName", "cPhone", "cEmail", "address", "reference"]) if (p[k] && !$("#" + k).value) $("#" + k).value = k === "address" ? splitAddr(p[k]) : p[k]; if (p.locLabel && !state.locLabel) setLocLabel(p.locLabel); if (p.lat && !state.loc) state.loc = { lat: p.lat, lng: p.lng }; } catch {}
   setupMap();
-  renderAcctBox(); renderPerks();
+  renderAcctBox(); renderPerks(); loadSaved();
   renderSummary();
 }
 
@@ -375,11 +375,25 @@ function syncWhen() {
   $("#scheduleBox").hidden = !(later || split);
   $("#schedTimeLbl").textContent = split ? `Hora de entrega de ${listNames([...new Set(leadKeys().map((k) => product(keyId(k)).name))])}` : "Hora de entrega";
   $("#splitNote").hidden = !split;
+  // la segunda entrega puede ir a otra dirección guardada (por ejemplo, la torta a casa de mamá)
+  const addrs = state.saved?.addrs || [];
+  $("#splitAddrBox").hidden = !split || !addrs.length;
+  if (split && addrs.length) {
+    const cur = $("#splitAddr").value;
+    $("#splitAddrLbl").textContent = `¿Dónde entregamos ${listNames([...new Set(leadKeys().map((k) => product(keyId(k)).name))])}?`;
+    $("#splitAddr").innerHTML = `<option value="">En la misma dirección del pedido</option>` + addrs.map((a) => `<option value="${a.id}">${esc(a.label)} · ${esc(a.address)}</option>`).join("");
+    $("#splitAddr").value = cur;
+  }
   if (split) $("#splitNote").textContent = "Pagas todo junto una sola vez. Cada entrega tiene su envío, su seguimiento y su PIN.";
   fillDates(); if (state.loc) requestQuote(); else renderSummary();
 }
 $$('input[name="when"]').forEach((r) => r.addEventListener("change", syncWhen));
 
+const splitAddr = () => isSplit() ? (state.saved?.addrs || []).find((a) => String(a.id) === $("#splitAddr").value) : null;
+$("#splitAddr").addEventListener("change", async () => {
+  const a = splitAddr(); state.quote2 = null; renderSummary();
+  if (a) { try { state.quote2 = await api("cotizar", { lat: a.lat, lng: a.lng }); } catch (e) { toast(e.message); } renderSummary(); }
+});
 function maxLeadHours() { return Math.max(0, ...[...state.cart.keys()].map((k) => product(keyId(k)).lead_hours)); }
 // Minutos para confirmar una transferencia (se suman a la hora de llegada)
 const payExtra = () => ($("#payTransfer")?.checked ? Number(state.cfg.transfer_extra || 0) : 0);
@@ -431,12 +445,69 @@ async function setupMap() {
       state.loc = { lat, lng };
       // La ubicación del mapa va en su propio campo; la dirección la escribe el cliente
       setLocLabel(addr || "Ubicación marcada en el mapa");
+      if (state.addrPicked && state.addrPicked !== "new") { const a = state.saved?.addrs.find((x) => String(x.id) === state.addrPicked); if (a && (Math.abs(a.lat - lat) > 1e-5 || Math.abs(a.lng - lng) > 1e-5)) { state.addrPicked = "new"; $$("#savedAddr [data-addr]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.addr === "new")); $("#saveAddrBox").hidden = !state.acct; } }
       requestQuote();
     },
   });
   if (state.loc) { mapCtl.setView(state.loc.lat, state.loc.lng, 18); requestQuote(); }
 }
 const LOC_SEP = " · Ubicación del mapa: ";
+// Direcciones y datos de factura guardados en la cuenta: se eligen con un toque
+async function loadSaved() {
+  state.saved = { addrs: [], invs: [] };
+  if (state.acct) {
+    const [a, i] = await Promise.all([
+      sb.from("customer_addresses").select("*").order("is_default", { ascending: false }).order("created_at"),
+      sb.from("customer_invoices").select("*").order("is_default", { ascending: false }).order("created_at"),
+    ]);
+    state.saved = { addrs: a.error ? [] : a.data, invs: i.error ? [] : i.data };
+  }
+  const { addrs, invs } = state.saved;
+  const box = $("#savedAddr");
+  box.hidden = !addrs.length;
+  box.innerHTML = addrs.length ? `<span class="sc-lbl">Tus direcciones</span>` + addrs.map((a) => `<button type="button" class="chip-btn" data-addr="${a.id}">📍 ${esc(a.label)}</button>`).join("") + `<button type="button" class="chip-btn" data-addr="new">＋ Otra</button>` : "";
+  box.querySelectorAll("[data-addr]").forEach((b) => (b.onclick = () => pickAddr(b.dataset.addr)));
+  $("#saveAddrBox").hidden = !state.acct;
+  if (addrs.length && !state.addrPicked) pickAddr(String(addrs[0].id)); // la principal, ya lista
+  const ib = $("#savedInv");
+  ib.hidden = !invs.length;
+  ib.innerHTML = invs.length ? `<span class="sc-lbl">A nombre de</span>` + invs.map((x) => `<button type="button" class="chip-btn" data-inv="${x.id}">🧾 ${esc(x.name.split(" ").slice(0, 2).join(" "))}</button>`).join("") + `<button type="button" class="chip-btn" data-inv="new">＋ Otro</button>` : "";
+  ib.querySelectorAll("[data-inv]").forEach((b) => (b.onclick = () => pickInv(b.dataset.inv)));
+  $("#saveInvBox").hidden = !state.acct || invs.length > 0;
+  if (invs.length) pickInv(String(invs[0].id));
+  if (isSplit()) syncWhen();
+}
+function pickAddr(id) {
+  state.addrPicked = id;
+  $$("#savedAddr [data-addr]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.addr === id));
+  const a = state.saved.addrs.find((x) => String(x.id) === id);
+  $("#saveAddrBox").hidden = Boolean(a) || !state.acct;
+  if (!a) { $("#address").value = ""; $("#reference").value = ""; $("#address").focus(); return; }
+  $("#address").value = a.address; $("#reference").value = a.reference || "";
+  setLocLabel(a.loc_label || `${a.label} (guardada)`);
+  state.loc = { lat: a.lat, lng: a.lng };
+  if (mapCtl) mapCtl.setView(a.lat, a.lng, 18);
+  requestQuote();
+}
+function pickInv(id) {
+  $$("#savedInv [data-inv]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.inv === id));
+  const x = state.saved.invs.find((v) => String(v.id) === id);
+  $("#invId").value = x?.id_number || ""; $("#invName").value = x?.name || ""; $("#invEmail").value = x?.email || "";
+  $("#saveInvBox").hidden = Boolean(x) || !state.acct;
+}
+$("#saveAddr").onchange = (e) => { $("#saveAddrLabel").hidden = !e.target.checked; if (e.target.checked) $("#saveAddrLabel").focus(); };
+// después de crear el pedido: guarda la dirección o la factura nueva si el cliente lo pidió
+async function saveNewOnes(body) {
+  const u = await currentUser(); if (!u) return;
+  const jobs = [];
+  if ($("#saveAddr").checked && !$("#saveAddrBox").hidden && state.loc) {
+    jobs.push(sb.from("customer_addresses").insert({ user_id: u.id, label: ($("#saveAddrLabel").value.trim() || "Casa").slice(0, 30), address: $("#address").value.trim().slice(0, 200), reference: $("#reference").value.trim() || null, loc_label: state.locLabel, lat: state.loc.lat, lng: state.loc.lng, is_default: !state.saved.addrs.length }));
+  }
+  if ($("#saveInv").checked && !$("#saveInvBox").hidden && body.invoice_type === "con_datos") {
+    jobs.push(sb.from("customer_invoices").insert({ user_id: u.id, id_number: body.invoice_id_number, name: body.invoice_name, email: body.invoice_email, is_default: !state.saved.invs.length }));
+  }
+  await Promise.all(jobs).catch(() => {});
+}
 function setLocLabel(t) { state.locLabel = t; $("#locLabel").textContent = t; $("#locLabel").classList.add("set"); }
 // Al servidor va todo junto para que cocina y motorizado vean ambas cosas
 function fullAddress() {
@@ -492,7 +563,8 @@ function renderSummary() {
   if (!state.cfg) return;
   const fee = state.quote?.delivery_fee;
   const split = isSplit();
-  const fees = fee != null ? fee * (split ? 2 : 1) : null; // dos entregas = dos envíos completos
+  const fee2 = split && splitAddr() ? state.quote2?.delivery_fee : fee; // la segunda entrega puede ir a otra dirección
+  const fees = fee != null && (!split || fee2 != null) ? fee + (split ? fee2 : 0) : null; // dos entregas = dos envíos completos
   const sub = subtotal();
   const disc = $("#useBday")?.checked ? Math.min(4, sub) : 0;
   const reward = $("#useReward")?.checked;
@@ -504,7 +576,7 @@ function renderSummary() {
       (reward ? `<div class="line"><span>1 × Postre sorpresa (regalo)</span><span class="tabnum">$0.00</span></div>` : "") +
       `<div class="line"><span>Envío</span><span class="tabnum">${fee != null ? money(fee) : "—"}</span></div>` +
       `<p class="sum-h">Entrega 2${laterRange() ? ` <span>${laterRange()}</span>` : ""}</p>` + leadKeys().map((k) => line(k, state.cart.get(k))).join("") +
-      `<div class="line"><span>Envío</span><span class="tabnum">${fee != null ? money(fee) : "—"}</span></div>`;
+      `<div class="line"><span>Envío${splitAddr() ? ` a ${esc(splitAddr().label)}` : ""}</span><span class="tabnum">${fee2 != null ? money(fee2) : "—"}</span></div>`;
   } else {
     body = [...state.cart].map(([k, q]) => line(k, q)).join("") +
       (reward ? `<div class="line"><span>1 × Postre sorpresa (regalo)</span><span class="tabnum">$0.00</span></div>` : "") +
@@ -551,7 +623,8 @@ $("#orderForm").addEventListener("submit", async (e) => {
     address: fullAddress(), reference: $("#reference").value,
     scheduled_for: later ? localToISO($("#schedDate").value, $("#schedTime").value) : null,
     // dos entregas: el dulce entero va agendado como segundo pedido del mismo pago
-    split: split ? { items: cartItems(leadKeys()), scheduled_for: localToISO($("#schedDate").value, $("#schedTime").value) } : null,
+    split: split ? { items: cartItems(leadKeys()), scheduled_for: localToISO($("#schedDate").value, $("#schedTime").value),
+      ...(splitAddr() ? { lat: splitAddr().lat, lng: splitAddr().lng, address: splitAddr().address, reference: splitAddr().reference || "" } : {}) } : null,
     customer_name: $("#cName").value, customer_phone: $("#cPhone").value,
     customer_email: state.acct ? null : $("#cEmail").value.trim(),
     recipient_name: $("#isGift").checked ? $("#rName").value : null,
@@ -570,6 +643,7 @@ $("#orderForm").addEventListener("submit", async (e) => {
   const btn = $("#payBtn"); btn.disabled = true; btn.textContent = "Creando tu pedido…";
   try {
     const res = await api("crear", body);
+    await saveNewOnes(body);
     try { localStorage.setItem("tbs_ultimo_pedido", res.tracking_token); localStorage.removeItem(CART_KEY); } catch {}
     if (pay === "tarjeta") {
       btn.textContent = `Pagar ${money(res.total)}`; btn.disabled = false;

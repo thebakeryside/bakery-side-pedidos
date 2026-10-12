@@ -1,5 +1,6 @@
 import { sb, api, $, money, esc, when, toast, STATUS } from "./common.js";
 import { captureRef, currentUser, loadAccount, setAccount, signOut, stampCard, googleButton, mountGoogle } from "./account.js";
+import { createMap } from "./mapa.js";
 
 captureRef();
 const root = $("#root");
@@ -94,31 +95,156 @@ function panePedidos(_acc, orders) {
   }));
 }
 
-function paneDatos(acc) {
+// ---------- Mis datos: datos personales, varias direcciones y varios datos de factura ----------
+const LOC_SEP = " · Ubicación del mapa: ";
+async function paneDatos(acc) {
   const c = acc.customer;
+  const u = await currentUser();
+  const [{ data: addrs, error: ae }, { data: invs, error: ie }] = await Promise.all([
+    sb.from("customer_addresses").select("*").order("is_default", { ascending: false }).order("created_at"),
+    sb.from("customer_invoices").select("*").order("is_default", { ascending: false }).order("created_at"),
+  ]);
+  const ready = !ae && !ie; // las tablas existen
   $("#pane").innerHTML = `
-    <form class="panel" id="dataForm" novalidate style="max-width:640px">
-      <h2 class="display" style="font-size:26px">Mis datos</h2>
-      <p class="muted small" style="margin:4px 0 0">Los usamos para llenar tu próximo pedido más rápido.</p>
-      <div class="form-grid2">
-        <div><label class="f" for="dName">Nombre</label><input class="in" id="dName" value="${esc(c.full_name || "")}" autocomplete="name"></div>
-        <div><label class="f" for="dPhone">WhatsApp</label><input class="in" id="dPhone" type="tel" inputmode="tel" value="${esc(c.phone || "")}" placeholder="0991234567" autocomplete="tel"></div>
-      </div>
-      <label class="f" for="dAddr">Dirección de entrega <span class="hint">(ciudadela, manzana y villa, o calle y número)</span></label>
-      <input class="in" id="dAddr" value="${esc(String(c.address || "").split(" · Ubicación del mapa: ")[0])}" autocomplete="street-address">
-      <label class="f" for="dRef">Referencia</label>
-      <input class="in" id="dRef" value="${esc(c.reference || "")}" placeholder="Casa blanca frente al parque">
-      <label class="f" for="dBday">Cumpleaños <span class="hint">${c.birthday ? "(ya registrado)" : "(solo se puede guardar una vez)"}</span></label>
-      <input class="in" id="dBday" type="date" value="${esc(c.birthday || "")}" ${c.birthday ? "disabled" : ""} max="${new Date().toISOString().slice(0, 10)}" style="max-width:220px">
-      <p class="muted small" style="margin:12px 0 0">Correo de tu cuenta: ${esc(c.email || "")}</p>
-      <button class="btn primary" style="margin-top:14px">Guardar mis datos</button>
-    </form>`;
+    <div class="datos">
+      <form class="panel" id="dataForm" novalidate>
+        <h2 class="display" style="font-size:26px">Tus datos</h2>
+        <div class="form-grid2">
+          <div><label class="f" for="dName">Nombre</label><input class="in" id="dName" value="${esc(c.full_name || "")}" autocomplete="name"></div>
+          <div><label class="f" for="dPhone">WhatsApp</label><input class="in" id="dPhone" type="tel" inputmode="tel" value="${esc(c.phone || "")}" placeholder="0991234567" autocomplete="tel"></div>
+        </div>
+        <label class="f" for="dBday">Cumpleaños <span class="hint">${c.birthday ? "(ya registrado)" : "(solo se puede guardar una vez)"}</span></label>
+        <input class="in" id="dBday" type="date" value="${esc(c.birthday || "")}" ${c.birthday ? "disabled" : ""} max="${new Date().toISOString().slice(0, 10)}" style="max-width:220px">
+        <p class="muted small" style="margin:12px 0 0">Correo de tu cuenta: ${esc(c.email || "")}</p>
+        <button class="btn primary" style="margin-top:14px">Guardar</button>
+      </form>
+      ${ready ? `
+      <section class="panel">
+        <div class="sec-h"><h2 class="display" style="font-size:26px">Mis direcciones</h2><button class="btn small" type="button" id="addAddr">+ Agregar</button></div>
+        <div class="saved-list">${(addrs || []).map((a) => savedCard(a.id, "addr", a.label, a.address, a.reference || a.loc_label || "", a.is_default)).join("") || `<p class="muted small" style="margin:0">Guarda tu casa, tu oficina o la de alguien a quien le envías regalos. Al pedir, la eliges con un toque.</p>`}</div>
+        <div id="addrForm"></div>
+      </section>
+      <section class="panel">
+        <div class="sec-h"><h2 class="display" style="font-size:26px">Datos de factura</h2><button class="btn small" type="button" id="addInv">+ Agregar</button></div>
+        <div class="saved-list">${(invs || []).map((x) => savedCard(x.id, "inv", x.name, `${x.id_number.length === 13 ? "RUC" : "Cédula"} ${x.id_number}`, x.email, x.is_default)).join("") || `<p class="muted small" style="margin:0">Guarda a nombre de quién facturamos (tú, tu empresa…). Al pedir con factura, lo eliges con un toque.</p>`}</div>
+        <div id="invForm"></div>
+      </section>` : ""}
+    </div>`;
   $("#dataForm").onsubmit = async (e) => {
     e.preventDefault();
-    const body = { full_name: $("#dName").value.trim(), phone: $("#dPhone").value.trim() || undefined, address: $("#dAddr").value.trim(), reference: $("#dRef").value.trim() };
+    const body = { full_name: $("#dName").value.trim(), phone: $("#dPhone").value.trim() || undefined };
     if (!c.birthday && $("#dBday").value) body.birthday = $("#dBday").value;
     try { setAccount(await api("guardar_perfil", body)); toast("Datos guardados"); render(); }
     catch (ex) { toast(ex.message); }
+  };
+  if (!ready) return;
+  const byId = (list, id) => list.find((x) => String(x.id) === String(id));
+  $("#addAddr").onclick = () => addrForm(u, null, addrs.length === 0);
+  $("#addInv").onclick = () => invForm(u, null, invs.length === 0);
+  $("#pane").querySelectorAll("[data-k]").forEach((b) => (b.onclick = async () => {
+    const { k, id, act } = b.dataset, table = k === "addr" ? "customer_addresses" : "customer_invoices", list = k === "addr" ? addrs : invs;
+    if (act === "edit") return k === "addr" ? addrForm(u, byId(list, id)) : invForm(u, byId(list, id));
+    if (act === "main") {
+      await sb.from(table).update({ is_default: false }).eq("user_id", u.id);
+      const { error } = await sb.from(table).update({ is_default: true }).eq("id", id);
+      if (error) return toast("No se pudo guardar.");
+      toast("Listo, quedó como principal"); return render();
+    }
+    if (act === "delask") { b.closest(".saved").querySelector(".del-row").hidden = false; return; }
+    if (act === "del") {
+      const { error } = await sb.from(table).delete().eq("id", id);
+      if (error) return toast("No se pudo borrar.");
+      toast("Borrado"); return render();
+    }
+  }));
+}
+function savedCard(id, k, title, line, sub, main) {
+  return `<article class="saved ${main ? "main" : ""}">
+    <div class="saved-ic" aria-hidden="true">${k === "addr" ? "📍" : "🧾"}</div>
+    <div class="saved-tx"><b>${esc(title)}${main ? ` <span class="badge">Principal</span>` : ""}</b><span>${esc(line)}</span>${sub ? `<small>${esc(sub)}</small>` : ""}</div>
+    <div class="saved-acts">
+      <button class="btn small ghost" type="button" data-k="${k}" data-id="${id}" data-act="edit">Editar</button>
+      ${main ? "" : `<button class="btn small ghost" type="button" data-k="${k}" data-id="${id}" data-act="main">Hacer principal</button>`}
+      <button class="btn small ghost" type="button" data-k="${k}" data-id="${id}" data-act="delask">Borrar</button>
+    </div>
+    <div class="del-row confirm-row" hidden><span class="small">¿Borrar ${esc(title)}?</span><button class="btn small" type="button" data-k="${k}" data-id="${id}" data-act="del">Sí, borrar</button></div>
+  </article>`;
+}
+let addrMap = null;
+function addrForm(u, a, first = false) {
+  const box = $("#addrForm");
+  box.innerHTML = `<form class="subform" id="aForm" novalidate>
+    <h3>${a ? "Editar dirección" : "Nueva dirección"}</h3>
+    <label class="f" for="aLabel">Nombre <span class="hint">(Casa, Oficina, Mamá…)</span></label>
+    <div class="label-chips">${["Casa", "Oficina", "Mamá", "Pareja"].map((l) => `<button type="button" class="chip-btn" data-l="${l}">${l}</button>`).join("")}</div>
+    <input class="in" id="aLabel" maxlength="30" value="${esc(a?.label || "")}" placeholder="Casa">
+    <label class="f">Ubicación en el mapa</label>
+    <div class="map-tools"><div class="search" id="aSearch"></div></div>
+    <div class="map-wrap"><div id="aMap" class="map" role="application" aria-label="Mapa para marcar la dirección"></div><div class="pin" aria-hidden="true"><span></span></div><div class="map-hint" aria-hidden="true">Mueve el mapa hasta la puerta</div></div>
+    <p class="muted small" id="aLoc" style="margin:6px 0 0">${esc(a?.loc_label || "Mueve el mapa o busca la zona.")}</p>
+    <label class="f" for="aAddr">Dirección <span class="hint">(ciudadela, manzana y villa, o calle y número)</span></label>
+    <input class="in" id="aAddr" maxlength="200" value="${esc(a?.address || "")}">
+    <label class="f" for="aRef">Referencia</label>
+    <input class="in" id="aRef" maxlength="200" value="${esc(a?.reference || "")}" placeholder="Casa blanca, timbre 2">
+    ${a ? "" : `<label class="check"><input type="checkbox" id="aMain" ${first ? "checked" : ""}> Usarla como principal</label>`}
+    <p class="err" id="aErr" role="alert"></p>
+    <div class="acts"><button class="btn primary">Guardar dirección</button><button class="btn ghost" type="button" id="aCancel">Cancelar</button></div>
+  </form>`;
+  let pos = a ? { lat: a.lat, lng: a.lng } : null, locLabel = a?.loc_label || null;
+  box.querySelectorAll("[data-l]").forEach((b) => (b.onclick = () => { $("#aLabel").value = b.dataset.l; }));
+  createMap($("#aMap"), { start: pos, center: { lat: -2.17, lng: -79.9 }, searchSlot: $("#aSearch"), onPick: (lat, lng, addr) => { pos = { lat, lng }; locLabel = addr || null; $("#aLoc").textContent = addr || "Ubicación marcada en el mapa"; } })
+    .then((m) => { addrMap = m; if (pos) m.setView(pos.lat, pos.lng, 18); });
+  box.scrollIntoView({ behavior: "smooth", block: "start" });
+  $("#aCancel").onclick = () => { box.innerHTML = ""; };
+  $("#aForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const err = (m) => ($("#aErr").textContent = m);
+    const row = { label: $("#aLabel").value.trim(), address: $("#aAddr").value.trim(), reference: $("#aRef").value.trim() || null, loc_label: locLabel };
+    if (!row.label) return err("Ponle un nombre, por ejemplo Casa.");
+    if (!pos) return err("Marca la ubicación en el mapa.");
+    if (!row.address) return err("Escribe la dirección.");
+    Object.assign(row, pos);
+    let error;
+    if (a) ({ error } = await sb.from("customer_addresses").update(row).eq("id", a.id));
+    else {
+      if ($("#aMain")?.checked) await sb.from("customer_addresses").update({ is_default: false }).eq("user_id", u.id);
+      ({ error } = await sb.from("customer_addresses").insert({ ...row, user_id: u.id, is_default: Boolean($("#aMain")?.checked) }));
+    }
+    if (error) return err("No se pudo guardar. Intenta de nuevo.");
+    toast("Dirección guardada"); render();
+  };
+}
+function invForm(u, x, first = false) {
+  const box = $("#invForm");
+  box.innerHTML = `<form class="subform" id="iForm" novalidate>
+    <h3>${x ? "Editar datos de factura" : "Nuevos datos de factura"}</h3>
+    <div class="form-grid2">
+      <div><label class="f" for="iId">Cédula o RUC</label><input class="in" id="iId" inputmode="numeric" maxlength="13" value="${esc(x?.id_number || "")}"></div>
+      <div><label class="f" for="iName">Nombre o razón social</label><input class="in" id="iName" maxlength="120" value="${esc(x?.name || "")}"></div>
+    </div>
+    <label class="f" for="iMail">Correo para la factura</label>
+    <input class="in" id="iMail" type="email" maxlength="120" value="${esc(x?.email || "")}">
+    ${x ? "" : `<label class="check"><input type="checkbox" id="iMain" ${first ? "checked" : ""}> Usarlos como principales</label>`}
+    <p class="err" id="iErr" role="alert"></p>
+    <div class="acts"><button class="btn primary">Guardar</button><button class="btn ghost" type="button" id="iCancel">Cancelar</button></div>
+  </form>`;
+  box.scrollIntoView({ behavior: "smooth", block: "start" });
+  $("#iCancel").onclick = () => { box.innerHTML = ""; };
+  $("#iForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const err = (m) => ($("#iErr").textContent = m);
+    const row = { id_number: $("#iId").value.replace(/\D/g, ""), name: $("#iName").value.trim(), email: $("#iMail").value.trim() };
+    if (!/^\d{10}(\d{3})?$/.test(row.id_number)) return err("La cédula debe tener 10 dígitos o el RUC 13.");
+    if (!row.name) return err("Escribe el nombre o la razón social.");
+    if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(row.email)) return err("Revisa el correo.");
+    let error;
+    if (x) ({ error } = await sb.from("customer_invoices").update(row).eq("id", x.id));
+    else {
+      if ($("#iMain")?.checked) await sb.from("customer_invoices").update({ is_default: false }).eq("user_id", u.id);
+      ({ error } = await sb.from("customer_invoices").insert({ ...row, user_id: u.id, is_default: Boolean($("#iMain")?.checked) }));
+    }
+    if (error) return err("No se pudo guardar. Intenta de nuevo.");
+    toast("Datos de factura guardados"); render();
   };
 }
 

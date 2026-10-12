@@ -123,6 +123,10 @@
           <label class="choice" id="splitChoice" hidden><input type="radio" name="when" value="split" id="whenSplit"><div><b>En dos entregas</b><span id="splitHint">Lo demás ahora y el dulce entero el día que elijas</span></div></label>
         </div>
         <p class="note small" id="splitNote" hidden></p>
+        <div id="splitAddrBox" hidden>
+          <label class="f" for="splitAddr" id="splitAddrLbl">¿Dónde lo entregamos?</label>
+          <select class="in" id="splitAddr"></select>
+        </div>
         <div class="row2" id="scheduleBox" hidden>
           <div><label class="f" for="schedDate">Día</label><select class="in" id="schedDate"></select></div>
           <div><label class="f" for="schedTime" id="schedTimeLbl">Hora de entrega</label><select class="in" id="schedTime"></select></div>
@@ -131,6 +135,7 @@
 
       <div class="panel">
         <div class="step-title"><span class="n">2</span><h2>¿Dónde lo entregamos?</h2></div>
+        <div id="savedAddr" class="saved-chips" hidden></div>
         <p class="muted small">Busca tu ciudadela o usa tu ubicación, y mueve el mapa hasta que el pin quede en tu puerta.</p>
         <div class="map-tools">
           <div class="search" id="searchSlot"></div>
@@ -150,6 +155,10 @@
         <input class="in" id="address" autocomplete="street-address" placeholder="Ej.: Urdesa Central, Guayacanes 214">
         <label class="f" for="reference">Referencia <span class="hint">(color de casa, garita, local cercano)</span></label>
         <input class="in" id="reference" placeholder="Casa blanca frente al parque, timbre 2">
+        <div id="saveAddrBox" hidden>
+          <label class="check"><input type="checkbox" id="saveAddr"> Guardar esta dirección en mi cuenta</label>
+          <input class="in" id="saveAddrLabel" maxlength="30" placeholder="Nombre: Casa, Oficina, Mamá…" hidden>
+        </div>
       </div>
 
       <div class="panel">
@@ -176,12 +185,14 @@
         </div>
         <label class="check"><input type="checkbox" id="wantInvoice"> Quiero factura con mis datos</label>
         <div id="invoiceBox" hidden>
+          <div id="savedInv" class="saved-chips" hidden></div>
           <div class="row2">
             <div><label class="f" for="invId">Cédula o RUC</label><input class="in" id="invId" inputmode="numeric" maxlength="13"></div>
             <div><label class="f" for="invName">Nombre o razón social</label><input class="in" id="invName"></div>
           </div>
           <label class="f" for="invEmail">Correo para la factura</label>
           <input class="in" id="invEmail" type="email" autocomplete="email">
+          <label class="check" id="saveInvBox" hidden><input type="checkbox" id="saveInv"> Guardar estos datos de factura en mi cuenta</label>
         </div>
       </div>
 
