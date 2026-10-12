@@ -555,7 +555,8 @@ const nowRange = () => etaRange(new Date(new Date(state.quote.eta_if_now).getTim
 function laterRange() {
   if (!$("#schedTime").value) return "";
   const iso = localToISO($("#schedDate").value, $("#schedTime").value);
-  return `${dayLabel(iso)}, ${etaRange(iso, { window: Number(state.cfg.eta_window || 30), exact: true })}`;
+  const d = dayLabel(iso);
+  return `${/^(Hoy|Mañana)$/.test(d) ? d.toLowerCase() : "el " + d}, ${etaRange(iso, { window: Number(state.cfg.eta_window || 30), exact: true })}`;
 }
 
 // ---------- resumen ----------
