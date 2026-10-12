@@ -111,3 +111,10 @@ export function socialLinks(whatsapp) {
 export function mountSocial(whatsapp) {
   document.querySelectorAll("[data-social]").forEach((el) => (el.innerHTML = socialLinks(whatsapp)));
 }
+
+// Alérgenos: mismos códigos que la columna products.allergens
+export const ALLERGENS = [
+  ["gluten", "🌾", "Gluten"], ["lacteos", "🥛", "Lácteos"], ["huevo", "🥚", "Huevo"],
+  ["frutos_secos", "🌰", "Frutos secos"], ["mani", "🥜", "Maní"], ["soya", "🫘", "Soya"],
+];
+export const allergenNames = (codes) => ALLERGENS.filter(([k]) => (codes || []).includes(k)).map(([, , n]) => n);

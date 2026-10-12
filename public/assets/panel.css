@@ -158,3 +158,8 @@ button.chip:hover { border-color: var(--crema-2); color: var(--crema); }
 .bank-rows { display: grid; gap: 6px; }
 .bank-row { display: grid; grid-template-columns: minmax(0, 1.4fr) 120px minmax(0, 1fr) auto; gap: 6px; }
 @media (max-width: 640px) { .bank-row { grid-template-columns: 1fr 1fr; } }
+
+/* Master: alérgenos del producto */
+.alg-pick { display: flex; flex-wrap: wrap; gap: 4px 10px; margin: 6px 0 0; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; max-width: 260px; }
+.alg-pick legend { padding: 0 4px; font-size: 12px; color: var(--text-2); }
+.alg-pick label { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }

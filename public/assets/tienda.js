@@ -1,4 +1,4 @@
-import { sb, api, $, $$, money, esc, hhmm, hm, etaRange, dayLabel, localToISO, todayLocal, toast, mountSocial } from "./common.js";
+import { sb, api, $, $$, money, esc, hhmm, hm, etaRange, dayLabel, localToISO, todayLocal, toast, mountSocial, ALLERGENS, allergenNames } from "./common.js";
 import { openPayphone } from "./payphone.js";
 import { createMap } from "./mapa.js";
 import { captureRef, storedRef, currentUser, loadAccount, stampCard, stampsFor, googleButton, mountGoogle } from "./account.js";
@@ -145,6 +145,13 @@ function photoCtrl(p, q, left, opts) {
   if (expanded !== p.id) return `<div class="pctrl"><button type="button" class="pc-count" data-a="expand" data-id="${p.id}" aria-label="${q} en tu pedido. Cambiar cantidad">${q}</button></div>`;
   return `<div class="pctrl"><div class="pc-step"><button type="button" data-a="-" data-id="${p.id}" aria-label="${q === 1 ? "Quitar" : "Quitar uno"}">${q === 1 ? TRASH : MINUS}</button><b>${q}</b><button type="button" data-a="${opts ? "pick" : "+"}" data-id="${p.id}" aria-label="Agregar uno"${full ? " disabled" : ""}>${PLUS}</button></div></div>`;
 }
+// Mini íconos de alérgenos; al tocarlos se dice qué contiene
+function algRow(p) {
+  const list = ALLERGENS.filter(([k]) => (p.allergens || []).includes(k));
+  if (!list.length) return "";
+  const names = list.map(([, , n]) => n).join(", ");
+  return `<button type="button" class="algs" data-a="alg" data-id="${p.id}" aria-label="Contiene: ${names}" title="Contiene: ${names}">${list.map(([k, i]) => `<span class="alg alg-${k}" aria-hidden="true">${i}</span>`).join("")}</button>`;
+}
 // Estrellas (solo reseñas comprobadas); al tocarlas se despliegan las reseñas debajo
 function rateRow(p) {
   const r = state.ratings?.get(p.id);
@@ -157,7 +164,7 @@ function itemCard(p) {
   const lead = p.lead_hours ? `<span class="tag">Pedir con ${p.lead_hours} h de anticipación</span>` : "";
   const stock = left === 0 ? `<span class="tag">Agotado por hoy · vuelve mañana</span>` : left != null ? `<span class="tag">Quedan ${left} hoy</span>` : "";
   const hint = opts ? `<span class="optnote">Eliges ${groupsOf(p.id).map((g) => g.name.toLowerCase()).join(" y ")} al agregar</span>` : "";
-  return `<article class="item${left === 0 ? " soldout" : ""}${q ? " incart-on" : ""}" data-pid="${p.id}"><div class="ph">${img}${photoCtrl(p, q, left, opts)}</div><div class="body"><h3>${esc(p.name)}</h3>${servChip(p)}<p>${esc(p.description)}</p>${rateRow(p)}${hint}${lead}${stock}<div class="foot"><span class="price">${money(p.price)}</span></div></div></article>`;
+  return `<article class="item${left === 0 ? " soldout" : ""}${q ? " incart-on" : ""}" data-pid="${p.id}"><div class="ph">${img}${photoCtrl(p, q, left, opts)}</div><div class="body"><h3>${esc(p.name)}</h3>${servChip(p)}<p>${esc(p.description)}</p>${rateRow(p)}${hint}${lead}${stock}<div class="foot"><span class="price">${money(p.price)}</span>${algRow(p)}</div></div></article>`;
 }
 // Orden del menú: dulces enteros de mayor a menor precio; el resto en orden alfabético (x2, x6, x12 en orden)
 const byName = (a, b) => a.name.localeCompare(b.name, "es", { numeric: true, sensitivity: "base" });
@@ -180,10 +187,12 @@ function renderMenu() {
         ? `<div class="menu-grid">${g.items.map(itemCard).join("")}</div>`
         : `<div class="soon"><span class="display">Próximamente</span><span class="muted small">Estamos preparando esta sección.</span></div>`}`).join("")
     : `<p class="muted">Pronto publicaremos el menú.</p>`;
+  if (groups.length && state.products.some((p) => p.allergens?.length)) $("#menu").insertAdjacentHTML("beforeend", `<div class="alg-legend"><b>Alérgenos</b>${ALLERGENS.map(([k, i, n]) => `<span><span class="alg" aria-hidden="true">${i}</span>${n}</span>`).join("")}<small>Todo se prepara en la misma cocina: puede haber trazas. ¿Alergia severa? Escríbenos antes de pedir.</small></div>`);
 }
 $("#menu").addEventListener("click", (e) => {
   const b = e.target.closest("[data-a]"); if (!b) return;
   const id = Number(b.dataset.id), a = b.dataset.a;
+  if (a === "alg") { const p = state.products.find((x) => x.id === id); toast(`Contiene: ${allergenNames(p?.allergens).join(", ")}`, 3500); return; }
   if (a === "reviews") {
     const card = b.closest(".item"); let panel = card.querySelector(".rv");
     if (panel) { panel.remove(); b.setAttribute("aria-expanded", "false"); return; }
