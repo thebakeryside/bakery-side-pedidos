@@ -333,7 +333,7 @@ function renderAcctBox() {
     return;
   }
   // Invitación a crear cuenta: se entiende mirando la tarjeta de sellos
-  const dots = Array.from({ length: 8 }, (_, i) => i < 2 ? `<span class="on">S</span>` : i === 7 ? `<span class="goal" aria-label="Postre sorpresa">🎁</span>` : `<span>${i + 1}</span>`).join("");
+  const dots = Array.from({ length: 8 }, (_, i) => i < 2 ? `<span class="on"><img src="/assets/brand/s-tinta.svg" alt=""></span>` : i === 7 ? `<span class="goal" aria-label="Postre sorpresa">🎁</span>` : `<span>${i + 1}</span>`).join("");
   box.innerHTML = `<div class="join">
       <div class="join-card">
         <b class="join-t">Un postre sorpresa te espera</b>

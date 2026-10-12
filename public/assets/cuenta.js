@@ -61,7 +61,7 @@ function paneInicio(acc) {
   const link = `${location.origin}/?ref=${c.referral_code}`;
   const monthName = (m) => new Date(2026, m - 1, 1).toLocaleDateString("es-EC", { month: "long" });
   const n = Math.max(0, Math.min(STAMPS_TOTAL, acc.stamps)), left = STAMPS_TOTAL - n;
-  const dots = Array.from({ length: STAMPS_TOTAL }, (_, i) => i === STAMPS_TOTAL - 1 ? `<span class="g ${n >= STAMPS_TOTAL ? "on" : ""}" aria-hidden="true">🎁</span>` : i < n ? `<span class="on" aria-hidden="true">S</span>` : `<span aria-hidden="true">${i + 1}</span>`).join("");
+  const dots = Array.from({ length: STAMPS_TOTAL }, (_, i) => i === STAMPS_TOTAL - 1 ? `<span class="g ${n >= STAMPS_TOTAL ? "on" : ""}" aria-hidden="true">🎁</span>` : i < n ? `<span class="on" aria-hidden="true"><img src="/assets/brand/s-tinta.svg" alt=""></span>` : `<span aria-hidden="true">${i + 1}</span>`).join("");
   const title = left === 0 ? "¡Completaste tu tarjeta!" : left === 1 ? "¡Te falta 1 sello para tu postre sorpresa!" : `Te faltan ${left} sellos para tu postre sorpresa`;
   const bd = birthdayInfo(c.birthday, acc.birthday_available, first);
   const bday = bd ? bd.text : "Agrega tu cumpleaños en «Mis datos»";

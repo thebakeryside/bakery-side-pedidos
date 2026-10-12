@@ -46,7 +46,7 @@ export function stampCard(stamps, { compact = false } = {}) {
   const dots = Array.from({ length: STAMPS_TOTAL }, (_, i) => {
     const on = i < n, last = i === STAMPS_TOTAL - 1;
     if (last) return `<li class="stamp goal ${on ? "on" : ""}" style="--i:${i}" aria-hidden="true">${GIFT}<small>Sorpresa</small></li>`;
-    return `<li class="stamp ${on ? "on" : ""}" style="--i:${i}" aria-hidden="true">${on ? `<img src="/assets/brand/s-crema.svg" alt="">` : `<span>${i + 1}</span>`}</li>`;
+    return `<li class="stamp ${on ? "on" : ""}" style="--i:${i}" aria-hidden="true">${on ? `<img src="/assets/brand/s-tinta.svg" alt="">` : `<span>${i + 1}</span>`}</li>`;
   }).join("");
   const msg = left === 0 ? "¡Completaste tu tarjeta! Tu postre sorpresa te espera en el próximo pedido."
     : left === 1 ? "¡Solo te falta 1 sello para tu postre sorpresa!"
