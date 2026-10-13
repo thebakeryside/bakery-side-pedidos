@@ -54,6 +54,12 @@ export async function renderManual(view) {
 
       <section class="panel">
         <h2 class="mtitle"><span>3</span> Entrega</h2>
+        <div class="chips" role="radiogroup" aria-label="Tipo de entrega" style="margin-bottom:10px">
+          <label class="chip"><input type="radio" name="mMode" value="delivery" checked> Delivery a domicilio</label>
+          <label class="chip"><input type="radio" name="mMode" value="pickup"> Retira en la cocina (pick up)</label>
+        </div>
+        <p class="muted small" id="mPickNote" hidden style="margin:0 0 8px">El cliente pasa a retirar: sin envío ni ubicación. Cuando esté listo, márcalo como entregado al retirarlo.</p>
+        <div id="mDeliv">
         <label class="f" for="mPaste">Ubicación que te mandó <span class="hint">(pega el enlace de Google Maps o la ubicación de WhatsApp)</span></label>
         <div class="row-btns"><input class="in" id="mPaste" placeholder="https://maps.app.goo.gl/… o -2.17, -79.90" style="flex:1;min-width:200px"><button class="btn" type="button" id="mFind">Ubicar</button></div>
         <p class="muted small" style="margin:8px 0">O busca la zona y mueve el mapa hasta el punto exacto.</p>
@@ -63,6 +69,7 @@ export async function renderManual(view) {
         <div class="form-grid">
           <div><label class="f" for="mAddr">Dirección</label><input class="in" id="mAddr" placeholder="Ciudadela, manzana y villa o calle y número"></div>
           <div><label class="f" for="mRef">Referencia <span class="hint">(opcional)</span></label><input class="in" id="mRef"></div>
+        </div>
         </div>
         <div class="chips" style="margin-top:12px" role="radiogroup" aria-label="Cuándo">
           <label class="chip"><input type="radio" name="mWhen" value="now" ${cfg.open_now ? "checked" : "disabled"}> Lo antes posible</label>
@@ -104,6 +111,7 @@ export async function renderManual(view) {
   };
   $$('input[name="mWhen"]').forEach((r) => (r.onchange = () => { $("#mSched").hidden = !$('input[name="mWhen"][value="later"]').checked; drawSum(); }));
   $("#mGift").onchange = () => ($("#mGiftBox").hidden = !$("#mGift").checked);
+  $$('input[name="mMode"]').forEach((r) => (r.onchange = () => { const p = isPickup(); $("#mDeliv").hidden = p; $("#mPickNote").hidden = !p; if (!p) quote(); drawSum(); }));
   $$('input[name="mPay"]').forEach((r) => (r.onchange = drawSum));
   $("#mDate").onchange = fillTimes; $("#mTime").onchange = drawSum;
   $("#mFind").onclick = findPasted;
@@ -143,6 +151,8 @@ function drawProds() {
   drawSum();
 }
 
+const isPickup = () => Boolean($('input[name="mMode"][value="pickup"]')?.checked);
+const feeNow = () => (isPickup() ? 0 : st.quote?.delivery_fee);
 const kId = (k) => Number(String(k).split(":")[0]);
 const kOpts = (k) => (String(k).split(":")[1] || "").split(".").filter(Boolean).map(Number);
 const choice = (cid) => { for (const gs of Object.values(st.opts)) for (const g of gs) { const c = g.option_choices.find((x) => x.id === cid); if (c) return c; } return null; };
@@ -153,9 +163,9 @@ const items = () => [...st.cart].map(([k, quantity]) => ({ product_id: kId(k), q
 
 function drawSum() {
   const lines = [...st.cart].map(([k, q]) => `<div class="line"><span>${q} × ${esc(lName(k))}</span><span class="tabnum">${money(lPrice(k) * q)}</span></div>`);
-  const fee = st.quote?.delivery_fee;
+  const fee = feeNow();
   $("#mSum").innerHTML = lines.length
-    ? `${lines.join("")}<div class="line"><span>Envío</span><span class="tabnum">${fee != null ? money(fee) : "—"}</span></div><div class="line total"><span>Total</span><span class="tabnum">${money(subtotal() + (fee || 0))}</span></div>`
+    ? `${lines.join("")}<div class="line"><span>${isPickup() ? "Retira en la cocina" : "Envío"}</span><span class="tabnum">${fee != null ? money(fee) : "—"}</span></div><div class="line total"><span>Total</span><span class="tabnum">${money(subtotal() + (fee || 0))}</span></div>`
     : `<p class="muted small" style="margin:10px 0 0">Agrega productos.</p>`;
   const paid = $('input[name="mPay"][value="paid"]')?.checked;
   $("#mGo").textContent = lines.length && fee != null ? `${paid ? "Registrar pedido pagado" : "Registrar y crear enlace"} · ${money(subtotal() + fee)}` : "Registrar pedido";
@@ -223,17 +233,19 @@ async function submit(e) {
   if ($("#mPhone").value.replace(/\D/g, "").length < 10) return bad("Escribe el WhatsApp de 10 dígitos.", $("#mPhone"));
   if ($("#mEmail").value.trim() && !/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test($("#mEmail").value.trim())) return bad("Revisa el correo o déjalo vacío.", $("#mEmail"));
   if (!st.cart.size) return bad("Agrega al menos un producto.", $("#mSearch"));
-  if (!st.loc) return bad("Marca la ubicación de entrega.", $("#mPaste"));
-  if (!st.quote) return bad("Aún no tenemos el costo de envío para esa ubicación.");
-  if (!$("#mAddr").value.trim()) return bad("Escribe la dirección.", $("#mAddr"));
+  const pickup = isPickup();
+  if (!pickup && !st.loc) return bad("Marca la ubicación de entrega.", $("#mPaste"));
+  if (!pickup && !st.quote) return bad("Aún no tenemos el costo de envío para esa ubicación.");
+  if (!pickup && !$("#mAddr").value.trim()) return bad("Escribe la dirección.", $("#mAddr"));
   const later = $('input[name="mWhen"][value="later"]').checked;
   if (later && !$("#mTime").value) return bad("Elige día y hora.", $("#mDate"));
   const paid = $('input[name="mPay"][value="paid"]').checked;
   const gift = $("#mGift").checked;
   const addr = $("#mAddr").value.trim().slice(0, 130);
   const body = {
-    items: items(), lat: st.loc.lat, lng: st.loc.lng,
-    address: st.locLabel ? `${addr} · Ubicación del mapa: ${st.locLabel}`.slice(0, 200) : addr,
+    items: items(), pickup,
+    ...(pickup ? {} : { lat: st.loc.lat, lng: st.loc.lng }),
+    address: pickup ? "" : st.locLabel ? `${addr} · Ubicación del mapa: ${st.locLabel}`.slice(0, 200) : addr,
     reference: $("#mRef").value,
     scheduled_for: later ? localToISO($("#mDate").value, $("#mTime").value) : null,
     customer_name: $("#mName").value.trim(), customer_phone: $("#mPhone").value,
@@ -254,8 +266,11 @@ function done(res, body, paid) {
   const link = `${SITE}/pedido?t=${res.tracking_token}`;
   const first = body.customer_name.split(" ")[0];
   const lines = [...st.cart].map(([k, q]) => `${q}× ${lName(k)}`).join("\n");
-  const whenTxt = body.scheduled_for ? `Entrega: ${when(body.scheduled_for)}` : st.quote?.eta_if_now ? `Llega aprox. a las ${hhmm(st.quote.eta_if_now)}` : "";
-  const msg = `¡Hola ${first}! 🧁 Tu pedido ${res.code} en The Bakery Side:\n${lines}\nEnvío: ${money(res.delivery_fee)}\nTotal: ${money(res.total)}\n${whenTxt}\n\n` +
+  const k = st.cfg.kitchen;
+  const pickTxt = k?.lat ? `Retiras en nuestra cocina: https://maps.google.com/?q=${k.lat},${k.lng}` : "Retiras en nuestra cocina";
+  const whenTxt = body.pickup ? (body.scheduled_for ? `Retiro: ${when(body.scheduled_for)}\n${pickTxt}` : pickTxt)
+    : body.scheduled_for ? `Entrega: ${when(body.scheduled_for)}` : st.quote?.eta_if_now ? `Llega aprox. a las ${hhmm(st.quote.eta_if_now)}` : "";
+  const msg = `¡Hola ${first}! 🧁 Tu pedido ${res.code} en The Bakery Side:\n${lines}\n${body.pickup ? "" : `Envío: ${money(res.delivery_fee)}\n`}Total: ${money(res.total)}\n${whenTxt}\n\n` +
     (paid ? `¡Pago recibido, gracias! Sigue tu pedido aquí: ${link}` : `Paga aquí con tarjeta, transferencia, PeiGo o DeUna y sigue tu pedido: ${link}`);
   $("#mForm").hidden = true;
   $("#mDone").innerHTML = `

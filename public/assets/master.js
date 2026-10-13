@@ -1,4 +1,4 @@
-import { sb, $, $$, money, esc, toast, parseBank, ALLERGENS } from "./common.js";
+import { sb, $, $$, money, esc, toast, parseBank, ALLERGENS, tableSearch } from "./common.js";
 import { requireLogin, loginHTML } from "./auth.js";
 import { renderManual } from "./manual.js";
 
@@ -206,6 +206,7 @@ async function menu() {
     </form>
   </div>
   <div class="panel" id="optAdmin" style="margin-top:14px"><p class="muted small">Cargando opciones…</p></div>`;
+  tableSearch($("#view .panel"), "Buscar producto o categoría…");
   optionsAdmin(prods || []);
   $$("[data-save]").forEach((b) => (b.onclick = async () => {
     const tr = b.closest("tr"), v = (f) => tr.querySelector(`[data-f="${f}"]`);
@@ -443,6 +444,7 @@ async function ajustes() {
       </div>
       <label class="check" style="margin-top:8px"><input type="checkbox" id="sRevStamp" ${s.review_stamp !== false ? "checked" : ""}> Campaña: 1 sello por pedido cuando el cliente califica todos sus productos</label>
       <h3 class="group-title">Envío</h3>
+      <label class="check" style="margin:4px 0 12px;align-items:flex-start"><input type="checkbox" id="sNextDay" ${s.next_day_only ? "checked" : ""}> <span><b>Solo pedidos para el día siguiente</b><br><span class="muted small">Mientras no haya motorizado propio: la tienda no acepta pedidos para hoy, solo agendados desde mañana. Los pedidos por WhatsApp de cocina sí pueden ser para hoy.</span></span></label>
       <div class="form-grid">
         ${f("sBase", "Envío base $", s.fee_base, "number", 'step="0.05" min="0"')}
         ${f("sIncl", "Km incluidos en la base", s.fee_included_km, "number", 'step="0.5" min="0"')}
@@ -493,7 +495,7 @@ async function ajustes() {
       slot_capacity: Number($("#sSlotCap").value), fee_base: Number($("#sBase").value), fee_included_km: Number($("#sIncl").value),
       fee_per_km: Number($("#sPerKm").value), max_km: Number($("#sMaxKm").value),
       eta_window_minutes: Number($("#sWin").value) || 30, transfer_extra_minutes: Number($("#sTrx").value) || 0,
-      open_lead_minutes: Number($("#sOpenLead").value) || 0, reward_max_value: Number($("#sReward").value) || 0,
+      open_lead_minutes: Number($("#sOpenLead").value) || 0, reward_max_value: Number($("#sReward").value) || 0, next_day_only: $("#sNextDay").checked,
       ...("review_stamp" in s ? { review_stamp: $("#sRevStamp").checked } : {}),
       whatsapp_number: $("#sWa").value.trim() || null, bank_info: bankJSON(), updated_at: new Date().toISOString(),
     };
@@ -579,6 +581,7 @@ async function clientes() {
     <p class="muted small">Solo a estos clientes puedes enviarles publicidad por WhatsApp o correo; los demás no dieron su permiso.</p>
     ${optList.length ? `<div class="acts"><button class="btn small" type="button" id="cpPhones">Copiar WhatsApp</button><button class="btn small" type="button" id="cpMails">Copiar correos</button></div>` : ""}
     </div>`;
+  tableSearch($("#view .panel"), "Buscar cliente por nombre, correo o teléfono…");
   const copy = (txt, msg) => navigator.clipboard?.writeText(txt).then(() => toast(msg), () => toast("No se pudo copiar."));
   $("#cpPhones")?.addEventListener("click", () => copy(optList.map((c) => c.phone).filter(Boolean).join("\n"), "Números copiados"));
   $("#cpMails")?.addEventListener("click", () => copy(optList.map((c) => c.email).filter(Boolean).join(", "), "Correos copiados"));

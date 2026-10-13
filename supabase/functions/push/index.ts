@@ -117,7 +117,7 @@ function mailHtml(o: any, m: { title: string; lead: string; pin?: string; step: 
   const pin = m.pin ? `<div style="margin:20px 0;border:2px solid #C68A4E;border-radius:14px;padding:16px;text-align:center;background:#FBF6EE">
       <div style="font-size:11px;letter-spacing:2px;color:#8a7f76;font-weight:bold">TU PIN DE ENTREGA</div>
       <div style="font-size:38px;letter-spacing:12px;font-weight:bold;color:#1C1714;margin:6px 0 4px;font-family:'Courier New',monospace">${escH(m.pin)}</div>
-      <div style="font-size:13px;color:#554741;line-height:1.45">${o.recipient_name ? "Como es un regalo, compártelo con quien lo recibe. " : ""}Dáselo al motorizado solo cuando tengas el pedido en tus manos.</div></div>` : "";
+      <div style="font-size:13px;color:#554741;line-height:1.45">${o.recipient_name ? "Como es un regalo, compártelo con quien lo recibe. " : ""}${o.fulfillment === "pickup" ? "Muéstralo al retirar tu pedido en nuestra cocina." : "Dáselo al motorizado solo cuando tengas el pedido en tus manos."}</div></div>` : "";
   return `<!doctype html><html lang="es"><body style="margin:0;background:#F4F1EA;padding:24px 12px;font-family:Arial,Helvetica,sans-serif">
   <div style="max-width:520px;margin:0 auto;background:#FFFFFF;border-radius:18px;padding:28px 24px;border:1px solid #E6E1D3">
     <div style="font-size:12px;letter-spacing:3px;color:#C68A4E;font-weight:bold">THE BAKERY SIDE</div>
@@ -149,7 +149,9 @@ async function mailCustomer(o: any, event: string) {
     case "preparando":
       m = { subject: `Estamos preparando tu pedido ${o.code}`, title: "Manos a la masa", lead: "ya estamos preparando tu pedido con todo el cariño.", step: 1 }; break;
     case "listo":
-      m = { subject: `Tu pedido ${o.code} está listo`, title: "¡Está listo!", lead: `tu pedido está listo y ${rider ? `${rider} lo recoge` : "el motorizado lo recoge"} en unos minutos.`, step: 2 }; break;
+      m = o.fulfillment === "pickup"
+        ? { subject: `Tu pedido ${o.code} está listo para retirar`, title: "¡Listo para retirar!", lead: "tu pedido ya está listo. Puedes pasar a retirarlo por nuestra cocina cuando quieras.", step: 2 }
+        : { subject: `Tu pedido ${o.code} está listo`, title: "¡Está listo!", lead: `tu pedido está listo y ${rider ? `${rider} lo recoge` : "el motorizado lo recoge"} en unos minutos.`, step: 2 }; break;
     case "en_camino":
       m = { subject: `Tu pedido ${o.code} va en camino 🛵`, title: "Va en camino", lead: `${rider ? `${rider} salió` : "el motorizado salió"} con tu pedido. Ten a mano tu PIN: se lo darás cuando lo tengas en tus manos.`, pin: await orderPin(o.id), step: 3 }; break;
     case "entregado":

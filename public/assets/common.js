@@ -121,3 +121,29 @@ export const allergenNames = (codes) => ALLERGENS.filter(([k]) => (codes || []).
 
 // ¿Esta fecha cae hoy en Guayaquil?
 export const isTodayLocal = (iso) => !!iso && new Date(new Date(iso).getTime() - 5 * 3600000).toISOString().slice(0, 10) === todayLocal();
+
+// Buscador para tablas de los paneles: filtra filas mientras escribes (sin importar tildes ni mayúsculas)
+const fold = (t) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+export function tableSearch(scope, placeholder = "Buscar…") {
+  if (!scope) return;
+  const box = document.createElement("input");
+  box.type = "search"; box.className = "in tsearch"; box.placeholder = placeholder; box.setAttribute("aria-label", placeholder);
+  const first = scope.querySelector(".tbl-wrap");
+  if (!first) return;
+  const head = first.previousElementSibling?.classList.contains("group-title") ? first.previousElementSibling : first;
+  head.parentNode.insertBefore(box, head);
+  box.addEventListener("input", () => {
+    const q = fold(box.value.trim());
+    scope.querySelectorAll(".tbl-wrap").forEach((w) => {
+      let shown = 0;
+      w.querySelectorAll("tbody tr").forEach((tr) => {
+        const txt = fold(tr.textContent + " " + [...tr.querySelectorAll("input,select")].map((i) => i.value).join(" "));
+        const ok = !q || txt.includes(q); tr.hidden = !ok; if (ok) shown++;
+      });
+      w.hidden = q && !shown;
+      let h = w.previousElementSibling; if (h === box) h = h.previousElementSibling;
+      if (h && h.classList.contains("group-title")) h.hidden = q && !shown;
+    });
+  });
+  return box;
+}

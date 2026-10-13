@@ -1,4 +1,4 @@
-import { sb, $, $$, money, esc, hhmm, when, dayLabel, orderRange, toast, waLink, STATUS, todayLocal } from "./common.js";
+import { sb, $, $$, money, esc, hhmm, when, dayLabel, orderRange, toast, waLink, STATUS, todayLocal , tableSearch } from "./common.js";
 import { requireLogin, loginHTML } from "./auth.js";
 import { renderManual } from "./manual.js";
 
@@ -159,6 +159,7 @@ const travelMin = (km) => Math.max(8, Math.round(Number(km) / 25 * 60 + 5)); // 
 // Nueva hora de llegada contando desde ahora (al confirmar el pago o al empezar a preparar)
 const etaFromNow = (o, prepLeft) => o.scheduled_for || new Date(Date.now() + (prepLeft + travelMin(o.distance_km)) * 60000).toISOString();
 function card(o) {
+  const pick = o.fulfillment === "pickup";
   const t = o.scheduled_for ? `${dayLabel(o.scheduled_for)} · ${orderRange(o, win())}` : `Entre ${orderRange(o, win())}`;
   const riderOpts = `<option value="">Asignar motorizado…</option>` + S.riders.filter((r) => r.active).map((r) => `<option value="${r.id}" ${o.rider_id === r.id ? "selected" : ""}>${esc(r.full_name)}</option>`).join("");
   const pin = S.pins.get(o.id);
@@ -166,10 +167,11 @@ function card(o) {
   let main = "";
   if (o.status === "por_confirmar") main = `<button class="btn small" data-act="receipt" data-id="${o.id}">Ver comprobante</button><button class="btn primary" data-act="confirmPay" data-id="${o.id}">Confirmar pago</button>`;
   else if (o.status === "confirmado") main = `<button class="btn primary" data-act="prep" data-id="${o.id}">Empezar a preparar</button>`;
-  else if (o.status === "preparando") main = `<button class="btn primary" data-act="ready" data-id="${o.id}">Listo · que lo recoja el motorizado</button>`;
+  else if (o.status === "preparando") main = `<button class="btn primary" data-act="ready" data-id="${o.id}">${pick ? "Listo · para que lo retire" : "Listo · que lo recoja el motorizado"}</button>`;
+  else if (o.status === "listo" && pick) main = `<button class="btn primary" data-act="pickedUp" data-id="${o.id}">Entregado · ya lo retiró</button>`;
   else if (o.status === "listo") main = `<span class="wait">${ICON.moto}Esperando que ${o.riders ? esc(o.riders.full_name.split(" ")[0]) : "el motorizado"} lo recoja</span>`;
   else if (o.status === "en_camino") main = `<span class="wait">${ICON.moto}En camino · se confirma con el PIN del cliente</span>`;
-  const assign = ["confirmado", "preparando", "listo"].includes(o.status) ? `<select class="in" data-act="assign" data-id="${o.id}" aria-label="Motorizado">${riderOpts}</select>` : "";
+  const assign = !pick && ["confirmado", "preparando", "listo"].includes(o.status) ? `<select class="in" data-act="assign" data-id="${o.id}" aria-label="Motorizado">${riderOpts}</select>` : "";
   const canCancel = !["entregado", "cancelado"].includes(o.status);
   const canForce = ["listo", "en_camino"].includes(o.status);
   const delivered = o.status === "entregado" ? `<span>Entregado ${hhmm(o.delivered_at)}${o.delivered_by === "moto" ? " · confirmado con PIN" : o.delivered_by === "cocina" ? " · marcado por cocina" : ""}${o.delivery_note ? ` (${esc(o.delivery_note)})` : ""}</span>` : "";
@@ -180,7 +182,7 @@ function card(o) {
     ${o.gift_message || o.recipient_name ? `<div class="gift">${ICON.gift}<div><b>Regalo${o.recipient_name ? ` para ${esc(o.recipient_name)}` : ""}</b><span class="from">De parte de: <b>${esc(o.gift_from || o.customer_name)}</b></span>${o.gift_message ? `<span>Tarjeta: “${esc(o.gift_message)}”</span>` : `<span>Sin mensaje: solo la firma.</span>`}</div></div>` : ""}
     ${o.group_id ? `<div class="linknote">🔗 Pago junto con ${linkedCodes(o)} (dos entregas)</div>` : ""}
     ${o.order_items.some((i) => /^Postre sorpresa/.test(i.name)) ? `<div class="linknote">🎁 Incluye postre sorpresa de regalo: elige uno de hasta ${money(S.settings?.reward_max_value ?? 4)}</div>` : ""}
-    <div class="chips">${payChip(o)}${riderChip(o)}<span class="chip">${ICON.pin}${Number(o.distance_km).toFixed(1)} km</span>${pin?.attempts >= 5 && canForce ? `<span class="chip bad">PIN bloqueado</span>` : ""}</div>
+    <div class="chips">${payChip(o)}${pick ? `<span class="chip ok">🛍️ Retira en la cocina</span>` : `${riderChip(o)}<span class="chip">${ICON.pin}${Number(o.distance_km).toFixed(1)} km</span>`}${pin?.attempts >= 5 && canForce ? `<span class="chip bad">PIN bloqueado</span>` : ""}</div>
     ${main || assign ? `<div class="acts main">${main}${assign}</div>` : ""}
     <details class="more">
       <summary>Datos del cliente y entrega</summary>
@@ -242,6 +244,7 @@ document.addEventListener("click", async (e) => {
     }
     case "prep": return upd(id, { status: "preparando", prep_started_at: now, eta: etaFromNow(o, o.prep_minutes) }, `${o.code} en preparación`);
     case "ready": return upd(id, { status: "listo", ready_at: now }, `${o.code} listo`);
+    case "pickedUp": return upd(id, { status: "entregado", delivered_at: now, picked_at: o.picked_at || now, delivered_by: "cocina", delivery_note: "Retiró en la cocina" }, `${o.code} entregado`);
     case "forceAsk": $(`[data-force="${id}"]`).hidden = false; $(`[data-freason="${id}"]`).focus(); break;
     case "force": {
       const reason = $(`[data-freason="${id}"]`).value.trim();
@@ -296,6 +299,7 @@ function renderMenu() {
         <td><button class="btn small ${isOut(p) ? "primary" : "ghost"}" data-out="${p.id}" aria-pressed="${isOut(p)}">${isOut(p) ? "Agotado hoy · reactivar" : "Marcar agotado"}</button></td></tr>`).join("")}
       </tbody></table></div>`).join("") || `<p class="muted">No hay productos visibles en el menú.</p>`}
     </div>`;
+  tableSearch($("#view .panel"), "Buscar producto…");
   $$("[data-savestock]").forEach((b) => (b.onclick = async () => {
     const id = Number(b.dataset.savestock), v = $(`[data-stock="${id}"]`).value.trim();
     const patch = v === "" ? { stock_left: null, stock_day: null } : { stock_left: Math.max(0, Math.floor(Number(v))), stock_day: today };

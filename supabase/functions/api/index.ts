@@ -177,9 +177,15 @@ async function priceCart(items: Item[]) {
 }
 
 // extra = minutos para confirmar una transferencia
-async function validateSchedule(s: Settings, scheduled: string | null, prep: number, lead: number, travel: number, extra = 0) {
+async function validateSchedule(s: Settings, scheduled: string | null, prep: number, lead: number, travel: number, extra = 0, staff = false) {
   const now = new Date();
   if (!s.store_open) fail("La tienda está cerrada temporalmente. Vuelve pronto.");
+  // Mientras no hay motorizado propio: la tienda solo recibe pedidos para el día siguiente en adelante
+  if ((s as any).next_day_only && !staff) {
+    if (!scheduled) fail("Por ahora recibimos pedidos con un día de anticipación. Agenda tu entrega para mañana u otro día.");
+    const w = new Date(scheduled!);
+    if (!isNaN(w.getTime()) && localDay(w) <= localDay(now)) fail("Por ahora recibimos pedidos con un día de anticipación. Elige mañana u otro día.");
+  }
   if (!scheduled) {
     if (lead > 0) fail("Uno de tus productos necesita pedirse con anticipación. Agenda la entrega.");
     if (!isOpenAt(now, s)) fail("Ahora estamos fuera del horario de pedidos. Agenda tu entrega.");
@@ -384,13 +390,15 @@ async function makeOrder(b: any, cust: Record<string, any> | null, staff: { paid
       if (!ps) fail("El postre sorpresa no está disponible en este momento.");
       cart.lines.push({ product_id: ps!.id, name: `${SURPRISE} (regalo de tu tarjeta)`, unit_price: 0, quantity: 1, line_total: 0 });
     }
-    const q = await quote(s, Number(b.lat), Number(b.lng));
+    // Retiro en local (solo pedidos que registra cocina por WhatsApp): sin envío ni mapa
+    const pickup = Boolean(staff && b.pickup);
+    const q = pickup ? { km: 0, fee: 0, travel_min: 0 } : await quote(s, Number(b.lat), Number(b.lng));
     const payExtra = !staff && b.payment_method === "transferencia" ? Number(s.transfer_extra_minutes ?? 5) : 0;
-    const sched = await validateSchedule(s, b.scheduled_for || null, cart.prep, cart.lead, q.travel_min, payExtra);
+    const sched = await validateSchedule(s, b.scheduled_for || null, cart.prep, cart.lead, q.travel_min, payExtra, Boolean(staff));
     const limited = checkStock(cart, localDay(sched.scheduled_for ? new Date(sched.scheduled_for) : new Date()));
     const method = staff ? "transferencia" : b.payment_method === "tarjeta" ? "tarjeta" : b.payment_method === "transferencia" ? "transferencia" : fail("Elige cómo pagar.");
     const name = clean(b.customer_name, 80) || fail("Escribe tu nombre.");
-    const address = clean(b.address, 200) || fail("Escribe la dirección de entrega.");
+    const address = pickup ? "Retiro en cocina (pick up)" : clean(b.address, 200) || fail("Escribe la dirección de entrega.");
     const invoiceWith = b.invoice_type === "con_datos";
     if (invoiceWith && !/^\d{10}(\d{3})?$/.test(clean(b.invoice_id_number, 13))) fail("La cédula debe tener 10 dígitos o el RUC 13.");
     const total = Math.round((cart.subtotal - discount + q.fee) * 100) / 100;
@@ -404,7 +412,7 @@ async function makeOrder(b: any, cust: Record<string, any> | null, staff: { paid
       gift_message: clean(b.gift_message, 300) || null,
       gift_from: clean(b.recipient_name, 80) || clean(b.gift_message, 300) ? (clean(b.gift_from, 80) || name) : null,
       address, reference: clean(b.reference, 200) || null,
-      lat: Number(b.lat), lng: Number(b.lng), distance_km: q.km,
+      lat: pickup ? Number(s.kitchen_lat) : Number(b.lat), lng: pickup ? Number(s.kitchen_lng) : Number(b.lng), distance_km: q.km,
       scheduled_for: sched.scheduled_for, eta: sched.eta.toISOString(), prep_minutes: cart.prep,
       subtotal: cart.subtotal, delivery_fee: q.fee, total,
       payment_method: method, payment_status: "pendiente", status: "pendiente_pago",
@@ -416,6 +424,7 @@ async function makeOrder(b: any, cust: Record<string, any> | null, staff: { paid
       customer_email: (/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(clean(b.customer_email, 120)) ? clean(b.customer_email, 120).toLowerCase() : null) || cust?.email || null,
     };
     if (groupId) row.group_id = groupId;
+    if (pickup) row.fulfillment = "pickup";
     if (staff) {
       row.channel = "whatsapp";
       row.payment_ref = `Pedido por WhatsApp · registrado por ${staff.by}`;
@@ -514,6 +523,7 @@ const actions: Record<string, (b: any, user: User) => Promise<unknown>> = {
       transfer_extra: Number(s.transfer_extra_minutes ?? 5),
       first_slot: firstSlotWhenClosed(s),
       reward_max: Number(s.reward_max_value ?? 4),
+      next_day_only: Boolean((s as any).next_day_only),
     };
   },
 

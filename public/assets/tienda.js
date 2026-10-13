@@ -37,6 +37,7 @@ async function init() {
   renderStatus(c);
   const wa = waLink(c.whatsapp, "Hola The Bakery Side, tengo una consulta 🙂");
   if (wa) { $("#waFab").href = wa; $("#waFab").hidden = false; }
+  if (c.next_day_only) { const n = $("#nextDayNote"); if (n) n.hidden = false; }
   mountSocial(c.whatsapp);
   try { JSON.parse(localStorage.getItem(CART_KEY) || "[]").forEach(([k, q]) => { k = String(k); if (state.products.some((p) => p.id === keyId(k)) && validKey(k)) state.cart.set(k, q); }); } catch {}
   renderCats(); renderMenu(); renderCart();
@@ -317,7 +318,7 @@ function openCheckout() {
   const leadNames = [...new Set([...state.cart.keys()].filter((k) => product(keyId(k)).lead_hours > 0).map((k) => product(keyId(k)).name))];
   const hasQuick = [...state.cart.keys()].some((k) => !product(keyId(k)).lead_hours);
   // Dulce entero (24 h) junto a cosas para ahora: se puede pedir en dos entregas
-  const canSplit = leadNames.length > 0 && hasQuick && c.open_now;
+  const canSplit = leadNames.length > 0 && hasQuick && c.open_now && !c.next_day_only;
   $("#splitChoice").hidden = !canSplit;
   if (leadNames.length) {
     $("#whenNow").disabled = true;
@@ -325,6 +326,12 @@ function openCheckout() {
     $("#laterHint").textContent = "Todo junto, el día y hora que elijas";
     $("#splitHint").textContent = `Lo demás ahora y ${listNames(leadNames)} el día que elijas · 2 envíos`;
   } else { $("#laterHint").textContent = "Elige día y hora de entrega"; }
+  // Por ahora (sin motorizado propio) solo se agenda desde el día siguiente
+  if (c.next_day_only) {
+    $("#whenNow").disabled = true;
+    $("#nowHint").textContent = "Por ahora recibimos pedidos con un día de anticipación";
+    $("#laterHint").textContent = "Elige el día (desde mañana) y la hora de entrega";
+  }
   ($("#whenNow").disabled ? $("#whenLater") : $("#whenNow")).checked = true;
   syncWhen(); fillDates();
   // pago
@@ -429,7 +436,7 @@ function maxLeadHours() { return Math.max(0, ...[...state.cart.keys()].map((k) =
 const payExtra = () => ($("#payTransfer")?.checked ? Number(state.cfg.transfer_extra || 0) : 0);
 function fillDates() {
   const opts = [];
-  for (let i = 0; i <= 30; i++) { // se puede agendar hasta un mes antes
+  for (let i = state.cfg.next_day_only ? 1 : 0; i <= 30; i++) { // se puede agendar hasta un mes antes
     const d = todayLocal(i);
     if (timesFor(d).length) opts.push(`<option value="${d}">${i === 0 ? "Hoy" : i === 1 ? "Mañana" : new Date(d + "T12:00:00-05:00").toLocaleDateString("es-EC", { weekday: "long", day: "numeric", month: "short", timeZone: "America/Guayaquil" })}</option>`);
   }

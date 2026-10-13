@@ -242,3 +242,6 @@ body.light .wrap { max-width: 1260px; }
 .faq details[open] summary::after { content: "–"; }
 .faq details p { margin: 8px 0 2px; color: var(--text-2); font-size: 14.5px; line-height: 1.5; }
 .faq-more { font-size: 14px; color: var(--text-2); margin-top: 14px; }
+
+/* Aviso: pedidos con un día de anticipación */
+.nextday { display: inline-block; margin: 10px 0 0; padding: 8px 14px; border-radius: 999px; background: rgb(198 138 78 / .14); color: var(--text); font-size: 14px; font-weight: 600; }
