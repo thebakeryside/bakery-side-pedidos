@@ -175,7 +175,7 @@ async function paneDatos(acc) {
         <div class="saved-list">${(addrs || []).map((a) => savedCard(a.id, "addr", a.label, a.address, a.reference || a.loc_label || "", a.is_default)).join("") || `<p class="muted small" style="margin:0">Guarda tu casa, tu oficina o la de alguien a quien le envías regalos. Al pedir, la eliges con un toque.</p>`}</div>
         <div id="addrForm"></div>
       </section>
-      <section class="panel">
+      <section class="panel" hidden><!-- facturación desactivada por ahora -->
         <div class="sec-h"><h2 class="display" style="font-size:26px">Datos de factura</h2><button class="btn small" type="button" id="addInv">+ Agregar</button></div>
         <div class="saved-list">${(invs || []).map((x) => savedCard(x.id, "inv", x.name, `${x.id_number.length === 13 ? "RUC" : "Cédula"} ${x.id_number}`, x.email, x.is_default)).join("") || `<p class="muted small" style="margin:0">Guarda a nombre de quién facturamos (tú, tu empresa…). Al pedir con factura, lo eliges con un toque.</p>`}</div>
         <div id="invForm"></div>

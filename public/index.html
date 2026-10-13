@@ -184,7 +184,8 @@
           <label class="f" for="giftMsg">Mensaje para la tarjeta <span class="hint">(opcional)</span></label>
           <textarea class="in" id="giftMsg" maxlength="300" placeholder="¡Feliz cumpleaños! Con cariño, Ana"></textarea>
         </div>
-        <label class="check"><input type="checkbox" id="wantInvoice"> Quiero factura con mis datos</label>
+        <!-- Facturación desactivada hasta tener el sistema de factura electrónica: quitar "hidden" para volver a pedir datos -->
+        <label class="check" hidden><input type="checkbox" id="wantInvoice"> Quiero factura con mis datos</label>
         <div id="invoiceBox" hidden>
           <div id="savedInv" class="saved-chips" hidden></div>
           <div class="row2">
