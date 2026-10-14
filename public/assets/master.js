@@ -1,6 +1,7 @@
 import { sb, $, $$, money, esc, toast, parseBank, ALLERGENS, tableSearch } from "./common.js";
 import { requireLogin, loginHTML } from "./auth.js";
 import { renderManual } from "./manual.js";
+import { costos } from "./costos.js";
 
 $("#loginSlot").innerHTML = loginHTML("Panel master");
 const S = { tab: "ventas", month: new Date(Date.now() - 5 * 3600000).toISOString().slice(0, 7) };
@@ -20,7 +21,7 @@ $$(".tabs [data-tab]").forEach((b) => b.addEventListener("click", () => { S.tab 
 
 function render() {
   $$(".tabs [data-tab]").forEach((b) => b.setAttribute("aria-selected", b.dataset.tab === S.tab));
-  ({ ventas, nuevo: () => renderManual($("#view")), motorizados, accesos, menu, clientes, resenas, horarios, ajustes })[S.tab]();
+  ({ ventas, nuevo: () => renderManual($("#view")), costos, motorizados, accesos, menu, clientes, resenas, horarios, ajustes })[S.tab]();
 }
 
 // Confirmación dentro de la página (el navegador no muestra ventanas de confirmar aquí)

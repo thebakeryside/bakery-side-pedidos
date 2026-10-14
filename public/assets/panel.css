@@ -173,3 +173,25 @@ button.chip:hover { border-color: var(--crema-2); color: var(--crema); }
 .mdep-row .in { max-width: 140px; }
 .mdep-cur { font-weight: 700; }
 .balnote { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 8px 0; padding: 10px 12px; border-radius: 12px; background: #FBEBD3; border: 1px solid #C68A4E; font-size: 14px; }
+
+/* Costos y rentabilidad */
+.ctabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.cset { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; font-size: 14px; }
+.cset .in { width: 76px; display: inline-block; margin: 0 4px; }
+.mchip { display: inline-block; padding: 2px 10px; border-radius: 999px; font-weight: 700; background: var(--cacao); }
+.mchip.ok, b.ok { color: #9BD49B; } .mchip.ok { background: rgba(80,160,80,.18); }
+.mchip.warn, b.warn { color: #F0C27A; } .mchip.warn { background: rgba(198,138,78,.22); }
+.mchip.bad, b.bad { color: #F09A8A; } .mchip.bad { background: rgba(200,80,60,.2); }
+.linkbtn { background: none; border: 0; padding: 0; color: inherit; text-decoration: underline; cursor: pointer; font: inherit; }
+.ccards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.ccard { text-align: left; display: grid; gap: 4px; padding: 14px; border-radius: 14px; border: 1px solid var(--cacao); background: rgba(255,255,255,.03); color: inherit; font: inherit; cursor: pointer; }
+.ccard:hover { border-color: var(--tostado); }
+.ccard.add { place-items: center; font-weight: 700; color: var(--tostado); border-style: dashed; min-height: 110px; }
+.ctotal { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--cacao); font-size: 14px; }
+.cpres { display: grid; gap: 12px; }
+.cp { border: 1px solid var(--cacao); border-radius: 14px; padding: 12px 14px; }
+.cpack { display: grid; gap: 6px; margin-top: 10px; }
+.cpack .in { min-height: 36px; }
+.ctabs .chip-btn { border: 1px solid var(--cacao); background: transparent; color: inherit; font: inherit; font-weight: 600; padding: 8px 14px; border-radius: 999px; cursor: pointer; }
+.ctabs .chip-btn[aria-pressed="true"] { background: var(--tostado); border-color: var(--tostado); color: #1C1714; }
+.cpack .mdep-row select { flex: 1; min-width: 0; max-width: 320px; }

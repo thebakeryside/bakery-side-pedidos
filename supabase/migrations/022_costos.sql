@@ -49,3 +49,6 @@ do $$ declare t text; begin
     execute format('create policy "solo master" on public.%I for all using (private.is_master()) with check (private.is_master())', t);
   end loop;
 end $$;
+
+-- Nota: aplicada el 14 oct 2026 por partes (tablas, RLS y luego los datos iniciales del Excel "Costos.xlsx":
+-- 26 insumos, 6 recetas, 11 presentaciones). Los datos se editan desde Master → Costos.
