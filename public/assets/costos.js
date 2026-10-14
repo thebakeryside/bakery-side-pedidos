@@ -165,10 +165,10 @@ function drawRecipe() {
         <td><button type="button" class="btn small ghost" data-rdel="${k}" aria-label="Quitar">✕</button></td></tr>`).join("")}
     </tbody></table></div>
     <button type="button" class="btn small" id="rAdd" style="margin-top:8px">＋ Ingrediente</button>
-    <div class="ctotal"><span>Costo de la receta <b>${money(total)}</b></span><span>Por ${esc(singular(R.yield_unit))} <b>${money(per)}</b></span></div>
+    <div class="ctotal"><span>Costo de la receta <b>${money(total)}</b></span><span>Por ${esc(singular(R.yield_unit))} <b>${per < 0.1 ? "$" + per.toFixed(4) : money(per)}</b></span></div>
 
     <h3 class="group-title">Cómo se vende</h3>
-    <p class="muted small" style="margin-top:0">Cada presentación usa una cantidad de ${esc(R.yield_unit || "unidades")} de esta receta y su propio envase. Si está en el menú, toma el precio real de la tienda.</p>
+    <p class="muted small" style="margin-top:0">Cada presentación usa una cantidad de ${esc(R.yield_unit || "unidades")} de esta receta y sus propios extras: envase, sticker y lo que cambie según el tamaño (por ejemplo, el relleno). Si está en el menú, toma el precio real de la tienda. <b>Tip:</b> si una misma masa se corta en tamaños distintos, pon que la receta rinde en <b>g de masa</b> y en cada presentación cuántos gramos lleva.</p>
     <div class="cpres">${R.pres.map((p, k) => {
       const cost = per * num(p.units) + recipeCost(p.pack), price = p.product_id ? presPrice(p) : num(p.price), m = margin(price, cost);
       return `<div class="cp">
@@ -178,8 +178,8 @@ function drawRecipe() {
           <div><label class="f">Lleva (${esc(R.yield_unit || "unidades")})</label><input class="in" data-pk="${k}" data-f="units" type="number" min="0.01" step="any" value="${p.units}"></div>
           <div><label class="f">Precio de venta $</label><input class="in" data-pk="${k}" data-f="price" type="number" min="0" step="0.01" value="${p.product_id ? presPrice(p) : p.price ?? ""}" ${p.product_id ? "disabled title=\"Se cambia en Menú\"" : ""}></div>
         </div>
-        <div class="cpack">${p.pack.map((x, j) => `<div class="mdep-row"><select class="in" data-pk="${k}" data-pj="${j}" data-f="item_id">${itemOpts(x.item_id, "envase")}</select><input class="in" data-pk="${k}" data-pj="${j}" data-f="qty" type="number" min="0" step="any" value="${x.qty}" style="max-width:80px" aria-label="Cantidad"><span class="tabnum small">${money(unitCost(item(x.item_id)) * num(x.qty))}</span><button type="button" class="btn small ghost" data-pkdel="${k}" data-pj="${j}" aria-label="Quitar">✕</button></div>`).join("")}
-          <button type="button" class="btn small ghost" data-pkadd="${k}">＋ Envase / sticker</button></div>
+        <div class="cpack">${p.pack.map((x, j) => `<div class="mdep-row"><select class="in" data-pk="${k}" data-pj="${j}" data-f="item_id">${itemOpts(x.item_id)}</select><input class="in" data-pk="${k}" data-pj="${j}" data-f="qty" type="number" min="0" step="any" value="${x.qty}" style="max-width:80px" aria-label="Cantidad"><span class="muted small">${esc(item(x.item_id)?.unit || "")}</span><span class="tabnum small">${money(unitCost(item(x.item_id)) * num(x.qty))}</span><button type="button" class="btn small ghost" data-pkdel="${k}" data-pj="${j}" aria-label="Quitar">✕</button></div>`).join("")}
+          <button type="button" class="btn small ghost" data-pkadd="${k}">＋ Envase, relleno u otro extra</button></div>
         <div class="ctotal"><span>Costo <b>${money(cost)}</b></span><span>Precio <b>${price ? money(price) : "—"}</b></span><span>Margen <span class="mchip ${level(m)}">${pct(m)}</span></span><span>Sugerido <b>${money(suggested(cost))}</b></span>
           <button type="button" class="btn small ghost" data-pdel="${k}">Quitar presentación</button></div>
       </div>`;
