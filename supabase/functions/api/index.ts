@@ -374,7 +374,7 @@ async function payQrs() {
 }
 
 // Crea un pedido (tienda o WhatsApp). staff = { paid, by } cuando lo registra cocina o master.
-async function makeOrder(b: any, cust: Record<string, any> | null, staff: { paid: boolean; by: string } | null, groupId: string | null = null, payLater = false) {
+async function makeOrder(b: any, cust: Record<string, any> | null, staff: { paid: boolean; by: string; deposit?: number } | null, groupId: string | null = null, payLater = false) {
     const s = await getSettings();
     const cart = await priceCart(b.items);
     let discount = 0, useBday = false, reward: any = null;
@@ -402,6 +402,11 @@ async function makeOrder(b: any, cust: Record<string, any> | null, staff: { paid
     const invoiceWith = b.invoice_type === "con_datos";
     if (invoiceWith && !/^\d{10}(\d{3})?$/.test(clean(b.invoice_id_number, 13))) fail("La cédula debe tener 10 dígitos o el RUC 13.");
     const total = Math.round((cart.subtotal - discount + q.fee) * 100) / 100;
+    let deposit: number | null = null; // anticipo de un evento (solo cocina/master)
+    if (staff?.deposit != null) {
+      deposit = Math.round(Number(staff.deposit) * 100) / 100;
+      if (!(deposit > 0 && deposit < total)) fail("El anticipo debe ser mayor a $0 y menor al total.");
+    }
 
     const row: Record<string, unknown> = {
       user_id: cust?.user_id ?? null, discount, birthday_discount: useBday, reward_id: reward?.id ?? null,
@@ -436,9 +441,14 @@ async function makeOrder(b: any, cust: Record<string, any> | null, staff: { paid
     const o = ins.data;
     const { error: e2 } = await db.from("order_items").insert(cart.lines.map((l) => ({ ...l, order_id: o.id })));
     if (e2) { await db.from("orders").delete().eq("id", o.id); throw e2; }
-    if (staff?.paid) {
+    // Evento con anticipo: el pedido entra a cocina con el anticipo y queda un saldo por cobrar el día del evento
+    if (staff?.paid || deposit != null) {
       // se marca pagado como un paso aparte, para que sumen los sellos y lleguen los avisos igual que en la tienda
-      await db.from("orders").update({ payment_status: "pagado", status: "confirmado", paid_at: new Date().toISOString(), payment_ref: `Pagado por WhatsApp · registrado por ${staff.by}` }).eq("id", o.id);
+      const patch: Record<string, unknown> = { payment_status: "pagado", status: "confirmado", paid_at: new Date().toISOString(), payment_ref: `Pagado por WhatsApp · registrado por ${staff!.by}` };
+      if (deposit != null) {
+        Object.assign(patch, { deposit, balance_due: Math.round((total - deposit) * 100) / 100, payment_ref: `Anticipo $${deposit.toFixed(2)} por WhatsApp · registrado por ${staff!.by}` });
+      }
+      await db.from("orders").update(patch).eq("id", o.id);
     }
     const today = localDay(new Date());
     for (const l of limited) {
@@ -458,6 +468,7 @@ async function makeOrder(b: any, cust: Record<string, any> | null, staff: { paid
     }
 
     const out: Record<string, unknown> = { code: o.code, tracking_token: o.tracking_token, total, delivery_fee: q.fee, subtotal: cart.subtotal, discount, _order: o };
+    if (deposit != null) { out.deposit = deposit; out.balance_due = Math.round((total - deposit) * 100) / 100; }
     if (staff || payLater) return out; // cocina manda el enlace por WhatsApp o ya está pagado; en dos entregas se cobra aparte
     return await startPayment(o, method, total, out);
 }
@@ -565,7 +576,7 @@ const actions: Record<string, (b: any, user: User) => Promise<unknown>> = {
     // si el WhatsApp ya tiene cuenta, el pedido suma sellos a esa cuenta
     const phone = normPhone(b.customer_phone);
     const { data: cust } = await db.from("customers").select("*").eq("phone", phone).limit(1).maybeSingle();
-    const res = await makeOrder({ ...b, customer_phone: phone, invoice_type: "consumidor_final", use_birthday: false, reward_product_id: null }, cust ?? null, { paid: Boolean(b.paid), by });
+    const res = await makeOrder({ ...b, customer_phone: phone, invoice_type: "consumidor_final", use_birthday: false, reward_product_id: null }, cust ?? null, { paid: Boolean(b.paid), by, deposit: b.deposit != null && b.deposit !== "" ? Number(b.deposit) : undefined });
     delete res._order;
     return res;
   },

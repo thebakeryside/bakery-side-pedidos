@@ -166,3 +166,10 @@ button.chip:hover { border-color: var(--crema-2); color: var(--crema); }
 
 /* Buscador de tablas */
 .tsearch { width: 100%; max-width: 420px; margin: 4px 0 12px; }
+
+/* Evento con anticipo */
+.mdep { margin-top: 12px; padding: 12px; border: 1px dashed var(--line-strong, #CFC7B0); border-radius: 12px; }
+.mdep-row { display: flex; align-items: center; gap: 8px; }
+.mdep-row .in { max-width: 140px; }
+.mdep-cur { font-weight: 700; }
+.balnote { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 8px 0; padding: 10px 12px; border-radius: 12px; background: #FBEBD3; border: 1px solid #C68A4E; font-size: 14px; }

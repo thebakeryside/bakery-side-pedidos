@@ -140,8 +140,10 @@ function relTime(o) {
   if (m < 90) return `<span class="rel ${m <= 15 ? "soon" : ""}">en ${m} min</span>`;
   return "";
 }
+const balancePending = (o) => Number(o.balance_due) > 0 && !o.balance_paid_at && o.status !== "cancelado";
 function payChip(o) {
-  if (o.payment_status === "pagado") return `<span class="chip ok">${ICON.pay}Pagado</span>`;
+  if (o.payment_status === "pagado" && balancePending(o)) return `<span class="chip warn">${ICON.pay}Anticipo ${money(o.deposit)} · falta ${money(o.balance_due)}</span>`;
+  if (o.payment_status === "pagado") return `<span class="chip ok">${ICON.pay}Pagado${Number(o.balance_due) > 0 ? " (saldo cobrado)" : ""}</span>`;
   if (o.payment_status === "en_revision") return `<span class="chip warn">${ICON.pay}Transferencia por verificar</span>`;
   return `<span class="chip warn">${ICON.pay}${o.payment_status === "fallido" ? "Pago fallido" : "Sin pagar"}</span>`;
 }
@@ -180,6 +182,8 @@ function card(o) {
     <div class="owhen tabnum">${esc(t)} ${relTime(o)}</div>
     <ul class="kitems">${o.order_items.map(itemLine).join("")}</ul>
     ${o.gift_message || o.recipient_name ? `<div class="gift">${ICON.gift}<div><b>Regalo${o.recipient_name ? ` para ${esc(o.recipient_name)}` : ""}</b><span class="from">De parte de: <b>${esc(o.gift_from || o.customer_name)}</b></span>${o.gift_message ? `<span>Tarjeta: “${esc(o.gift_message)}”</span>` : `<span>Sin mensaje: solo la firma.</span>`}</div></div>` : ""}
+    ${o.payment_status === "pagado" && balancePending(o) ? `<div class="balnote"><div>🎉 <b>Evento:</b> cobrar el saldo de <b>${money(o.balance_due)}</b> antes de entregar.</div><button class="btn small" data-act="balanceAsk" data-id="${o.id}">Saldo cobrado</button></div>
+    <div class="confirm-row" data-bal="${o.id}" hidden><p class="small" style="margin:0;flex:1">¿Confirmas que el cliente ya pagó los ${money(o.balance_due)}?</p><button class="btn small primary" data-act="balancePaid" data-id="${o.id}">Sí, ya pagó</button></div>` : ""}
     ${o.group_id ? `<div class="linknote">🔗 Pago junto con ${linkedCodes(o)} (dos entregas)</div>` : ""}
     ${o.order_items.some((i) => /^Postre sorpresa/.test(i.name)) ? `<div class="linknote">🎁 Incluye postre sorpresa de regalo: elige uno de hasta ${money(S.settings?.reward_max_value ?? 4)}</div>` : ""}
     <div class="chips">${payChip(o)}${pick ? `<span class="chip ok">🛍️ Retira en la cocina</span>` : `${riderChip(o)}<span class="chip">${ICON.pin}${Number(o.distance_km).toFixed(1)} km</span>`}${pin?.attempts >= 5 && canForce ? `<span class="chip bad">PIN bloqueado</span>` : ""}</div>
@@ -190,6 +194,7 @@ function card(o) {
         <span><b>${esc(o.customer_name)}</b> · <a href="tel:${esc(o.customer_phone)}">${esc(o.customer_phone)}</a></span>
         ${o.recipient_name ? `<span>Recibe: <b>${esc(o.recipient_name)}</b>${o.recipient_phone ? " · " + esc(o.recipient_phone) : ""}</span>` : ""}
         <span>${esc(o.address)}${o.reference ? " · " + esc(o.reference) : ""}</span>
+        ${Number(o.deposit) > 0 ? `<span>Evento · anticipo ${money(o.deposit)} · saldo ${money(o.balance_due)}${o.balance_paid_at ? ` cobrado ${hhmm(o.balance_paid_at)}` : " por cobrar"}</span>` : ""}
         <span>Total <b>${money(o.total)}</b> · envío ${money(o.delivery_fee)} · ${o.payment_method === "tarjeta" ? "tarjeta" : "transferencia"}</span>
         ${pin && canCancel ? `<span>PIN de entrega: <b class="tabnum">${esc(pin.pin)}</b> <span class="muted">(solo para ayudar al cliente; el motorizado debe pedírselo a él)</span></span>` : ""}
         ${Number(o.discount) > 0 ? `<span>Regalo de cumpleaños: −${money(o.discount)}</span>` : ""}
@@ -244,6 +249,8 @@ document.addEventListener("click", async (e) => {
     }
     case "prep": return upd(id, { status: "preparando", prep_started_at: now, eta: etaFromNow(o, o.prep_minutes) }, `${o.code} en preparación`);
     case "ready": return upd(id, { status: "listo", ready_at: now }, `${o.code} listo`);
+    case "balanceAsk": $(`[data-bal="${id}"]`).hidden = false; break;
+    case "balancePaid": return upd(id, { balance_paid_at: now }, `Saldo de ${o.code} cobrado`);
     case "pickedUp": return upd(id, { status: "entregado", delivered_at: now, picked_at: o.picked_at || now, delivered_by: "cocina", delivery_note: "Retiró en la cocina" }, `${o.code} entregado`);
     case "forceAsk": $(`[data-force="${id}"]`).hidden = false; $(`[data-freason="${id}"]`).focus(); break;
     case "force": {
