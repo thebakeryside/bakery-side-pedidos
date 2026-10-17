@@ -24,11 +24,14 @@ async function init() {
     for (const r of opts.error ? [] : opts.data || []) {
       const g = r.option_groups; if (!g) continue;
       g.option_choices = (g.option_choices || []).filter((c) => c.active).sort((a, b) => a.sort - b.sort);
+      if (!g.option_choices.length) continue; // grupo sin opciones activas: no se muestra
       (state.opts[r.product_id] ||= []).push(g);
     }
     if (cats.error) throw cats.error;
     if (prods.error) throw prods.error;
-    state.cfg = cfg; state.cats = cats.data; state.products = prods.data;
+    state.cfg = cfg; state.products = prods.data;
+    // Las categorías sin productos activos no se muestran (vuelven solas al cargarles productos)
+    state.cats = cats.data.filter((c) => prods.data.some((p) => p.category_id === c.id));
   } catch (e) {
     $("#menu").innerHTML = `<p class="err">No pudimos cargar el menú. ${esc(e.message)}</p>`;
     return;
@@ -157,7 +160,9 @@ function algRow(p) {
 function rateRow(p) {
   const r = state.ratings?.get(p.id);
   if (r?.n) return `<button type="button" class="rate" data-a="reviews" data-id="${p.id}" aria-expanded="false"><b>★ ${Number(r.avg_rating).toFixed(1).replace(".", ",")}</b><span>(${r.n})</span> <u>Ver reseñas</u></button>`;
-  return `<button type="button" class="rate empty" data-a="reviews" data-id="${p.id}" aria-expanded="false">☆ <u>${r?.total ? "Ver reseñas" : "Sé el primero en opinar"}</u></button>`;
+  // Sin reseñas todavía: no mostramos nada (un "sé el primero" en todo el menú resta confianza)
+  if (!r?.total) return "";
+  return `<button type="button" class="rate empty" data-a="reviews" data-id="${p.id}" aria-expanded="false">☆ <u>Ver reseñas</u></button>`;
 }
 function itemCard(p) {
   const q = qtyOf(p.id), left = leftToday(p), opts = groupsOf(p.id).length > 0;
@@ -178,7 +183,9 @@ function updateCard(id) {
   el.className = fresh.className;
   el.querySelector(".pctrl").replaceWith(fresh.querySelector(".pctrl"));
   el.querySelector(".foot").replaceWith(fresh.querySelector(".foot"));
-  const rate = el.querySelector(".rate"); if (rate && !el.querySelector(".rv")) rate.replaceWith(fresh.querySelector(".rate"));
+  const rate = el.querySelector(".rate"), freshRate = fresh.querySelector(".rate");
+  if (rate && freshRate && !el.querySelector(".rv")) rate.replaceWith(freshRate);
+  else if (!rate && freshRate) el.querySelector(".body > p")?.after(freshRate);
 }
 function renderMenu() {
   const groups = state.cats

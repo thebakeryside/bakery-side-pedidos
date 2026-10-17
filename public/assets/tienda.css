@@ -128,7 +128,7 @@
 /* WhatsApp */
 .wa-fab { position: fixed; right: 16px; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); z-index: 35; display: inline-flex; align-items: center; gap: 8px; background: #25D366; color: #0b3d1f; font-weight: 700; text-decoration: none; padding: 10px 16px 10px 12px; border-radius: 999px; box-shadow: 0 8px 22px rgb(28 23 20 / .25); }
 .wa-fab:hover { background: #3ee07a; }
-body:has(#mobileBar:not([hidden])) .wa-fab { bottom: calc(82px + env(safe-area-inset-bottom, 0px)); }
+body:has(#mobileBar:not([hidden])) .wa-fab, .cartfab:not([hidden]) ~ .wa-fab { bottom: calc(86px + env(safe-area-inset-bottom, 0px)); }
 @media (max-width: 560px) { .wa-fab span { display: none; } .wa-fab { padding: 12px; } }
 body.in-checkout .how, body.in-checkout .closed-bar, body.in-checkout .wa-fab { display: none !important; }
 
@@ -245,3 +245,11 @@ body.light .wrap { max-width: 1260px; }
 
 /* Aviso: pedidos con un día de anticipación */
 .nextday { display: inline-block; margin: 10px 0 0; padding: 8px 14px; border-radius: 999px; background: rgb(198 138 78 / .14); color: var(--text); font-size: 14px; font-weight: 600; }
+
+/* Medios de pago aceptados (confianza junto al botón de pagar y en el pie) */
+.paytrust { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 10px; margin: 12px 0 2px; font-size: 13px; color: var(--text-2); }
+.paytrust .pt-lock { font-weight: 600; }
+.paytrust .pt-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.paytrust .pt-chips span { padding: 3px 9px; border: 1px solid #D8D1BA; border-radius: 6px; background: #fff; font-size: 12px; font-weight: 700; color: var(--tinta); letter-spacing: .02em; }
+.paytrust.foot-pay { justify-content: flex-start; margin: 0 0 12px; }
+.paytrust.foot-pay .pt-chips { justify-content: flex-start; }
