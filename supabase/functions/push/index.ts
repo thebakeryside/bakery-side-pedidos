@@ -145,15 +145,15 @@ async function mailCustomer(o: any, event: string) {
   let m: { subject: string; title: string; lead: string; pin?: string; step: number; extra?: string } | null = null;
   switch (event) {
     case "pagado": case "pago_confirmado":
-      m = { subject: `Confirmamos tu pedido ${o.code} 🧁`, title: "¡Pedido confirmado!", lead: "recibimos tu pago y tu pedido ya está en nuestra cocina. Te escribiremos en cada paso.", pin: await orderPin(o.id), step: 0 }; break;
+      m = { subject: `Confirmamos tu pedido ${o.code} 🧁`, title: "¡Pedido confirmado!", lead: "recibimos tu pago y tu pedido ya está en nuestra cocina. Te escribiremos en cada paso.", step: 0 }; break;
     case "preparando":
       m = { subject: `Estamos preparando tu pedido ${o.code}`, title: "Manos a la masa", lead: "ya estamos preparando tu pedido con todo el cariño.", step: 1 }; break;
     case "listo":
       m = o.fulfillment === "pickup"
         ? { subject: `Tu pedido ${o.code} está listo para retirar`, title: "¡Listo para retirar!", lead: "tu pedido ya está listo. Puedes pasar a retirarlo por nuestra cocina cuando quieras.", step: 2 }
-        : { subject: `Tu pedido ${o.code} está listo`, title: "¡Está listo!", lead: `tu pedido está listo y ${rider ? `${rider} lo recoge` : "el motorizado lo recoge"} en unos minutos.`, step: 2 }; break;
+        : { subject: `Tu pedido ${o.code} está listo`, title: "¡Está listo!", lead: `tu pedido está listo y ${rider ? `${rider} lo recoge` : "sale hacia ti"} en unos minutos.`, step: 2 }; break;
     case "en_camino":
-      m = { subject: `Tu pedido ${o.code} va en camino 🛵`, title: "Va en camino", lead: `${rider ? `${rider} salió` : "el motorizado salió"} con tu pedido. Ten a mano tu PIN: se lo darás cuando lo tengas en tus manos.`, pin: await orderPin(o.id), step: 3 }; break;
+      m = { subject: `Tu pedido ${o.code} va en camino 🛵`, title: "Va en camino", lead: `${rider ? `${rider} salió con tu pedido` : "tu pedido ya salió hacia ti"}. ¡Prepárate para recibirlo!`, step: 3 }; break;
     case "entregado":
       m = { subject: `¡Entregado! Gracias por tu pedido ${o.code}`, title: "¡Que lo disfrutes!", lead: "tu pedido fue entregado. Gracias por elegirnos; nos encantaría saber qué tal te pareció.", step: 4,
         extra: o.user_id ? `<div style="margin:18px 0 0;border-radius:14px;background:#C68A4E;padding:14px 16px;text-align:center"><div style="font-size:16px;font-weight:bold;color:#1C1714">🎁 HOY: califica tu pedido y gana 1 sello</div><div style="font-size:13px;color:#1C1714;margin:4px 0 10px">Califica todos los productos de este pedido y sumas 1 sello a tu tarjeta.</div><a href="${SITE}/cuenta?tab=pedidos" style="display:inline-block;background:#1C1714;color:#FFFFFF;text-decoration:none;font-weight:bold;padding:10px 18px;border-radius:10px;font-size:14px">Calificar mi pedido</a></div>` : `<p style="margin:16px 0 0;font-size:14px;color:#554741">¿Te gustó? Crea tu cuenta en <a href="${SITE}/cuenta" style="color:#C68A4E">thebakeryside.com</a> para ganar sellos y dejar tu reseña.</p>` }; break;
@@ -201,9 +201,9 @@ async function notify(orderId: string, event: string) {
     case "listo":
       await toRider({ title: `✅ ${o.code} está listo para retirar`, body: `Pasa por la cocina. Destino: ${addr}`, tag: `r-${o.code}` }); break;
     case "en_camino":
-      await toStaff({ title: `🛵 ${o.code} va en camino`, body: `${o.riders?.full_name ?? "El motorizado"} salió hacia ${addr}`, tag: `o-${o.code}` }, false); break;
+      await toStaff({ title: `🛵 ${o.code} va en camino`, body: `${o.riders?.full_name ? o.riders.full_name + " salió" : "Salió"} hacia ${addr}`, tag: `o-${o.code}` }, false); break;
     case "entregado":
-      await toStaff({ title: `🎉 ${o.code} entregado`, body: `${o.customer_name} · ${money(o.total)}${o.delivered_by === "moto" ? " · confirmado con PIN" : o.delivered_by === "cocina" ? " · marcado por cocina" : ""}`, tag: `o-${o.code}` }); break;
+      await toStaff({ title: `🎉 ${o.code} entregado`, body: `${o.customer_name} · ${money(o.total)}${o.delivery_note ? ` · ${o.delivery_note}` : ""}`, tag: `o-${o.code}` }); break;
     case "cancelado":
       await toStaff({ title: `✖️ ${o.code} cancelado`, body: o.cancel_reason ? short(o.cancel_reason, 100) : `${o.customer_name} · ${money(o.total)}`, tag: `o-${o.code}` });
       await toRider({ title: `✖️ ${o.code} fue cancelado`, body: "Ya no tienes que entregarlo.", tag: `r-${o.code}` }); break;

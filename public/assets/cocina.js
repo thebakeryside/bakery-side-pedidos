@@ -114,10 +114,10 @@ function waText(o) {
   const msgs = {
     pendiente_pago: `Hola ${first}, vimos tu pedido ${o.code} en The Bakery Side pero aún no se completó el pago. Puedes pagarlo aquí: ${link}`,
     por_confirmar: `Hola ${first}, recibimos tu comprobante del pedido ${o.code}. Lo estamos verificando. Seguimiento: ${link}`,
-    confirmado: `Hola ${first}, ¡confirmamos tu pedido ${o.code}! ${o.scheduled_for ? `Lo entregamos ${dayLabel(o.scheduled_for).toLowerCase()} entre ${orderRange(o, win())}.` : `Llega entre ${orderRange(o, win())}.`}${pin ? ` Tu PIN de entrega es ${pin}: dáselo al motorizado solo cuando tengas el pedido en tus manos.` : ""} Seguimiento: ${link}`,
+    confirmado: `Hola ${first}, ¡confirmamos tu pedido ${o.code}! ${o.scheduled_for ? `Lo entregamos ${dayLabel(o.scheduled_for).toLowerCase()} entre ${orderRange(o, win())}.` : `Llega entre ${orderRange(o, win())}.`} Seguimiento: ${link}`,
     preparando: `Hola ${first}, tu pedido ${o.code} ya se está preparando. Seguimiento: ${link}`,
     listo: `Hola ${first}, tu pedido ${o.code} está listo y sale en minutos. Seguimiento: ${link}`,
-    en_camino: `Hola ${first}, tu pedido ${o.code} va en camino${r ? ` con ${r}` : ""}.${pin ? ` Ten a mano tu PIN de entrega: ${pin}.` : ""} Seguimiento: ${link}`,
+    en_camino: `Hola ${first}, tu pedido ${o.code} va en camino${r ? ` con ${r}` : ""}. Seguimiento: ${link}`,
     entregado: `Hola ${first}, gracias por tu pedido ${o.code}. ¡Que lo disfrutes!`,
     cancelado: `Hola ${first}, tu pedido ${o.code} fue cancelado. Escríbenos si tienes dudas.`,
   };
@@ -169,14 +169,14 @@ function card(o) {
   let main = "";
   if (o.status === "por_confirmar") main = `<button class="btn small" data-act="receipt" data-id="${o.id}">Ver comprobante</button><button class="btn primary" data-act="confirmPay" data-id="${o.id}">Confirmar pago</button>`;
   else if (o.status === "confirmado") main = `<button class="btn primary" data-act="prep" data-id="${o.id}">Empezar a preparar</button>`;
-  else if (o.status === "preparando") main = `<button class="btn primary" data-act="ready" data-id="${o.id}">${pick ? "Listo · para que lo retire" : "Listo · que lo recoja el motorizado"}</button>`;
+  else if (o.status === "preparando") main = `<button class="btn primary" data-act="ready" data-id="${o.id}">${pick ? "Listo · para que lo retire" : "Listo · pedir el Uber"}</button>`;
   else if (o.status === "listo" && pick) main = `<button class="btn primary" data-act="pickedUp" data-id="${o.id}">Entregado · ya lo retiró</button>`;
-  else if (o.status === "listo") main = `<span class="wait">${ICON.moto}Esperando que ${o.riders ? esc(o.riders.full_name.split(" ")[0]) : "el motorizado"} lo recoja</span>`;
-  else if (o.status === "en_camino") main = `<span class="wait">${ICON.moto}En camino · se confirma con el PIN del cliente</span>`;
-  const assign = !pick && ["confirmado", "preparando", "listo"].includes(o.status) ? `<select class="in" data-act="assign" data-id="${o.id}" aria-label="Motorizado">${riderOpts}</select>` : "";
+  else if (o.status === "listo") main = `<button class="btn primary" data-act="sent" data-id="${o.id}">${ICON.moto}Salió con el Uber · en camino</button>`;
+  else if (o.status === "en_camino") main = `<button class="btn primary" data-act="delivered" data-id="${o.id}">Entregado</button>`;
+  const assign = !pick && S.riders.some((r) => r.active) && ["confirmado", "preparando", "listo"].includes(o.status) ? `<select class="in" data-act="assign" data-id="${o.id}" aria-label="Motorizado">${riderOpts}</select>` : "";
   const canCancel = !["entregado", "cancelado"].includes(o.status);
   const canForce = ["listo", "en_camino"].includes(o.status);
-  const delivered = o.status === "entregado" ? `<span>Entregado ${hhmm(o.delivered_at)}${o.delivered_by === "moto" ? " · confirmado con PIN" : o.delivered_by === "cocina" ? " · marcado por cocina" : ""}${o.delivery_note ? ` (${esc(o.delivery_note)})` : ""}</span>` : "";
+  const delivered = o.status === "entregado" ? `<span>Entregado ${hhmm(o.delivered_at)}${o.delivered_by === "moto" ? " · confirmado por el motorizado" : ""}${o.delivery_note ? ` (${esc(o.delivery_note)})` : ""}</span>` : "";
   return `<article class="ocard" data-s="${o.status}">
     <div class="ohead"><span class="oid">${esc(o.code)}${o.channel === "whatsapp" || /WhatsApp/.test(o.payment_ref || "") ? ` <span class="wa-tag">WhatsApp</span>` : ""}</span><span class="st st-${o.status}">${STATUS[o.status]}</span></div>
     <div class="owhen tabnum">${esc(t)} ${relTime(o)}</div>
@@ -186,7 +186,7 @@ function card(o) {
     <div class="confirm-row" data-bal="${o.id}" hidden><p class="small" style="margin:0;flex:1">¿Confirmas que el cliente ya pagó los ${money(o.balance_due)}?</p><button class="btn small primary" data-act="balancePaid" data-id="${o.id}">Sí, ya pagó</button></div>` : ""}
     ${o.group_id ? `<div class="linknote">🔗 Pago junto con ${linkedCodes(o)} (dos entregas)</div>` : ""}
     ${o.order_items.some((i) => /^Postre sorpresa/.test(i.name)) ? `<div class="linknote">🎁 Incluye postre sorpresa de regalo: elige uno de hasta ${money(S.settings?.reward_max_value ?? 4)}</div>` : ""}
-    <div class="chips">${payChip(o)}${pick ? `<span class="chip ok">🛍️ Retira en la cocina</span>` : `${riderChip(o)}<span class="chip">${ICON.pin}${Number(o.distance_km).toFixed(1)} km</span>`}${pin?.attempts >= 5 && canForce ? `<span class="chip bad">PIN bloqueado</span>` : ""}</div>
+    <div class="chips">${payChip(o)}${pick ? `<span class="chip ok">🛍️ Retira en la cocina</span>` : `${S.riders.some((r) => r.active) ? riderChip(o) : ""}<span class="chip">${ICON.pin}${Number(o.distance_km).toFixed(1)} km</span>`}</div>
     ${main || assign ? `<div class="acts main">${main}${assign}</div>` : ""}
     <details class="more">
       <summary>Datos del cliente y entrega</summary>
@@ -196,7 +196,6 @@ function card(o) {
         <span>${esc(o.address)}${o.reference ? " · " + esc(o.reference) : ""}</span>
         ${Number(o.deposit) > 0 ? `<span>Evento · anticipo ${money(o.deposit)} · saldo ${money(o.balance_due)}${o.balance_paid_at ? ` cobrado ${hhmm(o.balance_paid_at)}` : " por cobrar"}</span>` : ""}
         <span>Total <b>${money(o.total)}</b> · envío ${money(o.delivery_fee)} · ${o.payment_method === "tarjeta" ? "tarjeta" : "transferencia"}</span>
-        ${pin && canCancel ? `<span>PIN de entrega: <b class="tabnum">${esc(pin.pin)}</b> <span class="muted">(solo para ayudar al cliente; el motorizado debe pedírselo a él)</span></span>` : ""}
         ${Number(o.discount) > 0 ? `<span>Regalo de cumpleaños: −${money(o.discount)}</span>` : ""}
         ${o.user_id ? `<span>Cliente con cuenta (suma sellos)</span>` : ""}
         ${o.invoice_type === "con_datos" ? `<span>Factura: ${esc(o.invoice_name)} · ${esc(o.invoice_id_number)} · ${esc(o.invoice_email)}</span>` : ""}
@@ -207,12 +206,12 @@ function card(o) {
     <div class="acts">
       <a class="btn small ghost" href="${waLink(o.customer_phone, waText(o))}" target="_blank" rel="noopener">WhatsApp</a>
       <a class="btn small ghost" href="https://www.google.com/maps/search/?api=1&query=${o.lat},${o.lng}" target="_blank" rel="noopener">Mapa</a>
-      ${canForce ? `<button class="btn small ghost" data-act="forceAsk" data-id="${o.id}">Marcar entregado</button>` : ""}
+      ${canForce && o.status === "listo" ? `<button class="btn small ghost" data-act="forceAsk" data-id="${o.id}">Marcar entregado</button>` : ""}
       ${canCancel ? `<button class="btn small ghost" data-act="cancelAsk" data-id="${o.id}">Cancelar</button>` : ""}
     </div>
     <div class="confirm-row" data-force="${o.id}" hidden>
-      <p class="small" style="margin:0;width:100%">Úsalo solo si el motorizado no pudo confirmar con el PIN. ¿Qué pasó?</p>
-      <input class="in" placeholder="Ej.: el cliente no tenía el PIN, lo recibió el guardia" data-freason="${o.id}" style="flex:1;min-width:160px">
+      <p class="small" style="margin:0;width:100%">¿Quién lo recibió o qué pasó? (opcional)</p>
+      <input class="in" placeholder="Ej.: lo recibió el guardia" data-freason="${o.id}" style="flex:1;min-width:160px">
       <button class="btn small" data-act="force" data-id="${o.id}">Confirmar entregado</button>
     </div>
     <div class="confirm-row" data-cancel="${o.id}" hidden>
@@ -255,9 +254,11 @@ document.addEventListener("click", async (e) => {
     case "forceAsk": $(`[data-force="${id}"]`).hidden = false; $(`[data-freason="${id}"]`).focus(); break;
     case "force": {
       const reason = $(`[data-freason="${id}"]`).value.trim();
-      if (!reason) return toast("Escribe qué pasó para marcarlo entregado.");
-      return upd(id, { status: "entregado", delivered_at: now, picked_at: o.picked_at || now, delivered_by: "cocina", delivery_note: reason.slice(0, 200) }, `${o.code} entregado`);
+      return upd(id, { status: "entregado", delivered_at: now, picked_at: o.picked_at || now, delivered_by: "cocina", delivery_note: reason.slice(0, 200) || null }, `${o.code} entregado`);
     }
+    // Entregas con Uber Courier: cocina marca la salida y la entrega
+    case "sent": return upd(id, { status: "en_camino", picked_at: now }, `${o.code} en camino`);
+    case "delivered": return upd(id, { status: "entregado", delivered_at: now, picked_at: o.picked_at || now, delivered_by: "cocina", delivery_note: "Uber" }, `${o.code} entregado`);
     case "cancelAsk": $(`[data-cancel="${id}"]`).hidden = false; $(`[data-reason="${id}"]`).focus(); break;
     case "cancel": {
       const reason = $(`[data-reason="${id}"]`).value.trim();

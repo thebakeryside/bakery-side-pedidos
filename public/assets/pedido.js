@@ -17,7 +17,7 @@ function render(o) {
   const steps = [
     ["confirmado", "Pago confirmado", o.paid_at, "Tu pedido entró a cocina"],
     ["preparando", "En preparación", o.prep_started_at, "Lo estamos preparando"],
-    ["en_camino", "En camino", o.picked_at, o.rider_name ? `${o.rider_name}${o.rider_plate ? " · placa " + o.rider_plate : ""}` : "Asignando motorizado"],
+    ["en_camino", "En camino", o.picked_at, o.rider_name ? `${o.rider_name}${o.rider_plate ? " · placa " + o.rider_plate : ""}` : "Con nuestro servicio de entrega"],
     ["entregado", "Entregado", o.delivered_at, "¡Que lo disfrutes!"],
   ];
   const unpaid = o.status === "pendiente_pago";
@@ -58,8 +58,6 @@ function render(o) {
           <button class="btn primary block" id="payNow">Pagar ${money(o.group_total ?? o.total)} con tarjeta</button>
         </div>
         <p class="err" id="err" role="alert"></p></div>` : ""}
-      ${o.delivery_pin ? `<div class="pinbox"><span class="lbl">Tu PIN de entrega</span><span class="pinnum tabnum" aria-label="PIN ${o.delivery_pin.split("").join(" ")}">${o.delivery_pin.split("").map((d) => `<i>${d}</i>`).join("")}</span>
-        <small>${o.is_gift ? "Como es un regalo, compártelo con quien lo recibe. " : ""}Dáselo al motorizado solo cuando tengas el pedido en tus manos. Así confirmamos que llegó a ti.</small></div>` : ""}
       ${showSteps ? `<ol class="steps">${steps.map(([k, l, t, sub], i) => `<li class="${o.status === "entregado" || i < idx ? "done" : i === Math.ceil(idx) ? "now" : ""}"><span class="dot"></span><div><b>${l}</b><small>${esc(sub)}</small></div><span class="t">${t ? hhmm(t) : ""}</span></li>`).join("")}</ol>` : ""}
     </div>
     ${o.status === "entregado" ? `<div class="panel share-card"><h3>¿Te gustó?</h3>

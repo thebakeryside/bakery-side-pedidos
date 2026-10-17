@@ -5,9 +5,9 @@
 ## Datos clave
 - Qué vende: tortas y postres enteros (cheesecakes, tres leches, tiramisú, tarta vasca, chocoflan, volteado de piña), antojos (alfajores, cookies, rollos de canela), postres en lata y bebidas.
 - Zona de entrega: Guayaquil y Samborondón (Ecuador). El envío se calcula por distancia y se muestra antes de pagar.
-- Pedidos: en línea en https://thebakeryside.com. Por ahora todos los pedidos se agendan con un día de anticipación (desde mañana); se puede agendar hasta 30 días antes.
+- Pedidos: en línea en https://thebakeryside.com. Entrega el mismo día: antojos, latas y bebidas se preparan al momento (congelados ~50 min, el resto ~2 h, más el envío); tortas enteras con 24 h de anticipación. Se puede agendar hasta 30 días antes.
 - Pagos: tarjeta de crédito o débito, transferencia bancaria, DeUna y PeiGo. Pago por adelantado.
-- Regalos: se puede enviar a otra persona con tarjeta y mensaje; entrega confirmada con PIN.
+- Regalos: se puede enviar a otra persona con tarjeta y mensaje.
 - Recompensas: 1 sello por cada $10, 2 sellos de bienvenida, postre sorpresa al completar 8, $4 de regalo en el mes de cumpleaños.
 - Moneda: dólares estadounidenses (USD).
 - Contacto: thebakeryside@gmail.com · WhatsApp y llamadas +593 96 819 9569 (0968199569)

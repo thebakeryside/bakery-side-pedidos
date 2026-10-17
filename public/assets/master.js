@@ -171,6 +171,10 @@ async function accesos() {
 }
 
 // ---------- menú ----------
+// Preparación: congelado (listo en 50 min) o al momento (2 h); más el trayecto del motorizado
+const PREP = [[50, "Congelado · 50 min"], [120, "Al momento · 2 h"]];
+const prepOpts = (v) => (PREP.some(([m]) => m === v) ? "" : `<option value="${v}" selected>Otro · ${v} min</option>`)
+  + PREP.map(([m, n]) => `<option value="${m}" ${m === v ? "selected" : ""}>${n}</option>`).join("");
 async function menu() {
   const [{ data: cats }, { data: prods }] = await Promise.all([
     sb.from("categories").select("*").order("sort"), sb.from("products").select("*").order("sort"),
@@ -178,14 +182,14 @@ async function menu() {
   const catOpts = (sel) => (cats || []).map((c) => `<option value="${c.id}" ${c.id === sel ? "selected" : ""}>${esc(c.name)}</option>`).join("");
   $("#view").innerHTML = `<div class="panel">
     <h2 class="display" style="font-size:30px">Menú</h2>
-    <p class="muted small">Los cambios se ven en la tienda al instante. <b>Anticipación</b> = horas antes que hay que agendar ese producto (0 = se puede pedir para ya). <b>Visible</b> lo oculta o muestra en la tienda. Eliminar es definitivo; los pedidos anteriores conservan nombre y precio.</p>
-    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Foto</th><th>Producto</th><th>Categoría</th><th>Precio $</th><th>Prep. min</th><th>Anticip. h</th><th>Visible</th><th></th></tr></thead><tbody>
+    <p class="muted small">Los cambios se ven en la tienda al instante. <b>Preparación</b> = congelado (listo en 50 min) o al momento (2 h); a eso se suma el trayecto del envío. <b>Anticipación</b> = horas antes que hay que agendar ese producto (0 = se puede pedir para hoy). <b>Visible</b> lo oculta o muestra en la tienda. Eliminar es definitivo; los pedidos anteriores conservan nombre y precio.</p>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Foto</th><th>Producto</th><th>Categoría</th><th>Precio $</th><th>Preparación</th><th>Anticip. h</th><th>Visible</th><th></th></tr></thead><tbody>
     ${(prods || []).map((p) => `<tr data-pid="${p.id}">
       <td>${p.image_url ? `<img src="${esc(p.image_url)}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:8px;margin-bottom:4px">` : ""}<label class="btn small ghost" style="cursor:pointer">${p.image_url ? "Cambiar" : "Subir"}<input type="file" accept="image/*" data-photo="${p.id}" hidden></label></td>
       <td><input class="in" data-f="name" value="${esc(p.name)}" style="min-width:170px" aria-label="Nombre"><input class="in" data-f="description" value="${esc(p.description)}" placeholder="Descripción" style="margin-top:4px;min-width:170px" aria-label="Descripción"><input class="in" data-f="servings" value="${esc(p.servings ?? "")}" placeholder="Porciones (ej.: 8 a 12)" style="margin-top:4px;min-width:170px" aria-label="Porciones"><fieldset class="alg-pick"><legend>Contiene</legend>${ALLERGENS.map(([k, i, n]) => `<label><input type="checkbox" data-alg="${k}" ${(p.allergens || []).includes(k) ? "checked" : ""}> ${i} ${n}</label>`).join("")}</fieldset></td>
       <td><select class="in" data-f="category_id" aria-label="Categoría">${catOpts(p.category_id)}</select></td>
       <td><input class="in" data-f="price" type="number" step="0.01" min="0" value="${p.price}" style="width:90px" aria-label="Precio"></td>
-      <td><input class="in" data-f="prep_minutes" type="number" min="0" value="${p.prep_minutes}" style="width:76px" aria-label="Minutos de preparación"></td>
+      <td><select class="in" data-f="prep_minutes" aria-label="Preparación" style="min-width:150px">${prepOpts(p.prep_minutes)}</select></td>
       <td><input class="in" data-f="lead_hours" type="number" min="0" value="${p.lead_hours}" style="width:76px" aria-label="Horas de anticipación"></td>
       <td><input type="checkbox" data-f="active" ${p.active ? "checked" : ""} style="width:20px;height:20px;accent-color:var(--tostado)" aria-label="Visible"></td>
       <td><div style="display:flex;gap:4px;flex-wrap:wrap"><button class="btn small" data-save="${p.id}">Guardar</button><button class="btn small ghost" data-delprod="${p.id}" data-name="${esc(p.name)}">Eliminar</button></div></td></tr>`).join("")}
@@ -234,7 +238,7 @@ async function menu() {
   })));
   $("#prodForm").onsubmit = async (e) => {
     e.preventDefault();
-    const row = { name: $("#pfName").value.trim(), category_id: Number($("#pfCat").value), price: Number($("#pfPrice").value), prep_minutes: 10 };
+    const row = { name: $("#pfName").value.trim(), category_id: Number($("#pfCat").value), price: Number($("#pfPrice").value), prep_minutes: 120 };
     if (!row.name || !($("#pfPrice").value !== "" && row.price >= 0)) return toast("Escribe nombre y precio.");
     const { error } = await sb.from("products").insert(row);
     if (error) return rpcErr(error); toast("Producto agregado"); menu();

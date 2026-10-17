@@ -186,19 +186,25 @@ async function validateSchedule(s: Settings, scheduled: string | null, prep: num
     const w = new Date(scheduled!);
     if (!isNaN(w.getTime()) && localDay(w) <= localDay(now)) fail("Por ahora recibimos pedidos con un día de anticipación. Elige mañana u otro día.");
   }
+  // Minutos desde que empezamos hasta que llega: preparación (congelado 50 / al momento 120) + motorizado
+  const need = 5 + prep + travel + busyExtra(s) + extra;
   if (!scheduled) {
     if (lead > 0) fail("Uno de tus productos necesita pedirse con anticipación. Agenda la entrega.");
     if (!isOpenAt(now, s)) fail("Ahora estamos fuera del horario de pedidos. Agenda tu entrega.");
-    return { scheduled_for: null, eta: new Date(now.getTime() + (5 + prep + travel + busyExtra(s) + extra) * 60000) };
+    const eta = new Date(now.getTime() + need * 60000);
+    const h = hoursOn(localDay(now), s);
+    if (h && (localDay(eta) !== localDay(now) || localMinutes(eta) > minutesOf(h.close))) fail("Ya no alcanzamos a prepararlo y entregarlo hoy. Agenda tu entrega para otro momento.");
+    return { scheduled_for: null, eta };
   }
   const when = new Date(scheduled);
   if (isNaN(when.getTime())) fail("La hora de entrega no es válida.");
-  const earliest = now.getTime() + Math.max((5 + prep + travel + busyExtra(s) + extra) * 60000, lead * 3600000);
+  const earliest = now.getTime() + Math.max(need * 60000, lead * 3600000);
   if (when.getTime() < earliest) fail("Esa hora ya no alcanza. Elige una franja más tarde.");
-  // Pedido hecho con la tienda cerrada: ese primer día se entrega desde 1 hora después de abrir
-  const first = firstSlotWhenClosed(s);
-  if (first && localDay(when) === first.day && localMinutes(when) < first.minutes) {
-    fail(`Ese día empezamos a entregar desde las ${String(Math.floor(first.minutes / 60)).padStart(2, "0")}h${String(first.minutes % 60).padStart(2, "0")}. Elige una franja más tarde.`);
+  // Se prepara al momento: ningún día se entrega antes de la apertura + preparación + trayecto
+  const dayH = hoursOn(localDay(when), s);
+  if (dayH && localMinutes(when) < minutesOf(dayH.open) + need) {
+    const m = minutesOf(dayH.open) + need;
+    fail(`Ese día lo podemos entregar desde las ${String(Math.floor(m / 60)).padStart(2, "0")}h${String(m % 60).padStart(2, "0")}. Elige una franja más tarde.`);
   }
   if (when.getTime() > now.getTime() + 30 * 86400000) fail("Puedes agendar hasta 30 días antes.");
   if (!isOpenAt(when, s)) fail(`Ese día atendemos ${hoursText(when, s)}. Elige otra hora.`);

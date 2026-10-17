@@ -401,6 +401,14 @@ function openCheckout() {
     $("#nowHint").textContent = "Por ahora recibimos pedidos con un día de anticipación";
     $("#laterHint").textContent = "Elige el día (desde mañana) y la hora de entrega";
   }
+  // «Lo antes posible»: solo si alcanzamos a prepararlo y entregarlo antes de cerrar
+  if (!$("#whenNow").disabled) {
+    const need = needMinutes(), today = hoursFor(todayLocal(0));
+    const [ch, cm] = (today?.close || "00:00").split(":").map(Number);
+    const left = (new Date(localToISO(todayLocal(0), `${String(ch).padStart(2, "0")}:${String(cm).padStart(2, "0")}`)).getTime() - Date.now()) / 60000;
+    if (left < need) { $("#whenNow").disabled = true; $("#nowHint").textContent = "Hoy ya no alcanzamos a prepararlo a tiempo"; }
+    else $("#nowHint").textContent = `Llega en aprox. ${need >= 60 ? `${Math.floor(need / 60)} h${need % 60 ? ` ${need % 60} min` : ""}` : `${need} min`}`;
+  }
   ($("#whenNow").disabled ? $("#whenLater") : $("#whenNow")).checked = true;
   // Si «Lo antes posible» no aplica, no se muestra: solo agendar, sin opciones que elegir
   $("#nowChoice").hidden = $("#whenNow").disabled;
@@ -501,7 +509,7 @@ function syncWhen() {
     $("#splitAddr").innerHTML = `<option value="">En la misma dirección del pedido</option>` + addrs.map((a) => `<option value="${a.id}">${esc(a.label)} · ${esc(a.address)}</option>`).join("");
     $("#splitAddr").value = cur;
   }
-  if (split) $("#splitNote").textContent = "Pagas todo junto una sola vez. Cada entrega tiene su envío, su seguimiento y su PIN.";
+  if (split) $("#splitNote").textContent = "Pagas todo junto una sola vez. Cada entrega tiene su envío y su seguimiento.";
   fillDates(); if (state.loc) requestQuote(); else renderSummary();
 }
 $$('input[name="when"]').forEach((r) => r.addEventListener("change", syncWhen));
@@ -514,13 +522,16 @@ $("#splitAddr").addEventListener("change", async () => {
 function maxLeadHours() { return Math.max(0, ...[...state.cart.keys()].map((k) => product(keyId(k)).lead_hours)); }
 // Minutos para confirmar una transferencia (se suman a la hora de llegada)
 const payExtra = () => ($("#payTransfer")?.checked ? Number(state.cfg.transfer_extra || 0) : 0);
+// Lo que se agenda: todo el pedido, o en dos entregas solo el dulce entero
+const schedKeys = () => (isSplit() ? leadKeys() : undefined);
 function fillDates() {
-  const opts = [];
+  const opts = [], cur = $("#schedDate").value;
   for (let i = state.cfg.next_day_only ? 1 : 0; i <= 30; i++) { // se puede agendar hasta un mes antes
     const d = todayLocal(i);
-    if (timesFor(d).length) opts.push(`<option value="${d}">${i === 0 ? "Hoy" : i === 1 ? "Mañana" : new Date(d + "T12:00:00-05:00").toLocaleDateString("es-EC", { weekday: "long", day: "numeric", month: "short", timeZone: "America/Guayaquil" })}</option>`);
+    if (timesFor(d, schedKeys()).length) opts.push(`<option value="${d}">${i === 0 ? "Hoy" : i === 1 ? "Mañana" : new Date(d + "T12:00:00-05:00").toLocaleDateString("es-EC", { weekday: "long", day: "numeric", month: "short", timeZone: "America/Guayaquil" })}</option>`);
   }
   $("#schedDate").innerHTML = opts.join("");
+  if (cur && opts.some((o) => o.includes(`"${cur}"`))) $("#schedDate").value = cur;
   fillTimes();
 }
 function hoursFor(date) {
@@ -528,15 +539,25 @@ function hoursFor(date) {
   if (d) return d.closed ? null : d;
   return c.open_time ? { open: c.open_time, close: c.close_time } : null;
 }
-function timesFor(date) {
+// Minutos desde que empezamos hasta que llega: preparación del producto más lento
+// (congelado 50 / al momento 120) + trayecto del motorizado (+ 5 de margen y extras)
+function needMinutes(keys = [...state.cart.keys()]) {
+  const prep = Math.max(0, ...keys.map((k) => Number(product(keyId(k))?.prep_minutes) || 0));
+  const travel = state.quote?.travel_min ?? 20; // sin ubicación aún: estimado
+  const trx = $("#payTransfer")?.checked ? Number(state.cfg.transfer_extra || 0) : 0;
+  return 5 + prep + travel + Number(state.cfg.busy_extra || 0) + trx;
+}
+function timesFor(date, keys) {
   const c = state.cfg, h = hoursFor(date);
   if (!h) return [];
   const [oh, om] = h.open.split(":").map(Number), [ch, cm] = h.close.split(":").map(Number);
-  const earliest = Date.now() + Math.max(60 * 60000, maxLeadHours() * 3600000);
-  // con la tienda cerrada, el primer día se entrega desde 1 hora después de abrir
-  const first = c.first_slot && c.first_slot.day === date ? c.first_slot.minutes : 0;
+  const need = needMinutes(keys);
+  const lead = Math.max(0, ...(keys || [...state.cart.keys()]).map((k) => product(keyId(k))?.lead_hours || 0));
+  const earliest = Date.now() + Math.max(need * 60000, lead * 3600000);
+  // se prepara al momento: ningún día se entrega antes de abrir + preparación + trayecto
+  const first = oh * 60 + om + need;
   const out = [];
-  for (let m = Math.max(oh * 60 + om, first); m <= ch * 60 + cm; m += c.slot_minutes) {
+  for (let m = Math.ceil(first / c.slot_minutes) * c.slot_minutes; m <= ch * 60 + cm; m += c.slot_minutes) {
     const t = `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
     const at = new Date(localToISO(date, t)).getTime();
     if (at >= earliest && at <= Date.now() + 30 * 86400000 - 5 * 60000) out.push(t);
@@ -544,9 +565,11 @@ function timesFor(date) {
   return out;
 }
 function fillTimes() {
-  const ts = timesFor($("#schedDate").value);
+  const cur = $("#schedTime").value;
+  const ts = timesFor($("#schedDate").value, schedKeys());
   const win = Number(state.cfg.eta_window || 30);
   $("#schedTime").innerHTML = ts.map((t) => `<option value="${t}">${etaRange(localToISO($("#schedDate").value, t), { window: win, exact: true })}</option>`).join("");
+  if (cur && ts.includes(cur)) $("#schedTime").value = cur;
   renderSummary();
 }
 $("#schedDate").addEventListener("change", fillTimes);
@@ -653,7 +676,7 @@ function requestQuote() {
       const q = await api("cotizar", { lat: state.loc.lat, lng: state.loc.lng, items: isSplit() ? cartItems(quickKeys()) : cartItems() });
       if (my !== quoteSeq) return;
       state.quote = q;
-      renderQuote();
+      renderQuote(); fillDates(); // las franjas dependen del trayecto real
     } catch (e) {
       if (my !== quoteSeq) return;
       state.quote = null; $("#quoteBox").innerHTML = `<span class="err">${esc(e.message)}</span>`;
@@ -716,7 +739,7 @@ $("#isGift").onchange = (e) => {
   if (e.target.checked && !$("#giftFrom").value) $("#giftFrom").value = $("#cName").value.trim(); // por defecto, quien compra
 };
 $("#wantInvoice").onchange = (e) => ($("#invoiceBox").hidden = !e.target.checked);
-function syncPay() { $("#transferBox").hidden = !$("#payTransfer").checked; renderQuote(); renderSummary(); }
+function syncPay() { $("#transferBox").hidden = !$("#payTransfer").checked; renderQuote(); if (state.cfg) fillDates(); renderSummary(); }
 $$('input[name="pay"]').forEach((r) => r.addEventListener("change", syncPay));
 
 // ---------- enviar ----------
