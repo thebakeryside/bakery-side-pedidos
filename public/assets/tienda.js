@@ -40,7 +40,9 @@ async function init() {
   renderStatus(c);
   const wa = waLink(c.whatsapp, "Hola The Bakery Side, tengo una consulta 🙂");
   if (wa) { $("#waFab").href = wa; $("#waFab").hidden = false; }
-  if (c.next_day_only) { const n = $("#nextDayNote"); if (n) n.hidden = false; }
+  // pasos de la portada: costo mínimo de envío y desde cuándo se entrega
+  if (c.fee?.base != null) $("#stFee").textContent = `desde $${Number(c.fee.base).toFixed(2).replace(".", ",")}`;
+  $("#stWhen").textContent = c.next_day_only ? "desde mañana" : "hoy mismo";
   mountSocial(c.whatsapp);
   try { JSON.parse(localStorage.getItem(CART_KEY) || "[]").forEach(([k, q]) => { k = String(k); if (state.products.some((p) => p.id === keyId(k)) && validKey(k)) state.cart.set(k, q); }); } catch {}
   renderCats(); renderMenu(); renderCart();
@@ -56,24 +58,17 @@ async function init() {
 // Horario: aviso amable cuando no estamos abiertos
 const WEEKDAY = (d) => new Date(d + "T12:00:00-05:00").toLocaleDateString("es-EC", { weekday: "long", timeZone: "America/Guayaquil" });
 function whenLabel(n) { return !n ? null : n.in_days === 0 ? "hoy" : n.in_days === 1 ? "mañana" : `el ${WEEKDAY(n.day)}`; }
+const hTxt = (t) => String(t || "").slice(0, 5).replace(/^0/, "").replace(":", "h"); // "09:00" → "9h00"
 function renderStatus(c) {
-  const n = c.next_open;
-  // compatibilidad con la versión anterior del servidor
-  const nextTxt = n ? `${whenLabel(n)} a las ${n.time}` : c.open_time ? `a las ${c.open_time}` : "pronto";
-  $("#openTxt").innerHTML = c.open_now ? `Abierto<span class="long"> hasta ${c.close_time}</span>`
-    : c.store_open ? `Cerrado<span class="long"> · abrimos ${nextTxt.replace(" a las ", " ")}</span>` : "Cerrado hoy";
+  const n = c.next_open, today = c.days?.[0];
+  const nextTxt = !n ? "pronto" : n.in_days <= 1 ? hTxt(n.time) : whenLabel(n);
+  // Todo el estado de la tienda vive en la etiqueta de arriba (ya no hay barra de "descansando")
+  $("#openTxt").innerHTML = c.open_now ? `Abierto<span class="long"> · hasta ${hTxt(c.close_time)}</span>`
+    : !c.store_open || today?.closed ? "Hoy descansamos"
+    : `Descansando<span class="long"> · abrimos ${nextTxt}</span>`;
   $("#openPill").classList.toggle("closed", !c.open_now);
-  $("#closedCard").hidden = c.open_now;
-  const today = c.days?.[0];
+  $("#openPill").classList.toggle("off", !c.open_now && (!c.store_open || !!today?.closed));
   $("#hoursTxt").textContent = c.open_now || today?.open ? `hoy de ${c.open_time} a ${c.close_time}` : "según el día";
-  if (c.open_now) return;
-  if (c.store_open) {
-    $("#closedTitle").textContent = today?.closed && today.note ? `Hoy cerramos por ${today.note}` : "Estamos descansando";
-    $("#closedText").innerHTML = `<span class="sub">Abrimos ${esc(nextTxt)}. Ya puedes agendar tu pedido.</span>`;
-  } else {
-    $("#closedTitle").textContent = "Hoy no recibimos pedidos";
-    $("#closedText").innerHTML = `<span class="sub">Volvemos pronto. ¿Dudas? Escríbenos por WhatsApp.</span>`;
-  }
 }
 // wa.me necesita el número internacional sin signos (0991234567 → 593991234567)
 function waLink(num, text) {

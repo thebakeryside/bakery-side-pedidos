@@ -72,24 +72,21 @@
 </header>
 
 <main class="wrap shop">
-  <section class="intro">
-    <p class="eyebrow">A domicilio en Guayaquil y Samborondón</p>
-    <h1 class="display">Dulces hechos con cariño, directo a ti</h1>
-    <p class="lead">Pequeños antojos, grandes detalles.</p>
-    <p class="nextday" id="nextDayNote" hidden>🗓️ Por ahora recibimos pedidos con un día de anticipación: agenda tu entrega desde mañana.</p>
+  <section class="intro hero-b">
+    <div class="hb-txt">
+      <p class="eyebrow">Guayaquil y Samborondón</p>
+      <h1 class="display">Dulces hechos con cariño, directo a ti</h1>
+      <p class="lead">Pequeños antojos, grandes detalles.</p>
+    </div>
+    <!-- Foto provisional: luego va el video de producto en mano -->
+    <img class="hb-media" src="/assets/products/amaretto-tiramisu.jpg" alt="Amaretto Tiramisú en lata de The Bakery Side" width="600" height="800" fetchpriority="high">
   </section>
 
-  <div class="closed-bar" id="closedCard" hidden role="status">
-    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" fill="currentColor"/></svg>
-    <span><b id="closedTitle">Estamos descansando</b> · <span id="closedText"></span></span>
-  </div>
-
-  <section class="how" aria-label="Cómo pedir">
-    <p class="how-t">Pedir es así de fácil</p>
+  <section class="steps" aria-label="Cómo pedir">
     <ol>
-      <li><span class="how-ic"><i>1</i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M5 8h14l-1.3 12H6.3z"/><path d="M9 8a3 3 0 0 1 6 0"/></svg></span><b>Elige</b><span>tus postres y bebidas</span></li>
-      <li><span class="how-ic"><i>2</i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 21s-7-6.1-7-11.5A7 7 0 0 1 19 9.5C19 14.9 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg></span><b>Tu dirección</b><span>ves envío y hora antes de pagar</span></li>
-      <li><span class="how-ic"><i>3</i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="17" r="2.5"/><circle cx="18" cy="17" r="2.5"/><path d="M8.5 17h6.5l2-6h-4M13 6h3l1.5 5"/></svg></span><b>Paga y recibe</b><span>tarjeta o transferencia</span></li>
+      <li><span class="st-ic"><i>1</i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="7" width="9" height="13.5" rx="2"/><path d="M2.5 9.2h9"/><path d="M2.6 12.6c1.5-.9 2.9.9 4.4 0s2.9.9 4.4 0M2.6 16c1.5-.9 2.9.9 4.4 0s2.9.9 4.4 0"/><rect x="14" y="10" width="7.5" height="10.5" rx="1.8"/><path d="M14 12h7.5"/><path d="M18.5 10V5.5l2.5-2"/></svg></span><b>Elige</b><small>tus favoritos</small></li>
+      <li><span class="st-ic"><i>2</i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 21s-7-6.1-7-11.5A7 7 0 0 1 19 9.5C19 14.9 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg></span><b>Envío</b><small id="stFee">a domicilio</small></li>
+      <li><span class="st-ic"><i>3</i><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="6" cy="17" r="2.5"/><circle cx="18" cy="17" r="2.5"/><path d="M8.5 17h6.5l2-6h-4M13 6h3l1.5 5"/></svg></span><b>Recibe</b><small id="stWhen">en tu puerta</small></li>
     </ol>
   </section>
 
