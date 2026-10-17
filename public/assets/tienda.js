@@ -296,8 +296,11 @@ function renderCart() {
       <button class="rm" type="button" data-c="x" data-id="${k}">Quitar</button></div>`;
   });
   $("#cartLines").innerHTML = lines.length
-    ? lines.join("") + `<div class="line total"><span>Subtotal</span><span class="tabnum">${money(subtotal())}</span></div><p class="muted small" style="margin:0">El envío se calcula con tu ubicación.</p>${state.acct?.rewards_available ? `<p class="reward-note">🎁 Tienes un postre sorpresa: actívalo al pagar si lo quieres en este pedido.</p>` : ""}`
+    ? lines.join("") + (state.acct?.rewards_available ? `<p class="reward-note">🎁 Tienes un postre sorpresa: actívalo al pagar si lo quieres en este pedido.</p>` : "")
     : `<div class="cart-empty"><b>Tu pedido está vacío</b><span class="muted small">Agrega algo rico del menú para empezar.</span></div>`;
+  // Subtotal fuera de la lista: siempre a la vista junto al botón, aunque haya muchos productos
+  $("#cartSum").innerHTML = lines.length
+    ? `<div class="line total"><span>Subtotal</span><span class="tabnum">${money(subtotal())}</span></div><p class="muted small" style="margin:0">El envío se calcula con tu ubicación.</p>` : "";
   $("#goCheckout").disabled = !n;
   $("#goCheckout").textContent = n ? `Continuar · ${money(subtotal())}` : "Continuar";
   $("#mbCount").textContent = n; $("#mbTotal").textContent = money(subtotal());
@@ -656,7 +659,7 @@ function requestQuote() {
 function renderQuote() {
   const q = state.quote; if (!q) return;
   const now = ($("#whenNow").checked || isSplit()) && state.cfg.open_now && q.eta_if_now;
-  $("#quoteBox").innerHTML = `Envío <b>${money(q.delivery_fee)}</b>${isSplit() ? " por entrega" : ""} · ${q.distance_km.toFixed(1)} km${now ? ` · ${isSplit() ? "lo de ahora " : ""}llega entre <b>${nowRange()}</b>` : ""}${state.cfg.busy_extra && now ? `<br>Hoy tenemos muchos pedidos, por eso la entrega toma un poco más.` : ""}`;
+  $("#quoteBox").innerHTML = `Envío <b>${money(q.delivery_fee)}</b>${isSplit() ? " por entrega" : ""} · ${q.distance_km.toFixed(1).replace(".", ",")} km${now ? ` · ${isSplit() ? "lo de ahora " : ""}llega entre <b>${nowRange()}</b>` : ""}${state.cfg.busy_extra && now ? `<br>Hoy tenemos muchos pedidos, por eso la entrega toma un poco más.` : ""}`;
 }
 const nowRange = () => etaRange(new Date(new Date(state.quote.eta_if_now).getTime() + payExtra() * 60000).toISOString(), { window: Number(state.cfg.eta_window || 30) });
 function laterRange() {

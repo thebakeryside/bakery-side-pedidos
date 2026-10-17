@@ -89,10 +89,11 @@
 /* checkout */
 .checkout { margin-top: 20px; display: grid; gap: 14px; max-width: 720px; }
 .checkout form { display: grid; gap: 14px; }
-.map-tools { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0 10px; }
-.search { display: flex; gap: 6px; flex: 1; min-width: 220px; }
+.map-tools { display: flex; gap: 8px; margin: 12px 0 10px; align-items: stretch; }
+.map-tools .locate { flex: none; width: 46px; padding: 0; display: grid; place-items: center; }
+.search { display: flex; gap: 6px; flex: 1; min-width: 0; }
 .map-wrap { position: relative; }
-.map { height: 340px; border-radius: 12px; border: 1px solid var(--line); z-index: 0; overflow: hidden; }
+.map { height: clamp(220px, 34vh, 320px); border-radius: 12px; border: 1px solid var(--line); z-index: 0; overflow: hidden; }
 .pin { position: absolute; left: 50%; top: 50%; width: 34px; height: 46px; transform: translate(-50%, -100%); pointer-events: none; z-index: 2; }
 .pin span { position: absolute; inset: 0 0 12px 0; background: var(--tostado); border: 3px solid var(--tinta); border-radius: 50% 50% 50% 0; transform: rotate(-45deg); box-shadow: 0 4px 10px rgb(0 0 0 / .35); }
 .pin span::after { content: ""; position: absolute; width: 10px; height: 10px; left: 50%; top: 50%; transform: translate(-50%, -50%); background: var(--tinta); border-radius: 50%; }
@@ -103,11 +104,11 @@
 .map-lock { position: absolute; inset: 0; z-index: 3; display: grid; place-items: end center; padding-bottom: 14px; background: transparent; border: 0; cursor: pointer; border-radius: 12px; }
 .map-lock span { background: var(--tinta); color: var(--crema); font-weight: 700; font-size: 14px; padding: 9px 16px; border-radius: 999px; box-shadow: 0 6px 18px rgb(0 0 0 / .3); display: inline-flex; gap: 8px; align-items: center; }
 .map-done { position: absolute; right: 10px; bottom: 10px; z-index: 3; }
-.quote { margin-top: 10px; }
+.loc-box .quote { font-size: 13.5px; color: var(--text-2); }
 .quote b { color: var(--text); }
 .summary { margin: 16px 0 12px; display: flex; flex-direction: column; gap: 8px; }
 .btn.big { font-size: 17px; min-height: 52px; }
-.loc-box { margin-top: 12px; display: grid; gap: 4px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); }
+.loc-box { margin-top: 10px; display: grid; gap: 2px; padding: 9px 12px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); }
 .loc-k { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--accent-ink); }
 .loc-val { font-size: 14.5px; color: var(--text-2); }
 .loc-val.set { color: var(--text); font-weight: 600; }
@@ -321,3 +322,8 @@ body.light .wrap { max-width: 1260px; }
 }
 @keyframes gift-shine { from { transform: translateX(-130%); } to { transform: translateX(130%); } }
 @media (prefers-reduced-motion: reduce) { .join-mini .join-dots .goal, .join-mini .join-dots .goal::after { animation: none !important; } }
+
+/* subtotal del carrito: fijo junto al botón */
+.cart-sum { display: grid; gap: 4px; }
+.cart-sum:empty { display: none; }
+.cart-sum .line.total { margin: 0; }
