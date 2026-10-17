@@ -333,3 +333,5 @@ body.light .wrap { max-width: 1260px; }
 .choice[hidden], .choices[hidden] { display: none !important; }
 .card-hint { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .card-hint .pt-logo { height: 12px; width: auto; }
+.fresh-note { display: flex; gap: 8px; align-items: flex-start; margin: 8px 0 12px; padding: 9px 12px; border-radius: 12px; background: var(--crema); color: var(--tinta); font-size: 14px; line-height: 1.4; }
+.fresh-note + .sched-lead { margin-top: 0; }

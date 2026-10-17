@@ -401,6 +401,11 @@ function openCheckout() {
     $("#nowHint").textContent = "Por ahora recibimos pedidos con un día de anticipación";
     $("#laterHint").textContent = "Elige el día (desde mañana) y la hora de entrega";
   }
+  // Por qué la espera: todo se prepara al momento (y lo horneado, recién salido del horno)
+  const slow = [...new Set([...state.cart.keys()].map((k) => product(keyId(k))).filter((p) => p && !p.lead_hours && p.prep_minutes >= 120).map((p) => p.name.replace(/\s+x\d+$/i, "").trim()))];
+  $("#freshTxt").textContent = slow.length
+    ? (() => { const pl = slow.length > 1 || /^rollos/i.test(slow[0]); return `Preparamos tu pedido al momento: ${listNames(slow)} ${pl ? "salen recién hechos" : "sale recién hecho"} para ti.`; })()
+    : "Preparamos tu pedido al momento, recién hecho para ti.";
   // «Lo antes posible»: solo si alcanzamos a prepararlo y entregarlo antes de cerrar
   if (!$("#whenNow").disabled) {
     const need = needMinutes(), today = hoursFor(todayLocal(0));
