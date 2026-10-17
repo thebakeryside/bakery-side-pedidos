@@ -115,9 +115,10 @@
 
     <form id="orderForm" novalidate>
       <div class="panel">
-        <div class="step-title"><span class="n">1</span><h2>¿Cuándo lo quieres?</h2></div>
-        <div class="choices">
-          <label class="choice"><input type="radio" name="when" value="now" id="whenNow"><div><b>Lo antes posible</b><span id="nowHint">Te mostramos la hora estimada</span></div></label>
+        <div class="step-title"><span class="n">1</span><h2 id="whenTitle">¿Cuándo lo quieres?</h2></div>
+        <p class="muted small sched-lead" id="schedLead" hidden></p>
+        <div class="choices" id="whenChoices">
+          <label class="choice" id="nowChoice"><input type="radio" name="when" value="now" id="whenNow"><div><b>Lo antes posible</b><span id="nowHint">Te mostramos la hora estimada</span></div></label>
           <label class="choice"><input type="radio" name="when" value="later" id="whenLater"><div><b>Agendar</b><span id="laterHint">Elige día y hora de entrega</span></div></label>
           <label class="choice" id="splitChoice" hidden><input type="radio" name="when" value="split" id="whenSplit"><div><b>En dos entregas</b><span id="splitHint">Lo demás ahora y el dulce entero el día que elijas</span></div></label>
         </div>
@@ -137,7 +138,7 @@
         <div id="savedAddr" class="saved-chips" hidden></div>
         <div class="map-tools">
           <div class="search" id="searchSlot"></div>
-          <button class="btn small locate" type="button" id="locateMe" aria-label="Usar mi ubicación" title="Usar mi ubicación"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="2"/></svg></button>
+          <button class="locate" type="button" id="locateMe"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M21 3 3 10.5l7.2 2.3L12.5 20z"/></svg>Usar mi ubicación actual</button>
         </div>
         <div class="map-wrap">
           <div id="map" class="map" role="application" aria-label="Mapa para elegir la ubicación de entrega"></div>

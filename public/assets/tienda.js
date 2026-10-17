@@ -403,6 +403,14 @@ function openCheckout() {
     $("#laterHint").textContent = "Elige el día (desde mañana) y la hora de entrega";
   }
   ($("#whenNow").disabled ? $("#whenLater") : $("#whenNow")).checked = true;
+  // Si «Lo antes posible» no aplica, no se muestra: solo agendar, sin opciones que elegir
+  $("#nowChoice").hidden = $("#whenNow").disabled;
+  const onlyLater = $("#whenNow").disabled && $("#splitChoice").hidden;
+  $("#whenChoices").hidden = onlyLater;
+  $("#whenTitle").textContent = onlyLater ? "Agenda tu entrega" : "¿Cuándo lo quieres?";
+  $("#schedLead").hidden = !onlyLater;
+  $("#schedLead").textContent = c.next_day_only ? "Elige el día y la hora en que quieres recibirlo. Entregamos desde mañana."
+    : leadNames.length ? `${listNames(leadNames)} se pide con 24 h de anticipación. Elige el día y la hora.` : "Elige el día y la hora en que quieres recibirlo.";
   syncWhen(); fillDates();
   // pago
   $("#payCard").disabled = !c.card_enabled;
