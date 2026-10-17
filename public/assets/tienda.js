@@ -421,7 +421,6 @@ function renderAcctBox() {
   const dots = Array.from({ length: 8 }, (_, i) => i < 2 ? `<span class="on"><img src="/assets/brand/s-tinta.svg" alt=""></span>` : i === 7 ? `<span class="goal" aria-label="Postre sorpresa">🎁</span>` : `<span>${i + 1}</span>`).join("");
   box.innerHTML = `<div class="join-mini">
       <div class="join-dots" aria-hidden="true">${dots}</div>
-      <div class="jm-leg"><span>2 de regalo hoy</span><span>8 sellos = postre sorpresa</span></div>
       <p class="jm-t"><b>Gana un postre sorpresa.</b> <span>Entra con Google y te regalamos los 2 primeros sellos.</span></p>
       <div class="jm-go">${googleButton("outline")}</div>
     </div>

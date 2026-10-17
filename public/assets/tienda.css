@@ -258,7 +258,6 @@ body.light .wrap { max-width: 1260px; }
 /* Invitación compacta a crear cuenta (paso 3): tarjeta de sellos + Google */
 .join-mini { display: grid; gap: 8px; margin: 6px 0 12px; padding: 12px 14px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--crema); }
 .join-mini .join-dots { margin: 0; max-width: 330px; }
-.join-mini .jm-leg { display: flex; justify-content: space-between; gap: 8px; max-width: 330px; font-size: 11.5px; color: var(--text-2); margin-top: -2px; }
 .join-mini .jm-t { margin: 2px 0 0; font-size: 14px; line-height: 1.4; }
 .join-mini .jm-t span { color: var(--text-2); }
 .join-mini .jm-go { min-height: 40px; }
