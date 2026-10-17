@@ -287,8 +287,52 @@ function renderCart() {
   $("#mbCount").textContent = n; $("#mbTotal").textContent = money(subtotal());
   $("#cartCount").textContent = n; $("#cartCount").hidden = !n;
   $("#mobileBar").hidden = !n || !$("#checkout").hidden;
+  renderUpsell();
   renderSummary();
 }
+
+// ---------- sugerencia en el carrito ("¿Le sumas…?") ----------
+// Regla simple por ahora (y elección al azar dentro del grupo) para ir aprendiendo:
+// sin bebida → una bebida; con bebida pero sin antojo → un antojo; con ambos → una lata.
+// Cada sugerencia mostrada y cada una agregada se guarda en upsell_events.
+const UPSELL_RULES = [["sin_bebida", /bebida/i], ["sin_antojo", /antojo/i], ["sin_can", /^cans?$/i]];
+const upsellSeen = new Set();
+let upsellPick = null; // { rule, id }
+function visitorId() {
+  try { let v = localStorage.getItem("tbs_vid"); if (!v) { v = Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem("tbs_vid", v); } return v; }
+  catch { return "anon"; }
+}
+function logUpsell(action, pick) {
+  const cart = [...new Set([...state.cart.keys()].map(keyId))];
+  sb.from("upsell_events").insert({ visitor: visitorId(), action, suggested_id: pick.id, rule: pick.rule, cart }).then(() => {}, () => {});
+}
+function chooseUpsell() {
+  const ids = new Set([...state.cart.keys()].map(keyId));
+  const catOf = (p) => state.cats.find((c) => c.id === p.category_id)?.name || "";
+  const inCart = [...ids].map(product).filter(Boolean);
+  for (const [rule, re] of UPSELL_RULES) {
+    if (inCart.some((p) => re.test(catOf(p)))) continue;
+    const pool = state.products.filter((p) => re.test(catOf(p)) && !ids.has(p.id) && Number(p.price) > 0 && !p.lead_hours && leftToday(p) !== 0);
+    if (!pool.length) continue;
+    if (upsellPick?.rule === rule && pool.some((p) => p.id === upsellPick.id)) return upsellPick;
+    return (upsellPick = { rule, id: pool[Math.floor(Math.random() * pool.length)].id });
+  }
+  return null;
+}
+function renderUpsell() {
+  const box = $("#upsell"); if (!box) return;
+  const pick = state.cart.size ? chooseUpsell() : null;
+  if (!pick) { box.innerHTML = ""; return; }
+  const p = product(pick.id);
+  box.innerHTML = `<div class="upsell"><span class="up-k">¿Le sumas?</span><div class="up-row">${p.image_url ? `<img src="${esc(p.image_url)}" alt="" loading="lazy">` : ""}<div class="up-tx"><b>${esc(p.name)}</b><span class="tabnum">${money(p.price)}</span></div><button type="button" class="btn small" data-up="${p.id}">+ Agregar</button></div></div>`;
+  const key = `${pick.rule}:${pick.id}`;
+  if (!upsellSeen.has(key)) { upsellSeen.add(key); logUpsell("shown", pick); }
+}
+$("#upsell")?.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-up]"); if (!b || !upsellPick) return;
+  const id = Number(b.dataset.up); logUpsell("added", upsellPick);
+  if (groupsOf(id).length) openPicker(product(id)); else changeQty(String(id), 1);
+});
 $("#cartLines").addEventListener("click", (e) => {
   const b = e.target.closest("[data-c]"); if (!b) return;
   const k = b.dataset.id;
@@ -373,26 +417,15 @@ function renderAcctBox() {
     $("#wantGoogle").onclick = (e) => { e.preventDefault(); state.guest = false; renderAcctBox(); };
     return;
   }
-  // Invitación a crear cuenta: se entiende mirando la tarjeta de sellos
-  const dots = Array.from({ length: 8 }, (_, i) => i < 2 ? `<span class="on"><img src="/assets/brand/s-tinta.svg" alt=""></span>` : i === 7 ? `<span class="goal" aria-label="Postre sorpresa">🎁</span>` : `<span>${i + 1}</span>`).join("");
-  box.innerHTML = `<div class="join">
-      <div class="join-card">
-        <b class="join-t">Un postre sorpresa te espera</b>
-        <span class="join-s">Continúa con Google y te regalamos los 2 primeros sellos.</span>
-        <div class="join-dots" aria-hidden="true">${dots}</div>
-        <div class="join-leg"><span>2 de regalo hoy</span><span>8 sellos = postre sorpresa</span></div>
-        <div class="join-go">${googleButton("outline")}<small>Gratis, en un toque. Sin contraseñas.</small></div>
-      </div>
-      <ul class="join-why">
-        <li><span>💵</span><span><b>1 sello por cada $10</b> de tu pedido</span></li>
-        <li><span>🎂</span><span><b>$4 de regalo</b> en tu mes de cumpleaños</span></li>
-        <li><span>⚡</span><span><b>La próxima vez pides más rápido:</b> guardamos tu dirección</span></li>
-      </ul>
-      <div class="join-cta"><button class="linkbtn" type="button" id="asGuest">Prefiero pedir sin cuenta</button></div>
-    </div>`;
+  // Invitación compacta a crear cuenta: no le quita protagonismo a pedir sin cuenta
+  box.innerHTML = `<div class="join-mini">
+      <span class="jm-ico" aria-hidden="true">🎁</span>
+      <p class="jm-t"><b>Gana un postre sorpresa.</b> <span>Entra con Google y te regalamos 2 sellos; con 8, el postre es tuyo.</span></p>
+      <div class="jm-go">${googleButton("outline")}</div>
+    </div>
+    <p class="muted small jm-or">O pide sin cuenta, solo con estos datos:</p>`;
   try { localStorage.setItem(CART_KEY, JSON.stringify([...state.cart])); } catch {}
   mountGoogle(box, async () => { await refreshAccount(); toast("¡Listo! Ya sumas sellos con este pedido."); }, (e) => toast(e.message));
-  $("#asGuest").onclick = () => { state.guest = true; renderAcctBox(); renderPerks(); };
 }
 
 function renderPerks() {
