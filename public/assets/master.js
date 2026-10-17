@@ -458,6 +458,9 @@ async function ajustes() {
       <label class="f">Códigos QR de cobro</label>
       <p class="muted small" style="margin:0 0 8px">Sube la imagen del QR de tu negocio en DeUna y en PeiGo. El cliente lo ve solo después de hacer su pedido, y así no tienes que publicar tu cédula.</p>
       <div class="qr-admin" id="qrAdmin"><p class="muted small">Cargando…</p></div>
+      <h3 class="group-title">Video de portada</h3>
+      <p class="muted small" style="margin:0 0 8px">El video corto que se ve arriba en la tienda, sin sonido y en bucle. Sube el mismo archivo que publicaste en redes (mp4 o mov, vertical, idealmente de 5 a 15 segundos y menos de 20 MB). Puedes cambiarlo cuando quieras; el cambio se ve en 1 minuto.</p>
+      <div id="heroAdmin"><p class="muted small">Cargando…</p></div>
       <h3 class="group-title">Transferencia directa</h3>
       <p class="muted small" style="margin:0 0 8px">Cuentas para que el cliente transfiera desde su mismo banco: así no le pide cédula. Pon solo tu nombre y correo, sin cédula. Las ve únicamente quien ya hizo un pedido.</p>
       <div class="form-grid">
@@ -476,7 +479,7 @@ async function ajustes() {
   ["#sBase", "#sIncl", "#sPerKm"].forEach((k) => $(k).addEventListener("input", ex)); ex();
   const winEx = () => { const w = Number($("#sWin").value) || 30, end = 10 * 60 + 15 + w; $("#winEx").textContent = `10h15 – ${Math.floor(end / 60)}h${String(end % 60).padStart(2, "0")}`; };
   $("#sWin").addEventListener("input", winEx); winEx();
-  renderQrAdmin();
+  renderQrAdmin(); renderHeroAdmin();
   // cuentas bancarias: una fila por banco
   const rowHTML = (a = {}) => `<div class="bank-row">
     <input class="in" placeholder="Banco (ej.: Banco Pichincha)" value="${esc(a.bank || "")}" data-k="bank">
@@ -531,6 +534,67 @@ async function renderQrAdmin() {
     if (error) return rpcErr(error);
     toast("QR quitado"); renderQrAdmin();
   })));
+}
+
+// Video de portada (storage público productos/portada/: hero.json + video + poster.jpg)
+async function renderHeroAdmin() {
+  const box = $("#heroAdmin"); if (!box) return;
+  const pub = (k) => sb.storage.from("productos").getPublicUrl(`portada/${k}`).data.publicUrl;
+  let meta = null;
+  try { const r = await fetch(`${pub("hero.json")}?t=${Date.now()}`, { cache: "no-store" }); if (r.ok) meta = await r.json(); } catch {}
+  const v = encodeURIComponent(meta?.v || "");
+  box.innerHTML = `<div class="qr-slot confirm-host">
+      ${meta?.video ? `<video src="${esc(pub(meta.video))}?v=${v}" poster="${meta.poster ? esc(pub(meta.poster)) + "?v=" + v : ""}" muted loop playsinline autoplay style="width:96px;height:128px;object-fit:cover;border-radius:10px"></video>` : `<div class="qr-empty" style="height:128px">Foto fija</div>`}
+      <div style="display:grid;gap:6px"><b>${meta?.video ? "Video actual" : "Sin video: se ve la foto"}</b>
+        <label class="btn small" style="cursor:pointer"><span>${meta?.video ? "Cambiar video" : "Subir video"}</span><input type="file" accept="video/mp4,video/quicktime,video/*" id="heroFile" hidden></label>
+        ${meta?.video ? `<button class="btn small ghost" type="button" id="heroDel">Quitar video</button>` : ""}</div>
+    </div>`;
+  $("#heroFile").onchange = async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    if (f.size > 20 * 1024 * 1024) return toast("El video pesa más de 20 MB. Expórtalo más corto o en menor calidad.");
+    const label = e.target.previousElementSibling; label.textContent = "Subiendo…";
+    try {
+      const poster = await videoPoster(f);
+      const ts = Date.now(), ext = /quicktime|mov/i.test(f.type + f.name) ? "mov" : "mp4", name = `video-${ts}.${ext}`;
+      let r = await sb.storage.from("productos").upload(`portada/${name}`, f, { contentType: f.type || "video/mp4", cacheControl: "31536000" });
+      if (r.error) throw r.error;
+      if (poster) { r = await sb.storage.from("productos").upload(`portada/poster-${ts}.jpg`, poster, { contentType: "image/jpeg", cacheControl: "31536000" }); if (r.error) throw r.error; }
+      const json = new Blob([JSON.stringify({ v: String(ts), video: name, poster: poster ? `poster-${ts}.jpg` : null })], { type: "application/json" });
+      r = await sb.storage.from("productos").upload("portada/hero.json", json, { upsert: true, contentType: "application/json", cacheControl: "60" });
+      if (r.error) throw r.error;
+      // borra los videos anteriores para no acumular espacio
+      const { data: old } = await sb.storage.from("productos").list("portada");
+      const stale = (old || []).map((o) => o.name).filter((n) => n !== "hero.json" && !n.includes(String(ts)));
+      if (stale.length) await sb.storage.from("productos").remove(stale.map((n) => `portada/${n}`));
+      toast("Video de portada guardado");
+    } catch (err) { rpcErr(err); }
+    renderHeroAdmin();
+  };
+  const del = $("#heroDel");
+  if (del) del.onclick = () => confirmRow(del, "La tienda volverá a mostrar la foto fija.", async () => {
+    const { data: all } = await sb.storage.from("productos").list("portada");
+    const { error } = await sb.storage.from("productos").remove((all || []).map((o) => `portada/${o.name}`));
+    if (error) return rpcErr(error);
+    toast("Video quitado"); renderHeroAdmin();
+  });
+}
+
+// Portada del video (cuadro a 1 s, recortado 3:4) para que se vea algo mientras carga
+function videoPoster(file) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file), vid = document.createElement("video");
+    const done = (b) => { URL.revokeObjectURL(url); resolve(b); };
+    vid.muted = true; vid.playsInline = true; vid.preload = "auto"; vid.src = url;
+    vid.onerror = () => done(null);
+    vid.onloadeddata = () => { vid.currentTime = Math.min(1, (vid.duration || 2) / 2); };
+    vid.onseeked = () => {
+      const W = 600, H = 800, c = Object.assign(document.createElement("canvas"), { width: W, height: H });
+      const vw = vid.videoWidth, vh = vid.videoHeight, s = Math.max(W / vw, H / vh);
+      c.getContext("2d").drawImage(vid, (W - vw * s) / 2, (H - vh * s) / 2, vw * s, vh * s);
+      c.toBlob((b) => done(b), "image/jpeg", 0.82);
+    };
+    setTimeout(() => done(null), 15000);
+  });
 }
 
 // ---------- reseñas: se revisan antes de publicarse ----------

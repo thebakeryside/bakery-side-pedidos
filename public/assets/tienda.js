@@ -6,6 +6,27 @@ import { loadRatings, reviewsPanel } from "./reviews.js";
 
 captureRef();
 
+// ---------- video de portada ----------
+// Se cambia desde Master → Ajustes → «Video de portada» (storage productos/portada/*).
+// La foto carga primero; el video se baja solo después, para no frenar la página.
+async function heroVideo() {
+  const img = document.querySelector(".hero-b .hb-media"); if (!img) return;
+  const pub = (k) => sb.storage.from("productos").getPublicUrl(`portada/${k}`).data.publicUrl;
+  let meta;
+  try { const r = await fetch(`${pub("hero.json")}?t=${Date.now()}`, { cache: "no-store" }); if (!r.ok) return; meta = await r.json(); } catch { return; }
+  if (!meta?.video) return;
+  const v = encodeURIComponent(meta.v || "");
+  const poster = meta.poster ? `${pub(meta.poster)}?v=${v}` : img.src;
+  const calm = matchMedia("(prefers-reduced-motion: reduce)").matches || navigator.connection?.saveData;
+  if (calm) { img.src = poster; return; } // sin movimiento ni datos extra: solo la portada del video
+  const vid = Object.assign(document.createElement("video"), { muted: true, loop: true, playsInline: true, autoplay: true, preload: "auto", poster, className: img.className });
+  vid.setAttribute("muted", ""); vid.setAttribute("playsinline", ""); vid.setAttribute("aria-label", meta.alt || img.alt);
+  vid.src = `${pub(meta.video)}?v=${v}`;
+  vid.addEventListener("loadeddata", () => { img.replaceWith(vid); vid.play().catch(() => {}); }, { once: true });
+  vid.load();
+}
+if (document.readyState === "complete") heroVideo(); else addEventListener("load", heroVideo, { once: true });
+
 const state = { cfg: null, cats: [], products: [], cart: new Map(), filter: "Todo", loc: null, quote: null, acct: null, guest: false };
 const CART_KEY = "tbs_cart";
 const PROFILE_KEY = "tbs_cliente";
