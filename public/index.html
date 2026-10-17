@@ -136,6 +136,7 @@
 
       <div class="panel">
         <div class="step-title"><span class="n">2</span><h2>¿Dónde lo entregamos?</h2></div>
+        <p class="req-legend"><span class="req" aria-hidden="true">*</span> Obligatorio</p>
         <div id="savedAddr" class="saved-chips" hidden></div>
         <div class="map-tools">
           <div class="search" id="searchSlot"></div>
@@ -150,8 +151,8 @@
           <span id="locLabel" class="loc-val">Busca tu zona o mueve el mapa</span>
           <span id="quoteBox" class="quote">El envío aparece al marcar tu ubicación</span>
         </div>
-        <label class="f" for="address">Dirección</label>
-        <input class="in" id="address" autocomplete="street-address" placeholder="Manzana y villa, o calle y número">
+        <label class="f" for="address">Dirección <span class="req" aria-hidden="true">*</span></label>
+        <input class="in" id="address" aria-required="true" autocomplete="street-address" placeholder="Manzana y villa, o calle y número">
         <label class="f" for="reference">Referencia <span class="hint">(opcional)</span></label>
         <input class="in" id="reference" placeholder="Color de casa, garita, local cercano">
         <div id="saveAddrBox" hidden>
@@ -164,11 +165,11 @@
         <div class="step-title"><span class="n">3</span><h2>Tus datos</h2></div>
         <div id="acctBox"></div>
         <div class="row2">
-          <div><label class="f" for="cName">Nombre</label><input class="in" id="cName" autocomplete="name"></div>
-          <div><label class="f" for="cPhone">WhatsApp</label><input class="in" id="cPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="0991234567"></div>
+          <div><label class="f" for="cName">Nombre <span class="req" aria-hidden="true">*</span></label><input class="in" id="cName" aria-required="true" autocomplete="name"></div>
+          <div><label class="f" for="cPhone">WhatsApp <span class="req" aria-hidden="true">*</span></label><input class="in" id="cPhone" aria-required="true" type="tel" inputmode="tel" autocomplete="tel" placeholder="0991234567"></div>
         </div>
         <div id="emailRow">
-          <label class="f" for="cEmail">Correo <span class="hint">(te avisamos por aquí cada paso de tu pedido)</span></label>
+          <label class="f" for="cEmail">Correo <span class="req" aria-hidden="true">*</span> <span class="hint">(te avisamos por aquí cada paso de tu pedido)</span></label>
           <input class="in" id="cEmail" type="email" inputmode="email" autocomplete="email" placeholder="tucorreo@gmail.com">
         </div>
         <label class="check" id="promoBox" hidden><input type="checkbox" id="wantPromo"> Quiero recibir promociones y novedades por WhatsApp y correo</label>
