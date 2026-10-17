@@ -407,7 +407,7 @@ function openCheckout() {
     const [ch, cm] = (today?.close || "00:00").split(":").map(Number);
     const left = (new Date(localToISO(todayLocal(0), `${String(ch).padStart(2, "0")}:${String(cm).padStart(2, "0")}`)).getTime() - Date.now()) / 60000;
     if (left < need) { $("#whenNow").disabled = true; $("#nowHint").textContent = "Hoy ya no alcanzamos a prepararlo a tiempo"; }
-    else $("#nowHint").textContent = `Llega en aprox. ${need >= 60 ? `${Math.floor(need / 60)} h${need % 60 ? ` ${need % 60} min` : ""}` : `${need} min`}`;
+    else $("#nowHint").textContent = `Llega hoy entre ${etaRange(new Date(Date.now() + need * 60000).toISOString(), { window: Number(c.eta_window || 30) })}`;
   }
   ($("#whenNow").disabled ? $("#whenLater") : $("#whenNow")).checked = true;
   // Si «Lo antes posible» no aplica, no se muestra: solo agendar, sin opciones que elegir
@@ -688,6 +688,7 @@ function requestQuote() {
 // Envío y, solo si el pedido es para ahora con la tienda abierta, el rango de llegada
 function renderQuote() {
   const q = state.quote; if (!q) return;
+  if (!$("#whenNow").disabled && state.cfg.open_now && q.eta_if_now) $("#nowHint").textContent = `Llega hoy entre ${nowRange()}`;
   const now = ($("#whenNow").checked || isSplit()) && state.cfg.open_now && q.eta_if_now;
   $("#quoteBox").innerHTML = `Envío <b>${money(q.delivery_fee)}</b>${isSplit() ? " por entrega" : ""} · ${q.distance_km.toFixed(1).replace(".", ",")} km${now ? ` · ${isSplit() ? "lo de ahora " : ""}llega entre <b>${nowRange()}</b>` : ""}${state.cfg.busy_extra && now ? `<br>Hoy tenemos muchos pedidos, por eso la entrega toma un poco más.` : ""}`;
 }
