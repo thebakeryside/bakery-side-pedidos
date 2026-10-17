@@ -63,7 +63,6 @@ async function init() {
   if (wa) { $("#waFab").href = wa; $("#waFab").hidden = false; }
   // pasos de la portada: costo mínimo de envío y desde cuándo se entrega
   if (c.fee?.base != null) $("#stFee").textContent = `desde $${Number(c.fee.base).toFixed(2).replace(".", ",")}`;
-  $("#stWhen").textContent = c.next_day_only ? "desde mañana" : "hoy mismo";
   mountSocial(c.whatsapp);
   try { JSON.parse(localStorage.getItem(CART_KEY) || "[]").forEach(([k, q]) => { k = String(k); if (state.products.some((p) => p.id === keyId(k)) && validKey(k)) state.cart.set(k, q); }); } catch {}
   renderCats(); renderMenu(); renderCart();
