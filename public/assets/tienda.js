@@ -427,6 +427,19 @@ function renderAcctBox() {
     <p class="muted small jm-or">O pide sin cuenta, solo con estos datos:</p>`;
   try { localStorage.setItem(CART_KEY, JSON.stringify([...state.cart])); } catch {}
   mountGoogle(box, async () => { await refreshAccount(); toast("¡Listo! Ya sumas sellos con este pedido."); }, (e) => toast(e.message));
+  stampAnim(box.querySelector(".join-mini"));
+}
+// Los 2 sellos de regalo "se ponen" uno tras otro cuando la tarjeta se ve, y se repite cada cierto tiempo
+let stampTimer = null, stampObs = null;
+function stampAnim(card) {
+  if (!card || matchMedia("(prefers-reduced-motion: reduce)").matches) { card?.classList.add("play"); return; }
+  clearInterval(stampTimer); stampObs?.disconnect();
+  const play = () => { card.classList.remove("play"); void card.offsetWidth; card.classList.add("play"); };
+  stampObs = new IntersectionObserver(([e]) => {
+    clearInterval(stampTimer);
+    if (e.isIntersecting && document.body.contains(card)) { play(); stampTimer = setInterval(play, 7000); }
+  }, { threshold: 0.6 });
+  stampObs.observe(card);
 }
 
 function renderPerks() {
