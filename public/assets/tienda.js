@@ -19,10 +19,22 @@ async function heroVideo() {
   const poster = meta.poster ? `${pub(meta.poster)}?v=${v}` : img.src;
   const calm = matchMedia("(prefers-reduced-motion: reduce)").matches || navigator.connection?.saveData;
   if (calm) { img.src = poster; return; } // sin movimiento ni datos extra: solo la portada del video
-  const vid = Object.assign(document.createElement("video"), { muted: true, loop: true, playsInline: true, autoplay: true, preload: "auto", poster, className: img.className });
-  vid.setAttribute("muted", ""); vid.setAttribute("playsinline", ""); vid.setAttribute("aria-label", meta.alt || img.alt);
+  // Video decorativo: sin controles, sin pantalla completa ni ventana flotante. Si el navegador
+  // (p. ej. el de TikTok o Instagram) no deja reproducir solo, se queda quieto mostrando la portada.
+  const vid = Object.assign(document.createElement("video"), { muted: true, loop: true, playsInline: true, autoplay: true, controls: false, preload: "auto", poster, className: img.className + " hb-video" });
+  for (const a of ["muted", "playsinline", "webkit-playsinline", "disablepictureinpicture", "disableremoteplayback"]) vid.setAttribute(a, "");
+  vid.setAttribute("controlslist", "nodownload nofullscreen noremoteplayback noplaybackrate");
+  vid.setAttribute("x-webkit-airplay", "deny"); vid.setAttribute("tabindex", "-1");
+  vid.setAttribute("aria-label", meta.alt || img.alt);
   vid.src = `${pub(meta.video)}?v=${v}`;
-  vid.addEventListener("loadeddata", () => { img.replaceWith(vid); vid.play().catch(() => {}); }, { once: true });
+  const tryPlay = () => vid.play().catch(() => {});
+  vid.addEventListener("loadeddata", () => {
+    img.replaceWith(vid); tryPlay();
+    // si no arrancó solo, arranca con el primer toque o desplazamiento de la página
+    const kick = () => { if (vid.paused) tryPlay(); };
+    for (const ev of ["touchstart", "scroll", "click"]) addEventListener(ev, kick, { once: true, passive: true });
+  }, { once: true });
+  vid.addEventListener("webkitbeginfullscreen", () => vid.webkitExitFullscreen?.());
   vid.load();
 }
 if (document.readyState === "complete") heroVideo(); else addEventListener("load", heroVideo, { once: true });
