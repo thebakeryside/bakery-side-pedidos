@@ -56,7 +56,7 @@ export function stampCard(stamps, { compact = false } = {}) {
     <ol class="stamps">${dots}</ol>
     <div class="sc-bar" aria-hidden="true"><span style="width:${(n / STAMPS_TOTAL) * 100}%"></span></div>
     <p class="stampnote">${msg}</p>
-    <ul class="sc-rules"><li><b>$10</b> en tu pedido = 1 sello</li><li><b>8 sellos</b> = 1 postre sorpresa</li></ul>
+    <ul class="sc-rules"><li><b>$10</b> en productos = 1 sello</li><li><b>8 sellos</b> = 1 postre sorpresa</li></ul>
   </div>`;
 }
 

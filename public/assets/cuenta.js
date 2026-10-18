@@ -90,7 +90,7 @@ function paneInicio(acc, orders = []) {
         <b class="rw-t">${title}</b>
         <div class="rw-dots">${dots}</div>
         <div class="rw-bar"><i style="width:${(n / STAMPS_TOTAL) * 100}%"></i></div>
-        <small>1 sello por cada $10 · un pedido de $20 te da 2</small>
+        <small>1 sello por cada $10 en productos (sin contar el envío) · $20 te da 2</small>
       </div>
       ${orders.some((o) => o.status === "entregado" && isTodayLocal(o.delivered_at)) ? `<button type="button" class="rate-banner as-btn" id="goRate"><b>🎁 HOY: califica todo tu pedido y gana 1 sello</b><span>Califica lo que ya probaste en «Mis pedidos» ›</span></button>` : ""}
       <div class="rw-tiles">
