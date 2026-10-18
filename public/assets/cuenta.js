@@ -325,7 +325,7 @@ function renderGuest() {
       <ol>
         <li><span class="st-ic"><i>1</i>${IC.google}</span><b>Entra</b><small>2 sellos de regalo</small></li>
         <li><span class="st-ic"><i>2</i>${IC.bag}</span><b>Pide</b><small>1 sello por cada $10</small></li>
-        <li><span class="st-ic"><i>3</i>${IC.gift}</span><b>Disfruta</b><small>postre sorpresa con 8</small></li>
+        <li><span class="st-ic"><i>3</i>${IC.gift}</span><b>Disfruta</b><small>tu postre sorpresa</small></li>
       </ol>
     </section>
     <ul class="g-perks">

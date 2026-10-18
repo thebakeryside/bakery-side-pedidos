@@ -198,7 +198,7 @@
 .g-steps { margin: 22px 0 0; padding: 16px 8px 14px; border-radius: 16px; background: var(--crema); color: var(--tinta); }
 .g-steps ol { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); position: relative; }
 .g-steps ol::before { content: ""; position: absolute; top: 20px; left: 17%; right: 17%; border-top: 1.5px dashed #D9C3A3; }
-.g-steps li { display: grid; justify-items: center; text-align: center; gap: 2px; position: relative; }
+.g-steps li { display: grid; align-content: start; justify-items: center; text-align: center; gap: 2px; position: relative; }
 .g-steps .st-ic { position: relative; width: 42px; height: 42px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1.5px #E3CDB3; display: grid; place-items: center; color: var(--tinta); margin-bottom: 5px; }
 .g-steps .st-ic svg { width: 22px; height: 22px; }
 .g-steps .st-ic i { position: absolute; top: -6px; left: -7px; width: 19px; height: 19px; border-radius: 50%; background: var(--tinta); color: var(--crema); border: 2px solid var(--crema); font: 700 10.5px/1 "Archivo", sans-serif; font-style: normal; display: grid; place-items: center; }
