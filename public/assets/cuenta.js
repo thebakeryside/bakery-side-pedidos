@@ -304,18 +304,44 @@ function invForm(u, x, first = false) {
   };
 }
 
+// Sin sesión: invita a crear la cuenta (mismo lenguaje visual que la portada y el checkout)
+const IC = {
+  google: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c.8-3.6 3.6-5.5 7-5.5s6.2 1.9 7 5.5"/></svg>`,
+  bag: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 8h14l-1 12H6z"/><path d="M9 8V6.5a3 3 0 0 1 6 0V8"/></svg>`,
+  gift: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="1.5"/><path d="M3 7h18v3H3zM12 7v13M12 7c-1.5-3-5-3-4.5-.5S12 7 12 7zm0 0c1.5-3 5-3 4.5-.5S12 7 12 7z"/></svg>`,
+};
 function renderGuest() {
   root.innerHTML = `
-    <div class="acct-grid">
-      <div style="display:grid;gap:14px">
-        <div><p class="eyebrow">Recompensas The Bakery Side</p><h1 class="display" style="font-size:clamp(40px,8vw,60px)">Empieza con 2 sellos de regalo</h1></div>
-        <p class="muted">Crea tu cuenta con Google en un toque. Te regalamos 2 sellos al empezar, ganas 1 sello por cada $10, un postre sorpresa al completar 8 y $4 en tu mes de cumpleaños.</p>
-        <div>${googleButton()}</div>
-        <p class="muted small">¿Prefieres no crear cuenta? Puedes <a href="/">pedir como invitado</a>, pero no acumularás sellos.</p>
+    <div class="acct-grid guest-hero">
+      <div class="gh-txt">
+        <p class="eyebrow">Recompensas The Bakery Side</p>
+        <h1 class="display">Gana un postre sorpresa</h1>
+        <p class="lead">Entra con Google y te regalamos los <b>2 primeros sellos</b>.</p>
       </div>
-      ${stampCard(2)}
-    </div>`;
+      <div class="gh-card">${stampCard(2)}</div>
+      <div class="gh-go">${googleButton()}<small>Gratis · en un toque · sin contraseñas</small></div>
+    </div>
+    <section class="g-steps" aria-label="Cómo funciona">
+      <ol>
+        <li><span class="st-ic"><i>1</i>${IC.google}</span><b>Entra</b><small>2 sellos de regalo</small></li>
+        <li><span class="st-ic"><i>2</i>${IC.bag}</span><b>Pide</b><small>1 sello por cada $10</small></li>
+        <li><span class="st-ic"><i>3</i>${IC.gift}</span><b>Disfruta</b><small>postre sorpresa con 8</small></li>
+      </ol>
+    </section>
+    <ul class="g-perks">
+      <li><span aria-hidden="true">🎂</span><div><b>$4 de regalo</b><small>en tu mes de cumpleaños</small></div></li>
+      <li><span aria-hidden="true">🤝</span><div><b>Invita a un amigo</b><small>y ambos ganan 1 sello</small></div></li>
+    </ul>
+    <p class="muted small g-guest">¿Prefieres no crear cuenta? Puedes <a href="/">pedir como invitado</a>, pero no acumularás sellos.</p>`;
+  const note = root.querySelector(".stampnote");
+  if (note) note.innerHTML = "Así empieza tu tarjeta: <b>2 sellos de regalo</b> al entrar.";
   mountGoogle(root, () => render(), (e) => toast(e.message));
+  // los 2 sellos caen uno a uno y el regalo brilla; se repite mientras la tarjeta está a la vista
+  const card = root.querySelector(".gh-card .stampcard");
+  if (card && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    let t; const play = () => { card.classList.remove("play"); void card.offsetWidth; card.classList.add("play"); };
+    new IntersectionObserver(([e]) => { clearInterval(t); if (e.isIntersecting) { play(); t = setInterval(play, 7000); } }, { threshold: 0.5 }).observe(card);
+  }
 }
 
 let started = false;
