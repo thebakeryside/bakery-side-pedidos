@@ -188,13 +188,11 @@
 .gh-card .stampcard.play .stamp.on:nth-child(1) { animation-delay: .35s; }
 .gh-card .stampcard.play .stamp.on:nth-child(2) { animation-delay: 1.05s; }
 @keyframes gStampIn { 0% { transform: scale(1.9) rotate(-35deg); opacity: 0; } 60% { opacity: 1; } 100% { transform: scale(1) rotate(-10deg); opacity: 1; } }
-.gh-card .stamp.goal { overflow: hidden; }
-.gh-card .stamp.goal small { overflow: visible; }
-.gh-card .stamp.goal::after { content: ""; position: absolute; inset: -30%; background: linear-gradient(115deg, transparent 38%, rgb(255 255 255 / .9) 50%, transparent 62%); transform: translateX(-130%); pointer-events: none; border-radius: 50%; }
+.gh-card .stamp.goal::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: linear-gradient(115deg, transparent 38%, rgb(255 255 255 / .9) 50%, transparent 62%) no-repeat; background-size: 300% 100%; background-position: 130% 0; pointer-events: none; }
 .gh-card .stampcard.play .stamp.goal { animation: gWiggle .9s ease-in-out 1.75s both; }
 .gh-card .stampcard.play .stamp.goal::after { animation: gShine .8s ease-out 2.45s both; }
 @keyframes gWiggle { 0%, 100% { transform: rotate(0); } 20% { transform: rotate(-12deg) scale(1.06); } 40% { transform: rotate(10deg) scale(1.06); } 60% { transform: rotate(-6deg); } 80% { transform: rotate(4deg); } }
-@keyframes gShine { from { transform: translateX(-130%); } to { transform: translateX(130%); } }
+@keyframes gShine { from { background-position: 130% 0; } to { background-position: -30% 0; } }
 @media (prefers-reduced-motion: reduce) { .gh-card .stamp, .gh-card .stamp::after { animation: none !important; } }
 /* cómo funciona: igual que los pasos de la portada */
 .g-steps { margin: 22px 0 0; padding: 16px 8px 14px; border-radius: 16px; background: var(--crema); color: var(--tinta); }
