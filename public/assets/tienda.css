@@ -341,3 +341,6 @@ body.light .wrap { max-width: 1260px; }
 .hb-video { pointer-events: none; }
 .hb-video::-webkit-media-controls, .hb-video::-webkit-media-controls-panel,
 .hb-video::-webkit-media-controls-start-playback-button, .hb-video::-webkit-media-controls-overlay-play-button { display: none !important; -webkit-appearance: none; opacity: 0 !important; }
+.acct-btn { position: relative; }
+.acct-stamps { position: absolute; top: -7px; right: -8px; min-width: 22px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--tostado); color: var(--tinta); font-size: 10.5px; font-weight: 800; display: grid; place-items: center; line-height: 1; box-shadow: 0 0 0 2px #fff; }
+.acct-stamps[hidden] { display: none; }

@@ -240,3 +240,54 @@
 .rw-full-badge { position: absolute; top: 12px; right: -42px; transform: rotate(35deg); background: var(--tinta); color: var(--crema); font: 700 10px/1 "Archivo", sans-serif; letter-spacing: .1em; text-transform: uppercase; padding: 5px 44px; box-shadow: 0 2px 6px rgb(0 0 0 / .2); }
 .rw-full .rw-dots .g { animation: rwWiggle 1s ease-in-out .4s both; }
 .rw-full .rw-dots .g::after { animation: rwShine .9s ease-out 1.1s 2 both; }
+
+/* ---------- pedido en curso ---------- */
+.live { display: grid; gap: 4px; padding: 14px 16px; border-radius: 16px; background: var(--crema); color: var(--tinta); border: 2px solid var(--tostado); text-decoration: none; }
+.live-k { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #8A5528; }
+.live-dot { width: 8px; height: 8px; border-radius: 50%; background: #3E8E41; box-shadow: 0 0 0 0 rgb(62 142 65 / .6); animation: livePulse 1.8s infinite; }
+@keyframes livePulse { 70% { box-shadow: 0 0 0 7px rgb(62 142 65 / 0); } 100% { box-shadow: 0 0 0 0 rgb(62 142 65 / 0); } }
+.live b { font-size: 20px; line-height: 1.2; }
+.live-when { font-size: 14px; color: #554741; }
+.live-bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-top: 6px; }
+.live-bar i { height: 5px; border-radius: 99px; background: #E3DCC4; }
+.live-bar i.on { background: var(--tostado); }
+.live-go { justify-self: end; font-size: 13.5px; font-weight: 700; margin-top: 2px; }
+@media (prefers-reduced-motion: reduce) { .live-dot { animation: none; } }
+/* ---------- secciones de recompensas ---------- */
+.rw-sec { border: 1px solid var(--line); border-radius: 16px; padding: 14px; background: var(--surface); }
+.rw-sec .sec-h { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 8px; }
+.rw-sec .sec-h h2 { font-size: 24px; margin: 0; }
+.favs { display: grid; gap: 8px; }
+.fav { display: flex; align-items: center; gap: 10px; }
+.fav img, .fav-ph { width: 52px; height: 52px; border-radius: 12px; object-fit: cover; background: var(--crema); display: grid; place-items: center; flex: none; }
+.fav-t { flex: 1; display: grid; gap: 1px; min-width: 0; }
+.fav-t b { font-size: 14.5px; line-height: 1.25; }
+.fav-t span { font-size: 13px; color: var(--text-2); }
+.fav-add { flex: none; width: 38px; height: 38px; border-radius: 50%; border: 0; background: var(--tinta); color: var(--crema); font-size: 22px; line-height: 1; cursor: pointer; }
+.fav-add.ok { background: #3E8E41; font-size: 17px; }
+.date-form { display: grid; gap: 8px; margin: 0 0 12px; padding: 12px; border-radius: 12px; background: var(--crema); }
+.date-form[hidden] { display: none; }
+.df-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.df-row .in { flex: 1; min-width: 0; }
+.df-row #dfDay { flex: 0 0 76px; }
+.dates { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.dates li { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
+.dates li:first-child { border-top: 0; }
+.d-ic { width: 38px; height: 38px; border-radius: 10px; background: var(--crema); display: grid; place-items: center; font-size: 18px; flex: none; }
+.dates li > div { flex: 1; display: grid; min-width: 0; }
+.dates b { font-size: 14.5px; }
+.dates small { font-size: 12.5px; color: var(--text-2); }
+.dates-empty { margin: 0; font-size: 13.5px; color: var(--text-2); text-align: center; padding: 8px 0; }
+.rw-hist summary { cursor: pointer; font-weight: 700; font-size: 14.5px; list-style: none; display: flex; justify-content: space-between; }
+.rw-hist summary::after { content: "›"; transform: rotate(90deg); transition: transform .2s; }
+.rw-hist[open] summary::after { transform: rotate(-90deg); }
+.rw-hist summary::-webkit-details-marker { display: none; }
+.hist-list ul { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+.hist-list li { display: flex; gap: 10px; align-items: center; }
+.h-d { flex: none; min-width: 36px; height: 26px; border-radius: 99px; display: grid; place-items: center; font-weight: 800; font-size: 13px; }
+.h-d.plus { background: var(--tostado); color: var(--tinta); }
+.h-d.minus { background: var(--crema); color: #8A5528; }
+.hist-list li div { display: grid; }
+.hist-list b { font-size: 13.5px; }
+.hist-list small { font-size: 12px; color: var(--text-2); }
+.help-foot { text-align: center; margin: 14px 0 0; }

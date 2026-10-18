@@ -176,6 +176,48 @@ async function mailCustomer(o: any, event: string) {
   return true;
 }
 
+// ---------- recordatorios de fechas especiales (cumpleaños de mamá, aniversario…) ----------
+// Se llama una vez al día (pg_cron). Avisa 3 días antes, una sola vez por año.
+const DAYS_BEFORE = 3;
+async function dateReminders() {
+  if (!RESEND_KEY) return { sent: 0 };
+  const t = new Date(Date.now() - 5 * 3600000 + DAYS_BEFORE * 86400000); // fecha de Guayaquil dentro de 3 días
+  const y = t.getUTCFullYear(), m = t.getUTCMonth() + 1, d = t.getUTCDate();
+  const { data: rows } = await db.from("customer_dates").select("id,user_id,label,kind,last_reminded_year")
+    .eq("month", m).eq("day", d).or(`last_reminded_year.is.null,last_reminded_year.lt.${y}`).limit(200);
+  const dayTxt = new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString("es-EC", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
+  let sent = 0;
+  for (const r of rows ?? []) {
+    const { data: c } = await db.from("customers").select("full_name,email").eq("user_id", r.user_id).maybeSingle();
+    const to = c?.email || (await db.auth.admin.getUserById(r.user_id)).data?.user?.email;
+    if (!to) continue;
+    const first = escH(String(c?.full_name || "").split(" ")[0]);
+    const label = escH(r.label);
+    const what = r.kind === "cumple" ? `el cumpleaños de ${label}` : r.kind === "aniversario" ? `su aniversario (${label})` : label;
+    const icon = r.kind === "cumple" ? "🎂" : r.kind === "aniversario" ? "💛" : "📅";
+    const raw = String(r.label).slice(0, 60);
+    const subject = `${icon} En 3 días es ${r.kind === "cumple" ? `el cumpleaños de ${raw}` : r.kind === "aniversario" ? `su aniversario (${raw})` : raw}`;
+    const html = `<!doctype html><html lang="es"><body style="margin:0;background:#F4F1EA;padding:24px 12px;font-family:Arial,Helvetica,sans-serif">
+  <div style="max-width:520px;margin:0 auto;background:#FFFFFF;border-radius:18px;padding:28px 24px;border:1px solid #E6E1D3">
+    <div style="font-size:12px;letter-spacing:3px;color:#C68A4E;font-weight:bold">THE BAKERY SIDE</div>
+    <div style="font-size:44px;margin:14px 0 4px">${icon}</div>
+    <h1 style="margin:0 0 8px;font-size:26px;line-height:1.2;color:#1C1714">Se acerca ${what}</h1>
+    <p style="margin:0;font-size:15px;line-height:1.55;color:#554741">Hola${first ? " " + first : ""}, te recordamos que es el <b>${escH(dayTxt)}</b>. ¿Le enviamos un detalle dulce? Lo llevamos a su puerta con tu tarjeta y tu mensaje.</p>
+    <div style="text-align:center;margin-top:24px"><a href="${SITE}/?regalo=1" style="display:inline-block;background:#1C1714;color:#FFFFFF;text-decoration:none;font-weight:bold;padding:13px 26px;border-radius:12px;font-size:15px">Enviar un regalo</a></div>
+    <p style="margin:24px 0 0;font-size:12px;color:#a39a90;text-align:center">Recibes este recordatorio porque guardaste esta fecha en tu cuenta. Puedes quitarla en <a href="${SITE}/cuenta" style="color:#a39a90">Mi cuenta</a>.</p>
+  </div></body></html>`;
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${RESEND_KEY}`, "Content-Type": "application/json", "Idempotency-Key": `fecha-${r.id}-${y}` },
+      body: JSON.stringify({ from: MAIL_FROM, to: [to], subject, html, tags: [{ name: "evento", value: "fecha_especial" }] }),
+    });
+    if (!res.ok) { console.error("recordatorio", res.status, await res.text()); continue; }
+    await db.from("customer_dates").update({ last_reminded_year: y }).eq("id", r.id);
+    sent++;
+  }
+  return { sent };
+}
+
 async function notify(orderId: string, event: string) {
   const { data: o } = await db.from("orders").select("*, order_items(name,quantity,line_total), riders(full_name)").eq("id", orderId).maybeSingle();
   if (!o) return { sent: 0 };
@@ -224,6 +266,11 @@ Deno.serve(async (req) => {
       const hook = await secret("push_hook");
       if (!hook || req.headers.get("x-hook-secret") !== hook) return json({ error: "No autorizado" }, 401);
       return json(await notify(String(b.order_id), String(b.event)));
+    }
+    if (b.action === "recordatorios") {
+      const hook = await secret("push_hook");
+      if (!hook || req.headers.get("x-hook-secret") !== hook) return json({ error: "No autorizado" }, 401);
+      return json(await dateReminders());
     }
 
     if (b.action === "test") {

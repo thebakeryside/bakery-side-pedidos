@@ -83,6 +83,7 @@ function paneInicio(acc, orders = []) {
   const bday = bd ? bd.text : "Agrega tu cumpleaños en «Mis datos»";
   $("#pane").innerHTML = `
     <div class="rw">
+      ${liveCard(orders)}
       ${fullCard}
       <div class="rw-hero" role="img" aria-label="Tarjeta de sellos: ${n} de ${STAMPS_TOTAL}" style="--gift:${giftAt}s">
         <span class="rw-k">${nRw ? "Tu nueva tarjeta" : "Tu tarjeta de sellos"}</span>
@@ -98,6 +99,9 @@ function paneInicio(acc, orders = []) {
           <a class="btn small wa" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(`Te regalo 3 sellos en The Bakery Side 🧁 Pide aquí: ${link}`)}">Compartir</a>
           <button class="linkbtn" type="button" id="copyRef">Copiar enlace</button></div>
       </div>
+      <section class="rw-sec" id="favBox" hidden></section>
+      <section class="rw-sec" id="datesBox"></section>
+      <details class="rw-sec rw-hist" id="histBox"><summary>Cómo ganaste tus sellos</summary><div class="hist-list"><p class="muted small">Cargando…</p></div></details>
     </div>`;
   // animación de la tarjeta: se repite mientras está a la vista
   const hero = $("#pane .rw-hero");
@@ -105,13 +109,127 @@ function paneInicio(acc, orders = []) {
     let t; const play = () => { hero.classList.remove("play"); void hero.offsetWidth; hero.classList.add("play"); };
     new IntersectionObserver(([e]) => { clearInterval(t); if (e.isIntersecting && document.body.contains(hero)) { play(); t = setInterval(play, 8000); } }, { threshold: 0.5 }).observe(hero);
   }
+  renderFavs(orders); renderDates(); $("#histBox").addEventListener("toggle", renderHist, { once: true });
   $("#copyRef").onclick = () => navigator.clipboard?.writeText(link).then(() => toast("Enlace copiado"), () => toast(link));
   $("#goRate")?.addEventListener("click", () => { tab = "pedidos"; try { sessionStorage.setItem(TAB_KEY, tab); } catch {} render(); });
   $("#toDatos")?.addEventListener("click", () => { tab = "datos"; try { sessionStorage.setItem(TAB_KEY, tab); } catch {} render(); });
 }
 
+// ---------- pedido en curso (arriba de todo) ----------
+const ACTIVE = ["por_confirmar", "confirmado", "preparando", "listo", "en_camino"];
+const STEP_OF = { por_confirmar: 0, confirmado: 0, preparando: 1, listo: 2, en_camino: 3 };
+function liveCard(orders) {
+  const o = orders.find((x) => ACTIVE.includes(x.status) && x.payment_status !== "fallido");
+  if (!o) return "";
+  const when = o.scheduled_for ? `${dayLabel(o.scheduled_for)} · entre ${orderRange(o)}` : `Hoy · llega entre ${orderRange(o)}`;
+  const st = STEP_OF[o.status] ?? 0;
+  return `<a class="live" href="/pedido?t=${o.tracking_token}">
+    <span class="live-k"><i class="live-dot"></i>Tu pedido ${esc(o.code)}</span>
+    <b>${esc(STATUS[o.status])}</b>
+    <span class="live-when tabnum">${esc(when)}</span>
+    <span class="live-bar" aria-hidden="true">${["Confirmado", "Preparando", "Listo", "En camino"].map((l, i) => `<i class="${i <= st ? "on" : ""}"></i>`).join("")}</span>
+    <span class="live-go">Seguir pedido ›</span>
+  </a>`;
+}
+
+// ---------- tus favoritos: lo que más pides, en un toque ----------
+async function renderFavs(orders) {
+  const box = $("#favBox"); if (!box) return;
+  const count = new Map(); // clave del carrito (producto + opciones) → veces
+  for (const o of orders) {
+    if (!(["pagado", "en_revision"].includes(o.payment_status) || o.status === "entregado")) continue;
+    for (const i of o.order_items) {
+      if (!(Number(i.line_total) > 0 && i.product_id)) continue;
+      const ids = (i.options || []).map((x) => x.choice_id).filter(Boolean);
+      const k = ids.length ? `${i.product_id}:${ids.join(".")}` : String(i.product_id);
+      const prev = count.get(k) || { k, id: i.product_id, name: i.name, n: 0 };
+      prev.n += i.quantity; count.set(k, prev);
+    }
+  }
+  const top = [...count.values()].sort((a, b) => b.n - a.n);
+  if (!top.length) return;
+  const { data: prods } = await sb.from("products").select("id,name,price,image_url,active").in("id", [...new Set(top.map((t) => t.id))]);
+  const pm = new Map((prods || []).filter((p) => p.active).map((p) => [p.id, p]));
+  const seen = new Set();
+  const favs = top.filter((t) => pm.has(t.id) && !seen.has(t.id) && seen.add(t.id)).slice(0, 3);
+  if (!favs.length) return;
+  box.hidden = false;
+  box.innerHTML = `<div class="sec-h"><h2 class="display">Tus favoritos</h2><a class="linkbtn" href="/?carrito=1">Ver carrito ›</a></div>
+    <div class="favs">${favs.map((f) => { const p = pm.get(f.id); return `<div class="fav">
+      ${p.image_url ? `<img src="${esc(p.image_url)}" alt="" loading="lazy">` : `<span class="fav-ph">🧁</span>`}
+      <div class="fav-t"><b>${esc(f.name)}</b><span class="tabnum">${money(p.price)}</span></div>
+      <button class="fav-add" type="button" data-fav="${esc(f.k)}" aria-label="Agregar ${esc(f.name)} al carrito">+</button></div>`; }).join("")}</div>`;
+  box.querySelectorAll("[data-fav]").forEach((b) => (b.onclick = () => {
+    let cart = [];
+    try { cart = JSON.parse(localStorage.getItem("tbs_cart") || "[]"); } catch {}
+    const m = new Map(cart.map(([k, q]) => [String(k), q]));
+    m.set(b.dataset.fav, (m.get(b.dataset.fav) || 0) + 1);
+    try { localStorage.setItem("tbs_cart", JSON.stringify([...m])); } catch {}
+    b.textContent = "✓"; b.classList.add("ok"); setTimeout(() => { b.textContent = "+"; b.classList.remove("ok"); }, 1400);
+    toast("Agregado a tu carrito");
+  }));
+}
+
+// ---------- fechas especiales: te avisamos 3 días antes ----------
+const KINDS = { cumple: ["🎂", "Cumpleaños"], aniversario: ["💛", "Aniversario"], otro: ["📅", "Otra fecha"] };
+const MONTHS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+async function renderDates() {
+  const box = $("#datesBox"); if (!box) return;
+  const { data: rows, error } = await sb.from("customer_dates").select("id,label,kind,month,day").order("month").order("day");
+  if (error) { box.hidden = true; return; }
+  const today = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Guayaquil" })); today.setHours(0, 0, 0, 0);
+  const daysTo = (r) => { let n = new Date(today.getFullYear(), r.month - 1, r.day); if (n < today) n = new Date(today.getFullYear() + 1, r.month - 1, r.day); return Math.round((n - today) / 86400000); };
+  const list = (rows || []).map((r) => ({ ...r, left: daysTo(r) })).sort((a, b) => a.left - b.left);
+  box.innerHTML = `<div class="sec-h"><h2 class="display">Fechas especiales</h2><button class="btn small" type="button" id="addDate">+ Agregar</button></div>
+    <p class="muted small" style="margin:0 0 10px">Guarda los cumpleaños y aniversarios de quienes quieres. Te avisamos por correo 3 días antes para enviarles un detalle.</p>
+    <form class="date-form" id="dateForm" hidden novalidate>
+      <div class="df-row"><select class="in" id="dfKind" aria-label="Tipo">${Object.entries(KINDS).map(([k, [i, n]]) => `<option value="${k}">${i} ${n}</option>`).join("")}</select>
+        <input class="in" id="dfLabel" maxlength="60" placeholder="¿De quién? Ej.: Mamá" aria-label="De quién o qué fecha"></div>
+      <div class="df-row"><select class="in" id="dfDay" aria-label="Día">${Array.from({ length: 31 }, (_, i) => `<option>${i + 1}</option>`).join("")}</select>
+        <select class="in" id="dfMonth" aria-label="Mes">${MONTHS.map((m, i) => `<option value="${i + 1}">${m}</option>`).join("")}</select>
+        <button class="btn primary small" type="submit">Guardar</button></div>
+    </form>
+    ${list.length ? `<ul class="dates">${list.map((r) => `<li class="confirm-host"><span class="d-ic" aria-hidden="true">${KINDS[r.kind]?.[0] || "📅"}</span>
+      <div><b>${esc(r.label)}</b><small>${r.day} de ${MONTHS[r.month - 1]} · ${r.left === 0 ? "¡es hoy!" : r.left === 1 ? "mañana" : `faltan ${r.left} días`}</small></div>
+      ${r.left <= 7 ? `<a class="btn small primary" href="/?regalo=1">Enviar regalo</a>` : ""}
+      <button class="linkbtn" type="button" data-deldate="${r.id}" aria-label="Quitar ${esc(r.label)}">Quitar</button></li>`).join("")}</ul>`
+      : `<p class="dates-empty">🎁 Aún no tienes fechas guardadas.</p>`}`;
+  $("#addDate").onclick = () => { const f = $("#dateForm"); f.hidden = !f.hidden; if (!f.hidden) $("#dfLabel").focus(); };
+  $("#dateForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const label = $("#dfLabel").value.trim();
+    if (!label) { $("#dfLabel").focus(); return toast("Escribe de quién es la fecha."); }
+    const month = Number($("#dfMonth").value), day = Number($("#dfDay").value);
+    if (day > new Date(2024, month, 0).getDate()) return toast("Revisa el día: ese mes no tiene tantos días.");
+    const u = await currentUser();
+    const { error: e2 } = await sb.from("customer_dates").insert({ user_id: u.id, label, kind: $("#dfKind").value, month, day });
+    if (e2) return toast(/20 fechas/.test(e2.message) ? "Puedes guardar hasta 20 fechas." : "No se pudo guardar. Intenta de nuevo.");
+    toast("Fecha guardada · te avisaremos 3 días antes"); renderDates();
+  };
+  box.querySelectorAll("[data-deldate]").forEach((b) => (b.onclick = async () => {
+    const { error: e3 } = await sb.from("customer_dates").delete().eq("id", Number(b.dataset.deldate));
+    if (e3) return toast("No se pudo quitar.");
+    renderDates();
+  }));
+}
+
+// ---------- historial de sellos ----------
+const REASON = { bienvenida: "Regalo de bienvenida", referido_nuevo: "Llegaste invitado por un amigo", referido_invita: "Tu amigo hizo su primer pedido", pedido: "Pedido", resena: "Calificaste tu pedido", premio: "Tarjeta llena → postre sorpresa", ajuste: "Ajuste de The Bakery Side" };
+async function renderHist() {
+  const box = $("#histBox .hist-list"); if (!box) return;
+  const { data, error } = await sb.from("stamp_ledger").select("delta,reason,created_at,order_id").order("created_at", { ascending: false }).limit(60);
+  if (error) { box.innerHTML = `<p class="muted small">No pudimos cargar tu historial.</p>`; return; }
+  const ids = [...new Set((data || []).map((r) => r.order_id).filter(Boolean))];
+  const { data: os } = ids.length ? await sb.from("orders").select("id,code").in("id", ids) : { data: [] };
+  const code = new Map((os || []).map((o) => [o.id, o.code]));
+  box.innerHTML = (data || []).length ? `<ul>${data.map((r) => `<li><span class="h-d ${r.delta > 0 ? "plus" : "minus"}">${r.delta > 0 ? "+" : ""}${r.delta}</span>
+    <div><b>${esc(REASON[r.reason] || r.reason)}${r.reason === "pedido" && code.get(r.order_id) ? ` ${esc(code.get(r.order_id))}` : ""}</b><small>${new Date(r.created_at).toLocaleDateString("es-EC", { day: "numeric", month: "short", year: "numeric", timeZone: "America/Guayaquil" })}</small></div></li>`).join("")}</ul>`
+    : `<p class="muted small">Aún no tienes movimientos.</p>`;
+}
+
 const STATE_COLOR = { entregado: "ok", cancelado: "bad", pendiente_pago: "warn", por_confirmar: "warn" };
 async function panePedidos(_acc, orders) {
+  await cfgReady; // número de WhatsApp para «¿Ayuda?»
   const shown = orders.filter((o) => o.status !== "pendiente_pago" || Date.now() - new Date(o.created_at) < 86400000);
   if (!shown.length) {
     $("#pane").innerHTML = `<div class="panel"><p class="muted" style="margin:0">Aún no tienes pedidos. Tu primer pedido de $10 o más ya suma sellos.</p><a class="btn primary" href="/" style="margin-top:12px">Ver el menú</a></div>`;
@@ -146,9 +264,10 @@ async function panePedidos(_acc, orders) {
           : `<button type="button" class="chip-btn" data-rate="${i.product_id}" data-name="${esc(nm)}" data-today="${today(o) ? 1 : ""}">★ Calificar ${esc(nm)}</button>`; }).join("")}</div>${(() => { const ps = [...new Set(items.filter((i) => i.product_id && Number(i.line_total) > 0).map((i) => i.product_id))]; const done = ps.filter((id) => rev.has(id)).length;
         return stamped.has(o.code) ? `<p class="rate-prog ok">✓ Ganaste 1 sello por calificar este pedido</p>` : !today(o) ? "" : `<p class="rate-prog">Calificaste ${done} de ${ps.length} · ${done === ps.length ? "te sumamos el sello al publicar tus reseñas" : "completa todos hoy y gana 1 sello"}</p>`; })()}<div class="rate-box"></div>` : ""}
       <div class="bot"><b class="tabnum">${money(o.total)}</b><span class="acts">
+        <a class="btn small ghost help" href="${waHelp(o.code)}" target="_blank" rel="noopener" aria-label="Ayuda con el pedido ${esc(o.code)}">¿Ayuda?</a>
         <a class="btn small ghost" href="/pedido?t=${o.tracking_token}">Ver</a>
         ${active(o) ? `<a class="btn small primary" href="/pedido?t=${o.tracking_token}">Seguir pedido</a>` : `<button class="btn small primary" type="button" data-again="${o.code}">Volver a pedir</button>`}</span></div>
-    </article>`; }).join("")}</div>`;
+    </article>`; }).join("")}<p class="muted small help-foot">¿Tienes dudas? Revisa las <a href="/#faq">preguntas frecuentes</a> o escríbenos por <a href="${waHelp("")}" target="_blank" rel="noopener">WhatsApp</a>.</p></div>`;
   $("#pane").querySelectorAll("[data-rate]").forEach((b) => (b.onclick = () => {
     reviewForm(b.closest(".oc").querySelector(".rate-box"), Number(b.dataset.rate), b.dataset.name, () => { b.outerHTML = `<span class="rated">⏳ En revisión · ${esc(b.dataset.name)}</span>`; }, Boolean(b.dataset.today));
   }));
@@ -371,4 +490,6 @@ sb.auth.onAuthStateChange((ev) => {
 });
 
 mountSocial();
-api("config").then((c) => mountSocial(c.whatsapp)).catch(() => {});
+let WA = "";
+const cfgReady = api("config").then((c) => { WA = c.whatsapp || ""; mountSocial(c.whatsapp); }).catch(() => {});
+const waHelp = (code) => { const d = String(WA).replace(/\D/g, "").replace(/^0/, "593"); return d ? `https://wa.me/${d}?text=${encodeURIComponent(code ? `Hola The Bakery Side, necesito ayuda con mi pedido ${code}` : "Hola The Bakery Side, tengo una consulta")}` : "/#faq"; };

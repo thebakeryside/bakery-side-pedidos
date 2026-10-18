@@ -81,6 +81,11 @@ async function init() {
   // estrellas de cada producto (llegan después para no frenar el menú)
   loadRatings().then((r) => { state.ratings = r; state.products.forEach((p) => updateCard(p.id)); });
   await refreshAccount();
+  if (new URLSearchParams(location.search).get("regalo") === "1") {
+    try { sessionStorage.setItem("tbs_regalo", "1"); } catch {}
+    history.replaceState(null, "", "/");
+    toast("🎁 Elige el regalo: al pagar ya estará marcado para enviarlo con tu tarjeta.");
+  }
   if (new URLSearchParams(location.search).get("carrito") === "1") { history.replaceState(null, "", "/"); if (state.cart.size) openCart(); }
   if (new URLSearchParams(location.search).get("checkout") === "1" && state.cart.size) {
     history.replaceState(null, "", "/"); openCheckout();
@@ -116,6 +121,9 @@ async function refreshAccount() {
   const first = (state.acct?.customer?.full_name || "").split(" ")[0];
   $("#acctTxt").textContent = first ? `Hola, ${first}` : "Mi cuenta";
   b.title = state.acct ? `Tu cuenta: ${state.acct.stamps} de 8 sellos` : "Entra a tu cuenta";
+  // sellos siempre a la vista junto a «Mi cuenta» (🎁 si ya tiene un postre sorpresa)
+  const chip = $("#acctStamps");
+  if (chip) { chip.hidden = !state.acct; if (state.acct) chip.textContent = state.acct.rewards_available ? "🎁" : `${Math.min(8, state.acct.stamps)}/8`; }
   if (!$("#checkout").hidden) { renderAcctBox(); renderPerks(); renderSummary(); }
 }
 
@@ -388,6 +396,8 @@ $("#backToMenu").onclick = backToMenu;
 // ---------- checkout ----------
 let mapCtl = null;
 function openCheckout() {
+  // llegó desde el recordatorio de una fecha especial: el pedido ya va como regalo
+  try { if (sessionStorage.getItem("tbs_regalo") === "1") { sessionStorage.removeItem("tbs_regalo"); if (!$("#isGift").checked) { $("#isGift").checked = true; $("#isGift").dispatchEvent(new Event("change")); } } } catch {}
   $("#cart").classList.remove("open");
   $(".layout").hidden = true; $(".intro").hidden = true; $("#checkout").hidden = false; $("#mobileBar").hidden = true;
   document.body.classList.add("in-checkout");
