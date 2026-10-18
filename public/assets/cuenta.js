@@ -62,21 +62,36 @@ function paneInicio(acc, orders = []) {
   const link = `${location.origin}/?ref=${c.referral_code}`;
   const monthName = (m) => new Date(2026, m - 1, 1).toLocaleDateString("es-EC", { month: "long" });
   const n = Math.max(0, Math.min(STAMPS_TOTAL, acc.stamps)), left = STAMPS_TOTAL - n;
-  const dots = Array.from({ length: STAMPS_TOTAL }, (_, i) => i === STAMPS_TOTAL - 1 ? `<span class="g ${n >= STAMPS_TOTAL ? "on" : ""}" aria-hidden="true">🎁</span>` : i < n ? `<span class="on" aria-hidden="true"><img src="/assets/brand/s-tinta.svg" alt=""></span>` : `<span aria-hidden="true">${i + 1}</span>`).join("");
-  const title = left === 0 ? "¡Completaste tu tarjeta!" : left === 1 ? "¡Te falta 1 sello para tu postre sorpresa!" : `Te faltan ${left} sellos para tu postre sorpresa`;
+  // sellos ganados caen uno a uno; los que faltan se ven desvanecidos (para antojar); el regalo se mueve y brilla
+  const S_IMG = `<img src="/assets/brand/s-tinta.svg" alt="">`;
+  const dots = Array.from({ length: STAMPS_TOTAL }, (_, i) => i === STAMPS_TOTAL - 1 ? `<span class="g ${n >= STAMPS_TOTAL ? "on" : ""}" aria-hidden="true">🎁</span>`
+    : i < n ? `<span class="on" style="--d:${0.3 + i * 0.32}s" aria-hidden="true">${S_IMG}</span>` : `<span class="ghost" aria-hidden="true">${S_IMG}</span>`).join("");
+  const giftAt = 0.3 + Math.max(n, 1) * 0.32 + 0.4;
+  const nRw = acc.rewards_available || 0;
+  const title = nRw && n === 0 ? "Vamos por el siguiente: te faltan 8 sellos" : left === 1 ? "¡Te falta 1 sello para tu postre sorpresa!" : `Te faltan ${left} sellos para tu postre sorpresa`;
+  // tarjeta llena: se ve como una cartilla completa, con su postre listo para usar
+  const fullDots = Array.from({ length: STAMPS_TOTAL }, (_, i) => i === STAMPS_TOTAL - 1 ? `<span class="g on" aria-hidden="true">🎁</span>` : `<span class="on" aria-hidden="true">${S_IMG}</span>`).join("");
+  const fullCard = nRw ? `<div class="rw-full" role="img" aria-label="Tarjeta completa: tienes ${nRw === 1 ? "un postre sorpresa" : `${nRw} postres sorpresa`} listo para usar">
+      <span class="rw-full-badge">¡Completa!</span>
+      <span class="rw-k">Tarjeta llena${nRw > 1 ? ` · tienes ${nRw}` : ""}</span>
+      <b class="rw-full-t">¡Ganaste un postre sorpresa!</b>
+      <div class="rw-dots full">${fullDots}</div>
+      <p>Se agrega gratis a tu próximo pedido, con cualquier producto. Cocina elige algo especial para ti.</p>
+      <em>Listo para usar</em>
+    </div>` : "";
   const bd = birthdayInfo(c.birthday, acc.birthday_available, first);
   const bday = bd ? bd.text : "Agrega tu cumpleaños en «Mis datos»";
   $("#pane").innerHTML = `
     <div class="rw">
-      <div class="rw-hero" role="img" aria-label="Tarjeta de sellos: ${n} de ${STAMPS_TOTAL}">
-        <span class="rw-k">Tu tarjeta de sellos</span>
+      ${fullCard}
+      <div class="rw-hero" role="img" aria-label="Tarjeta de sellos: ${n} de ${STAMPS_TOTAL}" style="--gift:${giftAt}s">
+        <span class="rw-k">${nRw ? "Tu nueva tarjeta" : "Tu tarjeta de sellos"}</span>
         <b class="rw-t">${title}</b>
         <div class="rw-dots">${dots}</div>
         <div class="rw-bar"><i style="width:${(n / STAMPS_TOTAL) * 100}%"></i></div>
         <small>1 sello por cada $10 · un pedido de $20 te da 2</small>
       </div>
       ${orders.some((o) => o.status === "entregado" && isTodayLocal(o.delivered_at)) ? `<button type="button" class="rate-banner as-btn" id="goRate"><b>🎁 HOY: califica todo tu pedido y gana 1 sello</b><span>Califica lo que ya probaste en «Mis pedidos» ›</span></button>` : ""}
-      ${acc.rewards_available ? Array.from({ length: Math.min(3, acc.rewards_available) }, () => `<div class="rw-ticket"><div class="l" aria-hidden="true">🎁</div><div class="r"><b>Postre sorpresa</b><span>Se agrega gratis con tu próximo pedido (con cualquier producto). Cocina elige algo especial para ti.</span><em>Listo para usar</em></div></div>`).join("") : ""}
       <div class="rw-tiles">
         <div class="rw-tile ${acc.birthday_available ? "ready" : ""}"><span class="ic" aria-hidden="true">🎂</span>${bd ? `<span class="bd-count">${bd.big === "🎉" ? "🎉" : `<small>Faltan</small>${bd.big}`}</span>` : ""}<b>${bd?.title || "$4 en tu cumpleaños"}</b><span>${bday}</span>${c.birthday ? "" : `<button class="btn small" type="button" id="toDatos">Agregar</button>`}</div>
         <div class="rw-tile"><span class="ic" aria-hidden="true">💌</span><b>Invita a un amigo</b><span>Empieza con 3 sellos y tú ganas 1 cuando pague su primer pedido</span>
@@ -84,6 +99,12 @@ function paneInicio(acc, orders = []) {
           <button class="linkbtn" type="button" id="copyRef">Copiar enlace</button></div>
       </div>
     </div>`;
+  // animación de la tarjeta: se repite mientras está a la vista
+  const hero = $("#pane .rw-hero");
+  if (hero && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    let t; const play = () => { hero.classList.remove("play"); void hero.offsetWidth; hero.classList.add("play"); };
+    new IntersectionObserver(([e]) => { clearInterval(t); if (e.isIntersecting && document.body.contains(hero)) { play(); t = setInterval(play, 8000); } }, { threshold: 0.5 }).observe(hero);
+  }
   $("#copyRef").onclick = () => navigator.clipboard?.writeText(link).then(() => toast("Enlace copiado"), () => toast(link));
   $("#goRate")?.addEventListener("click", () => { tab = "pedidos"; try { sessionStorage.setItem(TAB_KEY, tab); } catch {} render(); });
   $("#toDatos")?.addEventListener("click", () => { tab = "datos"; try { sessionStorage.setItem(TAB_KEY, tab); } catch {} render(); });

@@ -211,3 +211,32 @@
 .g-perks b { font-size: 14px; }
 .g-perks small { font-size: 12.5px; color: var(--text-2); }
 .g-guest { margin: 16px 0 0; text-align: center; }
+
+/* ---------- Recompensas: tarjeta animada y tarjeta llena ---------- */
+.rw-dots span { position: relative; }
+.rw-dots .ghost { border: 2px dashed rgb(198 138 78 / .35); background: rgb(198 138 78 / .08); }
+.rw-dots .ghost img { width: 42%; height: auto; max-height: 62%; transform: rotate(-10deg); opacity: .16; filter: invert(1) sepia(1) saturate(2) hue-rotate(-10deg); }
+.rw-hero.play .rw-dots .on { animation: rwStamp .55s cubic-bezier(.2, 1.5, .45, 1) var(--d) both; }
+@keyframes rwStamp { 0% { transform: scale(1.9) rotate(-35deg); opacity: 0; } 60% { opacity: 1; } 100% { transform: none; opacity: 1; } }
+.rw-hero.play .rw-dots .ghost img { animation: rwGhost 2.4s ease-in-out var(--gift) both; }
+@keyframes rwGhost { 0%, 100% { opacity: .16; } 50% { opacity: .38; } }
+.rw-dots .g { overflow: hidden; }
+.rw-dots .g::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: linear-gradient(115deg, transparent 38%, rgb(255 255 255 / .85) 50%, transparent 62%) no-repeat; background-size: 300% 100%; background-position: 130% 0; pointer-events: none; }
+.rw-hero.play .rw-dots .g { animation: rwWiggle .9s ease-in-out var(--gift) both; }
+.rw-hero.play .rw-dots .g::after { animation: rwShine .8s ease-out calc(var(--gift) + .7s) both; }
+@keyframes rwWiggle { 0%, 100% { transform: rotate(0); } 20% { transform: rotate(-12deg) scale(1.08); } 40% { transform: rotate(10deg) scale(1.08); } 60% { transform: rotate(-6deg); } 80% { transform: rotate(4deg); } }
+@keyframes rwShine { from { background-position: 130% 0; } to { background-position: -30% 0; } }
+@media (prefers-reduced-motion: reduce) { .rw-dots span, .rw-dots span::after, .rw-dots img { animation: none !important; } }
+/* tarjeta llena (premio listo) */
+.rw-full { position: relative; overflow: hidden; background: var(--crema); color: var(--tinta); border: 2px solid var(--tostado); border-radius: 18px; padding: 18px; display: grid; gap: 6px; box-shadow: 0 10px 28px -14px rgb(198 138 78 / .7); }
+.rw-full::before { content: ""; position: absolute; inset: 7px; border: 1.5px dashed rgb(28 23 20 / .16); border-radius: 13px; pointer-events: none; }
+.rw-full .rw-k { color: #8A5528; }
+.rw-full-t { font-size: 22px; line-height: 1.2; padding-right: 54px; }
+.rw-full .rw-dots { max-width: 420px; }
+.rw-full .rw-dots .on { background: var(--tostado); border-color: var(--tostado); }
+.rw-full .rw-dots .g.on { background: var(--tinta); border-color: var(--tinta); }
+.rw-full p { margin: 4px 0 0; font-size: 13.5px; color: #554741; line-height: 1.4; }
+.rw-full em { justify-self: start; font-style: normal; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; background: var(--tinta); color: var(--crema); border-radius: 99px; padding: 4px 10px; margin-top: 4px; }
+.rw-full-badge { position: absolute; top: 12px; right: -42px; transform: rotate(35deg); background: var(--tinta); color: var(--crema); font: 700 10px/1 "Archivo", sans-serif; letter-spacing: .1em; text-transform: uppercase; padding: 5px 44px; box-shadow: 0 2px 6px rgb(0 0 0 / .2); }
+.rw-full .rw-dots .g { animation: rwWiggle 1s ease-in-out .4s both; }
+.rw-full .rw-dots .g::after { animation: rwShine .9s ease-out 1.1s 2 both; }
