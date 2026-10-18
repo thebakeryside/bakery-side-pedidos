@@ -123,7 +123,7 @@ async function refreshAccount() {
   b.title = state.acct ? `Tu cuenta: ${state.acct.stamps} de 8 sellos` : "Entra a tu cuenta";
   // sellos siempre a la vista junto a «Mi cuenta» (🎁 si ya tiene un postre sorpresa)
   const chip = $("#acctStamps");
-  if (chip) { chip.hidden = !state.acct; if (state.acct) chip.textContent = state.acct.rewards_available ? "🎁" : `${Math.min(8, state.acct.stamps)}/8`; }
+  if (chip) { chip.hidden = !state.acct; if (state.acct) chip.textContent = `${state.acct.rewards_available ? "🎁 " : ""}${Math.min(8, state.acct.stamps)}/8`; }
   if (!$("#checkout").hidden) { renderAcctBox(); renderPerks(); renderSummary(); }
 }
 
