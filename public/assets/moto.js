@@ -43,7 +43,7 @@ function render() {
 function draw() {
   const active = orders.filter((o) => o.status !== "entregado" && o.status !== "cancelado");
   const done = orders.filter((o) => o.status === "entregado");
-  const earned = done.reduce((s, o) => s + Number(o.delivery_fee), 0);
+  const earned = done.reduce((s, o) => s + Number(o.rider_fee ?? o.delivery_fee), 0); // con envío gratis el motorizado igual gana el envío completo
   $("#view").innerHTML = `
     <div class="stats"><div><b>${active.length}</b>por entregar</div><div><b>${done.length}</b>entregadas hoy</div><div><b>${money(earned)}</b>ganado en envíos</div></div>
     ${active.length ? `<div class="cards">${active.map(card).join("")}</div>` : `<div class="panel"><p class="muted">No tienes entregas pendientes. Cuando cocina te asigne una, aparecerá aquí.</p></div>`}
@@ -71,7 +71,7 @@ function card(o) {
       <span>${esc(o.reference || "Sin referencia")}</span>
       <span class="lbl" style="margin-top:6px">${o.status === "entregado" ? "" : o.scheduled_for ? "Entrega agendada" : "Debe llegar entre"}</span>
       <span class="time tabnum">${esc(t)}</span>
-      <span class="small">${Number(o.distance_km).toFixed(1)} km · ganas ${money(o.delivery_fee)} · ya está pagado, no cobres nada</span>
+      <span class="small">${Number(o.distance_km).toFixed(1)} km · ganas ${money(o.rider_fee ?? o.delivery_fee)} · ya está pagado, no cobres nada</span>
     </div>
     <div class="navs">
       <a class="btn small" href="https://www.google.com/maps/dir/?api=1&destination=${o.lat},${o.lng}" target="_blank" rel="noopener">Google Maps</a>

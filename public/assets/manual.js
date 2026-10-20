@@ -168,7 +168,9 @@ const totalNow = () => subtotal() + (feeNow() || 0);
 const setDep75 = () => { const t = totalNow(); $("#mDep").value = t ? (Math.round(t * 75) / 100).toFixed(2) : ""; };
 const depNow = () => Math.round(Number($("#mDep")?.value || 0) * 100) / 100;
 const isPickup = () => Boolean($('input[name="mMode"][value="pickup"]')?.checked);
-const feeNow = () => (isPickup() ? 0 : st.quote?.delivery_fee);
+// Envío gratis desde el monto de Ajustes (hasta los km cubiertos; más lejos, solo la diferencia). Igual que en el servidor.
+const freeShip = () => { const m = Number(st.cfg?.free_ship?.min || 0); return !isPickup() && st.quote && m > 0 && subtotal() >= m - 1e-9; };
+const feeNow = () => (isPickup() ? 0 : st.quote ? (freeShip() ? Number(st.quote.promo_fee ?? 0) : st.quote.delivery_fee) : undefined);
 const kId = (k) => Number(String(k).split(":")[0]);
 const kOpts = (k) => (String(k).split(":")[1] || "").split(".").filter(Boolean).map(Number);
 const choice = (cid) => { for (const gs of Object.values(st.opts)) for (const g of gs) { const c = g.option_choices.find((x) => x.id === cid); if (c) return c; } return null; };
@@ -181,7 +183,7 @@ function drawSum() {
   const lines = [...st.cart].map(([k, q]) => `<div class="line"><span>${q} × ${esc(lName(k))}</span><span class="tabnum">${money(lPrice(k) * q)}</span></div>`);
   const fee = feeNow();
   $("#mSum").innerHTML = lines.length
-    ? `${lines.join("")}<div class="line"><span>${isPickup() ? "Retira en la cocina" : "Envío"}</span><span class="tabnum">${fee != null ? money(fee) : "—"}</span></div><div class="line total"><span>Total</span><span class="tabnum">${money(subtotal() + (fee || 0))}</span></div>`
+    ? `${lines.join("")}<div class="line"><span>${isPickup() ? "Retira en la cocina" : freeShip() ? `Envío gratis (desde ${money(st.cfg.free_ship.min)})` : "Envío"}</span><span class="tabnum">${fee != null ? (freeShip() ? `<s class="muted">${money(st.quote.delivery_fee)}</s> ${money(fee)}` : money(fee)) : "—"}</span></div><div class="line total"><span>Total</span><span class="tabnum">${money(subtotal() + (fee || 0))}</span></div>`
     : `<p class="muted small" style="margin:10px 0 0">Agrega productos.</p>`;
   const paid = $('input[name="mPay"][value="paid"]')?.checked;
   const t = subtotal() + (fee || 0);
@@ -294,7 +296,7 @@ function done(res, body, paid) {
   const pickTxt = k?.lat ? `Retiras en nuestra cocina: https://maps.google.com/?q=${k.lat},${k.lng}` : "Retiras en nuestra cocina";
   const whenTxt = body.pickup ? (body.scheduled_for ? `Retiro: ${when(body.scheduled_for)}\n${pickTxt}` : pickTxt)
     : body.scheduled_for ? `Entrega: ${when(body.scheduled_for)}` : st.quote?.eta_if_now ? `Llega aprox. a las ${hhmm(st.quote.eta_if_now)}` : "";
-  const msg = `¡Hola ${first}! 🧁 Tu pedido ${res.code} en The Bakery Side:\n${lines}\n${body.pickup ? "" : `Envío: ${money(res.delivery_fee)}\n`}Total: ${money(res.total)}\n${whenTxt}\n\n` +
+  const msg = `¡Hola ${first}! 🧁 Tu pedido ${res.code} en The Bakery Side:\n${lines}\n${body.pickup ? "" : `Envío: ${res.delivery_promo && !Number(res.delivery_fee) ? "¡gratis! 🎁" : money(res.delivery_fee)}\n`}Total: ${money(res.total)}\n${whenTxt}\n\n` +
     (res.deposit != null ? `Recibimos tu anticipo de ${money(res.deposit)}, ¡gracias! 🎉 El saldo de ${money(res.balance_due)} se paga el día del evento, antes de la entrega.\nSigue tu pedido aquí: ${link}`
       : paid ? `¡Pago recibido, gracias! Sigue tu pedido aquí: ${link}` : `Paga aquí con tarjeta, transferencia, PeiGo o DeUna y sigue tu pedido: ${link}`);
   $("#mForm").hidden = true;

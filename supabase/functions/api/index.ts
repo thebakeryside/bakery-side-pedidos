@@ -32,6 +32,8 @@ type Settings = {
   exceptions: Exception[];
   kitchen_lat: number; kitchen_lng: number; kitchen_address: string;
   fee_base: number; fee_included_km: number; fee_per_km: number; fee_round_to: number;
+  fee_break_km: number | null; fee_per_km_far: number | null;
+  free_ship_min: number; free_ship_max_km: number; welcome_ship_min: number;
   max_km: number; slot_minutes: number; slot_capacity: number;
   whatsapp_number: string | null; bank_info: string | null;
   map_provider: "osm" | "google"; route_factor: number;
@@ -44,6 +46,11 @@ async function getSettings(): Promise<Settings> {
   for (const k of ["fee_base", "fee_included_km", "fee_per_km", "fee_round_to", "max_km", "route_factor", "reward_max_value"]) {
     // numeric llega como string
     (data as Record<string, unknown>)[k] = Number((data as Record<string, unknown>)[k]);
+  }
+  // campos del envío en dos tramos y envío gratis (pueden venir vacíos)
+  for (const k of ["fee_break_km", "fee_per_km_far", "free_ship_min", "free_ship_max_km", "welcome_ship_min"]) {
+    const v = (data as Record<string, unknown>)[k];
+    (data as Record<string, unknown>)[k] = v == null ? null : Number(v);
   }
   // Días especiales (feriados) de hoy en adelante; si la tabla aún no existe, se ignora
   const ex = await db.from("store_exceptions").select("*").gte("day", localDay(new Date(Date.now() - 86400000))).limit(200);
@@ -107,9 +114,34 @@ async function routeKm(s: Settings, lat: number, lng: number): Promise<{ km: num
   }
   return { km: haversineKm(s.kitchen_lat, s.kitchen_lng, lat, lng) * s.route_factor, source: "linea_recta" };
 }
+// Envío = base (cubre los km incluidos) + precio por km hasta el corte + precio por km lejano después del corte
 function feeFor(km: number, s: Settings) {
-  const raw = Math.max(s.fee_base, s.fee_base + s.fee_per_km * Math.max(km - s.fee_included_km, 0));
+  const cut = s.fee_break_km != null && s.fee_break_km > 0 ? Math.max(s.fee_break_km, s.fee_included_km) : Infinity;
+  const near = Math.max(Math.min(km, cut) - s.fee_included_km, 0);
+  const far = Math.max(km - cut, 0);
+  const raw = s.fee_base + s.fee_per_km * near + (s.fee_per_km_far ?? s.fee_per_km) * far;
   return Math.round(Math.ceil(raw / s.fee_round_to - 1e-9) * s.fee_round_to * 100) / 100;
+}
+// Lo que paga el cliente cuando su envío es gratis: nada hasta free_ship_max_km; más lejos, solo la diferencia
+function promoFee(km: number, s: Settings) {
+  const cap = Number(s.free_ship_max_km ?? 0);
+  if (!(cap > 0)) return 0;
+  return Math.max(0, Math.round((feeFor(km, s) - feeFor(Math.min(km, cap), s)) * 100) / 100);
+}
+// ¿Este pedido tiene envío gratis? net = productos menos descuentos
+function shippingPromo(net: number, s: Settings, welcome: boolean): string | null {
+  const min = Number(s.free_ship_min ?? 0), wmin = Number(s.welcome_ship_min ?? 0);
+  if (min > 0 && net >= min - 1e-9) return "desde_monto";
+  if (welcome && wmin > 0 && net >= wmin - 1e-9) return "primer_pedido";
+  return null;
+}
+// Primer envío gratis: cliente con cuenta que todavía no tiene pedidos pagados
+async function welcomeEligible(uid: string | null | undefined, s: Settings) {
+  if (!uid || !(Number(s.welcome_ship_min ?? 0) > 0)) return false;
+  const { count, error } = await db.from("orders").select("id", { count: "exact", head: true })
+    .eq("user_id", uid).in("payment_status", ["pagado", "en_revision"]);
+  if (error) return false;
+  return (count ?? 0) === 0;
 }
 const travelMinutes = (km: number) => Math.max(8, Math.round(km / 25 * 60 + 5)); // 25 km/h en ciudad + 5 min de entrega
 
@@ -120,7 +152,7 @@ async function quote(s: Settings, lat: number, lng: number) {
   if (km > s.max_km) {
     fail(`Tu ubicación está a ${km.toFixed(1)} km. Para entregas de más de ${s.max_km} km escríbenos por WhatsApp.`);
   }
-  return { km: Math.round(km * 100) / 100, fee: feeFor(km, s), travel_min: travelMinutes(km), source };
+  return { km: Math.round(km * 100) / 100, fee: feeFor(km, s), promo_fee: promoFee(km, s), travel_min: travelMinutes(km), source };
 }
 
 // ---------- pedido ----------
@@ -398,7 +430,11 @@ async function makeOrder(b: any, cust: Record<string, any> | null, staff: { paid
     }
     // Retiro en local (solo pedidos que registra cocina por WhatsApp): sin envío ni mapa
     const pickup = Boolean(staff && b.pickup);
-    const q = pickup ? { km: 0, fee: 0, travel_min: 0 } : await quote(s, Number(b.lat), Number(b.lng));
+    const q = pickup ? { km: 0, fee: 0, promo_fee: 0, travel_min: 0 } : await quote(s, Number(b.lat), Number(b.lng));
+    // Envío gratis desde un monto (tienda y WhatsApp) o primer pedido con cuenta (solo tienda; en dos entregas, solo la primera)
+    const welcome = !staff && !b._no_welcome && await welcomeEligible(cust?.user_id, s);
+    const promo = pickup ? null : shippingPromo(cart.subtotal - discount, s, welcome);
+    const fee = promo ? q.promo_fee : q.fee;
     const payExtra = !staff && b.payment_method === "transferencia" ? Number(s.transfer_extra_minutes ?? 5) : 0;
     const sched = await validateSchedule(s, b.scheduled_for || null, cart.prep, cart.lead, q.travel_min, payExtra, Boolean(staff));
     const limited = checkStock(cart, localDay(sched.scheduled_for ? new Date(sched.scheduled_for) : new Date()));
@@ -407,7 +443,7 @@ async function makeOrder(b: any, cust: Record<string, any> | null, staff: { paid
     const address = pickup ? "Retiro en cocina (pick up)" : clean(b.address, 200) || fail("Escribe la dirección de entrega.");
     const invoiceWith = b.invoice_type === "con_datos";
     if (invoiceWith && !/^\d{10}(\d{3})?$/.test(clean(b.invoice_id_number, 13))) fail("La cédula debe tener 10 dígitos o el RUC 13.");
-    const total = Math.round((cart.subtotal - discount + q.fee) * 100) / 100;
+    const total = Math.round((cart.subtotal - discount + fee) * 100) / 100;
     let deposit: number | null = null; // anticipo de un evento (solo cocina/master)
     if (staff?.deposit != null) {
       deposit = Math.round(Number(staff.deposit) * 100) / 100;
@@ -425,7 +461,7 @@ async function makeOrder(b: any, cust: Record<string, any> | null, staff: { paid
       address, reference: clean(b.reference, 200) || null,
       lat: pickup ? Number(s.kitchen_lat) : Number(b.lat), lng: pickup ? Number(s.kitchen_lng) : Number(b.lng), distance_km: q.km,
       scheduled_for: sched.scheduled_for, eta: sched.eta.toISOString(), prep_minutes: cart.prep,
-      subtotal: cart.subtotal, delivery_fee: q.fee, total,
+      subtotal: cart.subtotal, delivery_fee: fee, rider_fee: q.fee, delivery_promo: promo, total,
       payment_method: method, payment_status: "pendiente", status: "pendiente_pago",
       invoice_type: invoiceWith ? "con_datos" : "consumidor_final",
       invoice_id_number: invoiceWith ? clean(b.invoice_id_number, 13) : null,
@@ -443,6 +479,7 @@ async function makeOrder(b: any, cust: Record<string, any> | null, staff: { paid
     let ins = await db.from("orders").insert(row).select().single();
     if (ins.error && /customer_email/.test(ins.error.message)) { delete row.customer_email; ins = await db.from("orders").insert(row).select().single(); }
     if (ins.error && /channel/.test(ins.error.message)) { delete row.channel; ins = await db.from("orders").insert(row).select().single(); }
+    if (ins.error && /rider_fee|delivery_promo/.test(ins.error.message)) { delete row.rider_fee; delete row.delivery_promo; ins = await db.from("orders").insert(row).select().single(); }
     if (ins.error) throw ins.error;
     const o = ins.data;
     const { error: e2 } = await db.from("order_items").insert(cart.lines.map((l) => ({ ...l, order_id: o.id })));
@@ -473,7 +510,7 @@ async function makeOrder(b: any, cust: Record<string, any> | null, staff: { paid
       }).eq("user_id", cust.user_id);
     }
 
-    const out: Record<string, unknown> = { code: o.code, tracking_token: o.tracking_token, total, delivery_fee: q.fee, subtotal: cart.subtotal, discount, _order: o };
+    const out: Record<string, unknown> = { code: o.code, tracking_token: o.tracking_token, total, delivery_fee: fee, delivery_promo: promo, subtotal: cart.subtotal, discount, _order: o };
     if (deposit != null) { out.deposit = deposit; out.balance_due = Math.round((total - deposit) * 100) / 100; }
     if (staff || payLater) return out; // cocina manda el enlace por WhatsApp o ya está pagado; en dos entregas se cobra aparte
     return await startPayment(o, method, total, out);
@@ -530,6 +567,7 @@ const actions: Record<string, (b: any, user: User) => Promise<unknown>> = {
       ...todayHours(s), store_open: s.store_open,
       slot_minutes: s.slot_minutes, kitchen: { lat: s.kitchen_lat, lng: s.kitchen_lng },
       fee: { base: s.fee_base, included_km: s.fee_included_km, per_km: s.fee_per_km },
+      free_ship: { min: Number(s.free_ship_min ?? 0), max_km: Number(s.free_ship_max_km ?? 0), welcome_min: Number(s.welcome_ship_min ?? 0) },
       max_km: s.max_km, whatsapp: s.whatsapp_number,
       card_enabled: Boolean(PAYPHONE_TOKEN && PAYPHONE_STORE_ID), map_provider: s.map_provider,
       open_now: s.store_open && isOpenAt(new Date(), s),
@@ -544,7 +582,7 @@ const actions: Record<string, (b: any, user: User) => Promise<unknown>> = {
     };
   },
 
-  async cotizar(b) {
+  async cotizar(b, user) {
     const s = await getSettings();
     const q = await quote(s, Number(b.lat), Number(b.lng));
     let eta = null;
@@ -552,7 +590,8 @@ const actions: Record<string, (b: any, user: User) => Promise<unknown>> = {
       const c = await priceCart(b.items);
       eta = new Date(Date.now() + (5 + c.prep + q.travel_min + busyExtra(s)) * 60000).toISOString();
     }
-    return { distance_km: q.km, delivery_fee: q.fee, travel_min: q.travel_min, eta_if_now: eta };
+    // promo_fee: lo que pagaría con envío gratis; welcome: tiene derecho al primer envío gratis
+    return { distance_km: q.km, delivery_fee: q.fee, promo_fee: q.promo_fee, welcome: await welcomeEligible(user?.id, s), travel_min: q.travel_min, eta_if_now: eta };
   },
 
   async crear(b, user) {
@@ -566,7 +605,7 @@ const actions: Record<string, (b: any, user: User) => Promise<unknown>> = {
     const later = await makeOrder({
       ...b, items: sp.items, scheduled_for: sp.scheduled_for,
       lat: sp.lat ?? b.lat, lng: sp.lng ?? b.lng, address: sp.address ?? b.address, reference: sp.reference ?? b.reference,
-      use_birthday: false, use_reward: false, reward_product_id: null,
+      use_birthday: false, use_reward: false, reward_product_id: null, _no_welcome: true,
     }, cust, null, gid, true);
     let now: Record<string, any>;
     try { now = await makeOrder(b, cust, null, gid, true); }

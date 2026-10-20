@@ -43,15 +43,17 @@ async function ventas() {
   const from = new Date(Date.UTC(y, m - 1, 1, 5)).toISOString(), to = new Date(Date.UTC(y, m, 1, 5)).toISOString();
   $("#view").innerHTML = `<p class="muted">Cargando…</p>`;
   const { data: orders, error } = await sb.from("orders")
-    .select("id,subtotal,discount,delivery_fee,total,payment_method,rider_id,status,riders(full_name),order_items(name,quantity,line_total)")
+    .select("id,subtotal,discount,delivery_fee,rider_fee,total,payment_method,rider_id,status,riders(full_name),order_items(name,quantity,line_total)")
     .eq("payment_status", "pagado").gte("paid_at", from).lt("paid_at", to);
   if (error) return ($("#view").innerHTML = `<p class="err">${esc(error.message)}</p>`);
   const sum = (f) => orders.reduce((s, o) => s + Number(f(o)), 0);
   const products = sum((o) => o.subtotal - o.discount), fees = sum((o) => o.delivery_fee), total = sum((o) => o.total);
+  // envío completo de cada pedido (lo que cuesta el motorizado) y lo que pusiste por envíos gratis
+  const riderCost = sum((o) => o.rider_fee ?? o.delivery_fee), shipGift = Math.max(0, riderCost - fees);
   const card = orders.filter((o) => o.payment_method === "tarjeta");
   const cardFee = card.reduce((s, o) => s + Number(o.total), 0) * 0.0575;
   const riders = {}; orders.filter((o) => o.status === "entregado" && o.rider_id).forEach((o) => {
-    const k = o.riders?.full_name || "Sin nombre"; riders[k] ||= { n: 0, fees: 0 }; riders[k].n++; riders[k].fees += Number(o.delivery_fee);
+    const k = o.riders?.full_name || "Sin nombre"; riders[k] ||= { n: 0, fees: 0 }; riders[k].n++; riders[k].fees += Number(o.rider_fee ?? o.delivery_fee);
   });
   const prods = {}; orders.forEach((o) => o.order_items.forEach((i) => { if (Number(i.line_total) > 0) { prods[i.name] ||= { q: 0, v: 0 }; prods[i.name].q += i.quantity; prods[i.name].v += Number(i.line_total); } }));
   const top = Object.entries(prods).sort((a, b) => b[1].v - a[1].v).slice(0, 10);
@@ -64,7 +66,8 @@ async function ventas() {
       <div class="stats">
         <div><b>${orders.length}</b>pedidos pagados</div>
         <div><b>${money(products)}</b>ventas en productos</div>
-        <div><b>${money(fees)}</b>envíos (para motorizados)</div>
+        <div><b>${money(fees)}</b>envíos cobrados</div>
+        ${shipGift > 0.004 ? `<div><b>${money(shipGift)}</b>envíos gratis que pusiste</div>` : ""}
         <div><b>${money(total)}</b>cobrado en total</div>
         <div><b>${money(cardFee)}</b>comisión Payphone aprox.</div>
       </div>
@@ -454,9 +457,18 @@ async function ajustes() {
         ${f("sBase", "Envío base $", s.fee_base, "number", 'step="0.05" min="0"')}
         ${f("sIncl", "Km incluidos en la base", s.fee_included_km, "number", 'step="0.5" min="0"')}
         ${f("sPerKm", "Precio por km adicional $", s.fee_per_km, "number", 'step="0.05" min="0"')}
+        ${f("sBreak", "Desde qué km cambia el precio", s.fee_break_km ?? "", "number", 'step="0.5" min="0" placeholder="sin corte"')}
+        ${f("sPerKmFar", "Precio por km después de ese corte $", s.fee_per_km_far ?? "", "number", 'step="0.05" min="0"')}
         ${f("sMaxKm", "Distancia máxima (km)", s.max_km, "number", 'step="1" min="1"')}
       </div>
-      <p class="muted small">Ejemplo con estos valores: 5 km = <b id="feeEx"></b>. La distancia se mide ${s.map_provider === "google" ? "por calles con Google" : "en línea recta × 1,4"} desde la cocina (${esc(s.kitchen_address || "sin ubicación")}).</p>
+      <p class="muted small">Con estos valores: <b id="feeEx"></b>. La distancia se mide ${s.map_provider === "google" ? "por calles con Google" : "en línea recta × 1,4"} desde la cocina (${esc(s.kitchen_address || "sin ubicación")}).</p>
+      <h3 class="group-title">Envío gratis</h3>
+      <div class="form-grid">
+        ${f("sFreeMin", "Envío gratis desde $ en productos (0 = apagado)", s.free_ship_min ?? 0, "number", 'step="1" min="0"')}
+        ${f("sFreeKm", "Gratis hasta (km)", s.free_ship_max_km ?? 10, "number", 'step="0.5" min="0"')}
+        ${f("sWelcome", "Primer pedido con cuenta: gratis desde $ (0 = apagado)", s.welcome_ship_min ?? 0, "number", 'step="1" min="0"')}
+      </div>
+      <p class="muted small">Más lejos de los km gratis, el cliente paga solo la diferencia. Con envío gratis, el motorizado igual recibe el envío completo y la diferencia sale del negocio (la ves en Ventas).</p>
       <h3 class="group-title">Pagos y contacto</h3>
       ${f("sWa", "WhatsApp del negocio", s.whatsapp_number, "tel")}
       <label class="f">Códigos QR de cobro</label>
@@ -475,12 +487,16 @@ async function ajustes() {
       <button class="btn small" type="button" id="addBank" style="margin-top:6px">+ Agregar cuenta</button>
       <button class="btn primary" style="margin-top:14px">Guardar ajustes</button>
     </form>`;
-  const ex = () => {
+  // Igual que el servidor: base + km hasta el corte + km lejanos, redondeado hacia arriba a $0,25
+  const feeAt = (km) => {
     const base = Number($("#sBase").value), inc = Number($("#sIncl").value), per = Number($("#sPerKm").value);
-    const raw = Math.max(base, base + per * Math.max(5 - inc, 0));
-    $("#feeEx").textContent = money(Math.ceil(raw / 0.25 - 1e-9) * 0.25);
+    const br = Number($("#sBreak").value), far = $("#sPerKmFar").value === "" ? per : Number($("#sPerKmFar").value);
+    const cut = br > 0 ? Math.max(br, inc) : Infinity;
+    const raw = base + per * Math.max(Math.min(km, cut) - inc, 0) + far * Math.max(km - cut, 0);
+    return money(Math.ceil(raw / 0.25 - 1e-9) * 0.25);
   };
-  ["#sBase", "#sIncl", "#sPerKm"].forEach((k) => $(k).addEventListener("input", ex)); ex();
+  const ex = () => { $("#feeEx").textContent = [3, 6, 9, 12, 19].map((k) => `${k} km = ${feeAt(k)}`).join(" · "); };
+  ["#sBase", "#sIncl", "#sPerKm", "#sBreak", "#sPerKmFar"].forEach((k) => $(k).addEventListener("input", ex)); ex();
   const winEx = () => { const w = Number($("#sWin").value) || 30, end = 10 * 60 + 15 + w; $("#winEx").textContent = `10h15 – ${Math.floor(end / 60)}h${String(end % 60).padStart(2, "0")}`; };
   $("#sWin").addEventListener("input", winEx); winEx();
   renderQrAdmin(); renderHeroAdmin();
@@ -502,6 +518,12 @@ async function ajustes() {
     const patch = {
       slot_capacity: Number($("#sSlotCap").value), fee_base: Number($("#sBase").value), fee_included_km: Number($("#sIncl").value),
       fee_per_km: Number($("#sPerKm").value), max_km: Number($("#sMaxKm").value),
+      ...("fee_break_km" in s ? {
+        fee_break_km: $("#sBreak").value === "" ? null : Number($("#sBreak").value),
+        fee_per_km_far: $("#sPerKmFar").value === "" ? null : Number($("#sPerKmFar").value),
+        free_ship_min: Number($("#sFreeMin").value) || 0, free_ship_max_km: Number($("#sFreeKm").value) || 0,
+        welcome_ship_min: Number($("#sWelcome").value) || 0,
+      } : {}),
       eta_window_minutes: Number($("#sWin").value) || 30, transfer_extra_minutes: Number($("#sTrx").value) || 0,
       open_lead_minutes: Number($("#sOpenLead").value) || 0, reward_max_value: Number($("#sReward").value) || 0, next_day_only: $("#sNextDay").checked,
       ...("review_stamp" in s ? { review_stamp: $("#sRevStamp").checked } : {}),

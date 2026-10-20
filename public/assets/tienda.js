@@ -125,6 +125,7 @@ async function refreshAccount() {
   const chip = $("#acctStamps");
   if (chip) { chip.hidden = !state.acct; if (state.acct) chip.textContent = `${state.acct.rewards_available ? "🎁 " : ""}${Math.min(8, state.acct.stamps)}/8`; }
   if (!$("#checkout").hidden) { renderAcctBox(); renderPerks(); renderSummary(); }
+  if (state.loc && !$("#checkout").hidden) requestQuote(); // con cuenta puede tocarle el primer envío gratis
 }
 
 // ---------- menú ----------
@@ -283,6 +284,24 @@ const linePrice = (k) => Number(product(keyId(k)).price) + keyOpts(k).reduce((s,
 const cartItems = (keys = [...state.cart.keys()]) => keys.map((k) => ({ product_id: keyId(k), quantity: state.cart.get(k), options: keyOpts(k) }));
 const product = (id) => state.products.find((p) => p.id === id);
 const subtotal = () => [...state.cart].reduce((s, [k, q]) => s + linePrice(k) * q, 0);
+const sumKeys = (keys) => keys.reduce((s, k) => s + linePrice(k) * state.cart.get(k), 0);
+const moneyEs = (n) => "$" + Number(n).toFixed(2).replace(".", ",");
+// Envío que paga el cliente. Gratis desde el monto (o en el primer pedido con cuenta);
+// más lejos de los km cubiertos, solo paga la diferencia (q.promo_fee). Mismas reglas que el servidor.
+function shipFee(q, net, firstOrder) {
+  if (!q) return { fee: null, full: null, promo: null };
+  const fs = state.cfg?.free_ship || {}, full = Number(q.delivery_fee);
+  const promo = fs.min > 0 && net >= fs.min - 1e-9 ? "monto"
+    : firstOrder && q.welcome && fs.welcome_min > 0 && net >= fs.welcome_min - 1e-9 ? "bienvenida" : null;
+  return { fee: promo ? Number(q.promo_fee ?? 0) : full, full, promo };
+}
+// Texto corto del avance hacia el envío gratis
+function freeShipHint(net) {
+  const fs = state.cfg?.free_ship || {};
+  if (!(fs.min > 0)) return "";
+  if (net >= fs.min - 1e-9) return `<p class="ship-hint ok">🎉 Tu envío es gratis${fs.max_km > 0 ? ` hasta ${String(fs.max_km).replace(".", ",")} km` : ""}.</p>`;
+  return `<p class="ship-hint">Te faltan <b>${moneyEs(fs.min - net)}</b> para envío gratis.</p>`;
+}
 
 // Productos con opciones (por ejemplo, el endulzante de las bebidas)
 function openPicker(p) {
@@ -319,7 +338,7 @@ function renderCart() {
     : `<div class="cart-empty"><b>Tu pedido está vacío</b><span class="muted small">Agrega algo rico del menú para empezar.</span></div>`;
   // Subtotal fuera de la lista: siempre a la vista junto al botón, aunque haya muchos productos
   $("#cartSum").innerHTML = lines.length
-    ? `<div class="line total"><span>Subtotal</span><span class="tabnum">${money(subtotal())}</span></div><p class="muted small" style="margin:0">El envío se calcula con tu ubicación.</p>` : "";
+    ? `<div class="line total"><span>Subtotal</span><span class="tabnum">${money(subtotal())}</span></div><p class="muted small" style="margin:0">El envío se calcula con tu ubicación.</p>${freeShipHint(subtotal())}` : "";
   $("#goCheckout").disabled = !n;
   $("#goCheckout").textContent = n ? `Continuar · ${money(subtotal())}` : "Continuar";
   $("#mbCount").textContent = n; $("#mbTotal").textContent = money(subtotal());
@@ -474,7 +493,7 @@ function renderAcctBox() {
     return;
   }
   if (state.guest) {
-    box.innerHTML = `<p class="muted small" style="margin:6px 0 0">Pedido sin cuenta. <a href="#" id="wantGoogle">Crear cuenta y ganar un postre sorpresa</a></p>`;
+    box.innerHTML = `<p class="muted small" style="margin:6px 0 0">Pedido sin cuenta. <a href="#" id="wantGoogle">Crear cuenta y ganar ${state.cfg?.free_ship?.welcome_min > 0 ? "tu primer envío gratis" : "un postre sorpresa"}</a></p>`;
     $("#wantGoogle").onclick = (e) => { e.preventDefault(); state.guest = false; renderAcctBox(); };
     return;
   }
@@ -482,7 +501,7 @@ function renderAcctBox() {
   const dots = Array.from({ length: 8 }, (_, i) => i < 2 ? `<span class="on"><img src="/assets/brand/s-tinta.svg" alt=""></span>` : i === 7 ? `<span class="goal" aria-label="Postre sorpresa">🎁</span>` : `<span>${i + 1}</span>`).join("");
   box.innerHTML = `<div class="join-mini">
       <div class="join-dots" aria-hidden="true">${dots}</div>
-      <p class="jm-t"><b>Gana un postre sorpresa.</b> <span>Entra con Google y te regalamos los 2 primeros sellos.</span></p>
+      <p class="jm-t"><b>Gana un postre sorpresa.</b> <span>Entra con Google y te regalamos los 2 primeros sellos${state.cfg?.free_ship?.welcome_min > 0 ? ` y tu primer envío desde ${moneyEs(state.cfg.free_ship.welcome_min)}` : ""}.</span></p>
       <div class="jm-go">${googleButton("outline")}</div>
     </div>
     <p class="muted small jm-or">O pide sin cuenta, solo con estos datos:</p>`;
@@ -522,6 +541,8 @@ const listNames = (ns) => ns.length > 1 ? ns.slice(0, -1).join(", ") + " y " + n
 const isSplit = () => $("#whenSplit").checked && !$("#splitChoice").hidden;
 const leadKeys = () => [...state.cart.keys()].filter((k) => product(keyId(k)).lead_hours > 0);
 const quickKeys = () => [...state.cart.keys()].filter((k) => !product(keyId(k)).lead_hours);
+// Productos de la primera entrega (o de todo el pedido) menos el regalo de cumpleaños
+const netNow = () => { const s = isSplit() ? sumKeys(quickKeys()) : subtotal(); return Math.max(0, s - ($("#useBday")?.checked ? Math.min(4, subtotal()) : 0)); };
 function syncWhen() {
   const later = $("#whenLater").checked, split = isSplit();
   $("#scheduleBox").hidden = !(later || split);
@@ -717,7 +738,9 @@ function renderQuote() {
   const q = state.quote; if (!q) return;
   if (!$("#whenNow").disabled && state.cfg.open_now && q.eta_if_now) $("#nowHint").textContent = `Llega hoy entre ${nowRange()}`;
   const now = ($("#whenNow").checked || isSplit()) && state.cfg.open_now && q.eta_if_now;
-  $("#quoteBox").innerHTML = `Envío <b>${money(q.delivery_fee)}</b>${isSplit() ? " por entrega" : ""} · ${q.distance_km.toFixed(1).replace(".", ",")} km${now ? ` · ${isSplit() ? "lo de ahora " : ""}llega entre <b>${nowRange()}</b>` : ""}${state.cfg.busy_extra && now ? `<br>Hoy tenemos muchos pedidos, por eso la entrega toma un poco más.` : ""}`;
+  const sh = shipFee(q, netNow(), true);
+  const feeTxt = sh.promo && sh.fee === 0 ? "<b>gratis</b>" : `<b>${money(sh.fee)}</b>`;
+  $("#quoteBox").innerHTML = `Envío ${feeTxt}${isSplit() ? (sh.promo ? " en la primera entrega" : " por entrega") : ""} · ${q.distance_km.toFixed(1).replace(".", ",")} km${now ? ` · ${isSplit() ? "lo de ahora " : ""}llega entre <b>${nowRange()}</b>` : ""}${state.cfg.busy_extra && now ? `<br>Hoy tenemos muchos pedidos, por eso la entrega toma un poco más.` : ""}`;
 }
 const nowRange = () => etaRange(new Date(new Date(state.quote.eta_if_now).getTime() + payExtra() * 60000).toISOString(), { window: Number(state.cfg.eta_window || 30) });
 function laterRange() {
@@ -730,12 +753,16 @@ function laterRange() {
 // ---------- resumen ----------
 function renderSummary() {
   if (!state.cfg) return;
-  const fee = state.quote?.delivery_fee;
+  if (state.quote) renderQuote(); // el envío cambia si el pedido llega al monto del envío gratis
   const split = isSplit();
-  const fee2 = split && secondAddr() ? state.quote2?.delivery_fee : fee; // la segunda entrega puede ir a otra dirección
-  const fees = fee != null && (!split || fee2 != null) ? fee + (split ? fee2 : 0) : null; // dos entregas = dos envíos completos
   const sub = subtotal();
   const disc = $("#useBday")?.checked ? Math.min(4, sub) : 0;
+  // cada entrega se cobra aparte: la primera puede tener envío gratis (monto o primer pedido); la segunda, solo por monto
+  const sh1 = shipFee(state.quote, netNow(), true);
+  const sh2 = split ? shipFee(secondAddr() ? state.quote2 : state.quote, sumKeys(leadKeys()), false) : null;
+  const fee = sh1.fee, fee2 = sh2?.fee;
+  const fees = fee != null && (!split || fee2 != null) ? fee + (split ? fee2 : 0) : null;
+  const feeCell = (sh) => sh.fee == null ? "—" : sh.promo && sh.fee < sh.full - 1e-9 ? `<s class="muted">${money(sh.full)}</s> ${sh.fee > 0 ? money(sh.fee) : "Gratis"}` : money(sh.fee);
   const reward = $("#useReward")?.checked;
   const line = (k, q) => `<div class="line"><span>${q} × ${esc(lineName(k))}</span><span class="tabnum">${money(linePrice(k) * q)}</span></div>`;
   const now = state.quote?.eta_if_now && state.cfg.open_now ? `Llega entre ${nowRange()}` : "";
@@ -743,18 +770,24 @@ function renderSummary() {
   if (split) {
     body = `<p class="sum-h">Entrega 1 · ahora${now ? ` <span>${now.replace("Llega entre", "")}</span>` : ""}</p>` + quickKeys().map((k) => line(k, state.cart.get(k))).join("") +
       (reward ? `<div class="line"><span>1 × Postre sorpresa (regalo)</span><span class="tabnum">$0.00</span></div>` : "") +
-      `<div class="line"><span>Envío</span><span class="tabnum">${fee != null ? money(fee) : "—"}</span></div>` +
+      `<div class="line"><span>Envío</span><span class="tabnum">${feeCell(sh1)}</span></div>` +
       `<p class="sum-h">Entrega 2${laterRange() ? ` <span>${laterRange()}</span>` : ""}</p>` + leadKeys().map((k) => line(k, state.cart.get(k))).join("") +
-      `<div class="line"><span>Envío${secondAddr() ? ` a ${esc(secondAddr().label)}` : ""}</span><span class="tabnum">${fee2 != null ? money(fee2) : "—"}</span></div>`;
+      `<div class="line"><span>Envío${secondAddr() ? ` a ${esc(secondAddr().label)}` : ""}</span><span class="tabnum">${feeCell(sh2)}</span></div>`;
   } else {
     body = [...state.cart].map(([k, q]) => line(k, q)).join("") +
       (reward ? `<div class="line"><span>1 × Postre sorpresa (regalo)</span><span class="tabnum">$0.00</span></div>` : "") +
-      `<div class="line"><span>Envío</span><span class="tabnum">${fee != null ? money(fee) : "—"}</span></div>`;
+      `<div class="line"><span>Envío</span><span class="tabnum">${feeCell(sh1)}</span></div>`;
   }
+  const fs = state.cfg.free_ship || {};
+  const far = (sh) => sh?.promo && sh.fee > 0 ? ` Como estás a más de ${String(fs.max_km).replace(".", ",")} km, pagas solo la diferencia.` : "";
+  const shipNote = sh1.promo === "bienvenida" ? `<p class="ship-hint ok">🎁 Tu primer envío es gratis por pedir con tu cuenta.${far(sh1)}</p>`
+    : sh1.promo ? `<p class="ship-hint ok">🎉 Envío gratis por compras desde ${moneyEs(fs.min)}.${far(sh1)}</p>`
+    : state.quote ? freeShipHint(netNow()) : "";
   const whenTxt = split ? "" : $("#whenLater").checked ? (laterRange() ? `Entrega ${laterRange()}` : "") : now;
   $("#summary").innerHTML = body +
     (disc ? `<div class="line"><span>Regalo de cumpleaños</span><span class="tabnum">−${money(disc)}</span></div>` : "") +
     `<div class="line total"><span>Total</span><span class="tabnum">${fees != null ? money(sub - disc + fees) : money(sub - disc) + " + envío"}</span></div>` +
+    shipNote +
     (whenTxt ? `<p class="muted small">${whenTxt}</p>` : "") +
     (state.acct ? `<p class="small" style="color:var(--accent-ink);margin:0;font-weight:600">Este pedido te da ${stampsFor(sub - disc)} ${stampsFor(sub - disc) === 1 ? "sello" : "sellos"}.</p>` : "");
   const card = $("#payCard").checked;
