@@ -79,7 +79,7 @@ async function init() {
   const fsc = c.free_ship || {};
   if (fsc.min > 0) {
     const m0 = (n) => Number.isInteger(Number(n)) ? `$${Number(n)}` : moneyEs(n);
-    $("#shipStripTxt").textContent = `en pedidos desde ${m0(fsc.min)}${fsc.max_km > 0 ? ` (hasta ${String(fsc.max_km).replace(".", ",")} km)` : ""}${fsc.welcome_min > 0 ? ` · tu primer pedido con cuenta, desde ${m0(fsc.welcome_min)}` : ""}`;
+    $("#shipStripTxt").textContent = `en pedidos desde ${m0(fsc.min)}`;
     $("#shipStrip").hidden = false;
   }
   mountSocial(c.whatsapp);
