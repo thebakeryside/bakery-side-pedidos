@@ -336,7 +336,13 @@ async function ensureCustomer(u: NonNullable<User>, ref?: string) {
     const welcome = [{ user_id: u.id, delta: 2, reason: "bienvenida" }];
     if (referred_by) welcome.push({ user_id: u.id, delta: 1, reason: "referido_nuevo" });
     await db.from("stamp_ledger").insert(welcome);
-    return data;
+    // Pedidos como invitado de los últimos 30 días con este mismo correo: pasan a la cuenta y suman sus sellos
+    let claimed = 0;
+    if (u.email) {
+      const { data: n, error: ce } = await db.rpc("claim_guest_orders", { p_user: u.id, p_email: u.email });
+      if (ce) console.error("claim_guest_orders", ce); else claimed = Number(n ?? 0);
+    }
+    return { ...data, claimed_stamps: claimed };
   }
   throw new Error("No se pudo crear el código de referido");
 }
@@ -367,6 +373,7 @@ async function accountSummary(c: Record<string, any>) {
     rewards_available: reward ? (rewardsCount ?? 1) : 0,
     birthday_available: bday,
     reward_name: SURPRISE,
+    claimed_stamps: Number(c.claimed_stamps ?? 0),
   };
 }
 

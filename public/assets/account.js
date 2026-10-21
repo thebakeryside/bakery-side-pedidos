@@ -1,5 +1,5 @@
 // Cuenta del cliente (Google), tarjeta de sellos y referidos
-import { sb, api, esc } from "./common.js";
+import { sb, api, esc, toast } from "./common.js";
 import { GOOGLE_CLIENT_ID } from "./config.js";
 
 export const STAMPS_TOTAL = 8;
@@ -27,6 +27,9 @@ export async function loadAccount(force = false) {
   if (cache && !force) return cache;
   cache = await api("perfil", { ref: storedRef() });
   try { localStorage.removeItem(REF_KEY); } catch {}
+  // Al crear la cuenta se suman los sellos de sus pedidos como invitado (últimos 30 días, mismo correo)
+  const n = cache?.claimed_stamps ?? 0;
+  if (n > 0) setTimeout(() => toast(`Te sumamos ${n} ${n === 1 ? "sello" : "sellos"} de tu pedido como invitado`, 5000), 400);
   return cache;
 }
 export const setAccount = (a) => (cache = a);

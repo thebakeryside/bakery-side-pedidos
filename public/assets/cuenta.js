@@ -472,7 +472,7 @@ function renderGuest() {
       <li><span aria-hidden="true">🎂</span><div><b>$4 de regalo</b><small>en tu mes de cumpleaños</small></div></li>
       <li><span aria-hidden="true">🤝</span><div><b>Invita a un amigo</b><small>y ambos ganan 1 sello</small></div></li>
     </ul>
-    <p class="muted small g-guest">¿Prefieres no crear cuenta? Puedes <a href="/">pedir como invitado</a>, pero no acumularás sellos.</p>`;
+    <p class="muted small g-guest">¿Prefieres no crear cuenta? Puedes <a href="/">pedir como invitado</a>, pero no acumularás sellos. ¿Ya pediste como invitado? Crea tu cuenta con el mismo correo y te sumamos los sellos de tus pedidos de los últimos 30 días.</p>`;
   const note = root.querySelector(".stampnote");
   if (note) note.innerHTML = "Así empieza tu tarjeta: <b>2 sellos de regalo</b> al entrar.";
   mountGoogle(root, () => render(), (e) => toast(e.message));

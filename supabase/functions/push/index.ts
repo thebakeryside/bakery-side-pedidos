@@ -137,6 +137,13 @@ function mailHtml(o: any, m: { title: string; lead: string; pin?: string; step: 
   </div></body></html>`;
 }
 
+// Pedido como invitado: si crea su cuenta con Google con este correo en 30 días, se le suman los sellos de este pedido
+function guestStampsBox(o: any) {
+  const n = Math.floor(Math.max(Number(o.subtotal ?? 0) - Number(o.discount ?? 0), 0) / 10);
+  const mail = escH(o.customer_email ?? "");
+  const gain = n > 0 ? `los ${n === 1 ? "1 sello" : n + " sellos"} de este pedido, además de 2 sellos de regalo` : "2 sellos de regalo para empezar tu tarjeta";
+  return `<div style="margin:18px 0 0;border-radius:14px;background:#C68A4E;padding:14px 16px;text-align:center"><div style="font-size:16px;font-weight:bold;color:#1C1714">🎁 No pierdas tus sellos</div><div style="font-size:13px;color:#1C1714;margin:4px 0 10px">Crea tu cuenta con Google usando ${mail ? `<b>${mail}</b>` : "este correo"} y te sumamos ${gain}. Tienes 30 días.</div><a href="${SITE}/cuenta" style="display:inline-block;background:#1C1714;color:#FFFFFF;text-decoration:none;font-weight:bold;padding:10px 18px;border-radius:10px;font-size:14px">Crear mi cuenta</a></div>`;
+}
 async function mailCustomer(o: any, event: string) {
   if (!RESEND_KEY) return false; // sin clave de Resend, no se envían correos (los avisos push siguen igual)
   const to = await customerEmail(o);
@@ -156,7 +163,7 @@ async function mailCustomer(o: any, event: string) {
       m = { subject: `Tu pedido ${o.code} va en camino 🛵`, title: "Va en camino", lead: `${rider ? `${rider} salió con tu pedido` : "tu pedido ya salió hacia ti"}. ¡Prepárate para recibirlo!`, step: 3 }; break;
     case "entregado":
       m = { subject: `¡Entregado! Gracias por tu pedido ${o.code}`, title: "¡Que lo disfrutes!", lead: "tu pedido fue entregado. Gracias por elegirnos; nos encantaría saber qué tal te pareció.", step: 4,
-        extra: o.user_id ? `<div style="margin:18px 0 0;border-radius:14px;background:#C68A4E;padding:14px 16px;text-align:center"><div style="font-size:16px;font-weight:bold;color:#1C1714">🎁 HOY: califica tu pedido y gana 1 sello</div><div style="font-size:13px;color:#1C1714;margin:4px 0 10px">Califica todos los productos de este pedido y sumas 1 sello a tu tarjeta.</div><a href="${SITE}/cuenta?tab=pedidos" style="display:inline-block;background:#1C1714;color:#FFFFFF;text-decoration:none;font-weight:bold;padding:10px 18px;border-radius:10px;font-size:14px">Calificar mi pedido</a></div>` : `<p style="margin:16px 0 0;font-size:14px;color:#554741">¿Te gustó? Crea tu cuenta en <a href="${SITE}/cuenta" style="color:#C68A4E">thebakeryside.com</a> para ganar sellos y dejar tu reseña.</p>` }; break;
+        extra: o.user_id ? `<div style="margin:18px 0 0;border-radius:14px;background:#C68A4E;padding:14px 16px;text-align:center"><div style="font-size:16px;font-weight:bold;color:#1C1714">🎁 HOY: califica tu pedido y gana 1 sello</div><div style="font-size:13px;color:#1C1714;margin:4px 0 10px">Califica todos los productos de este pedido y sumas 1 sello a tu tarjeta.</div><a href="${SITE}/cuenta?tab=pedidos" style="display:inline-block;background:#1C1714;color:#FFFFFF;text-decoration:none;font-weight:bold;padding:10px 18px;border-radius:10px;font-size:14px">Calificar mi pedido</a></div>` : guestStampsBox(o) }; break;
     case "cancelado":
       m = { subject: `Tu pedido ${o.code} fue cancelado`, title: "Pedido cancelado", lead: `cancelamos tu pedido${o.cancel_reason ? ` (${escH(o.cancel_reason)})` : ""}. Si ya habías pagado, te devolvemos el dinero. Escríbenos si tienes dudas.`, step: -1 }; break;
   }
