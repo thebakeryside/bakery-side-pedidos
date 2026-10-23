@@ -466,7 +466,7 @@ async function ajustes() {
       <div class="form-grid">
         ${f("sFreeMin", "Envío gratis desde $ en productos (0 = apagado)", s.free_ship_min ?? 0, "number", 'step="1" min="0"')}
         ${f("sFreeKm", "Gratis hasta (km)", s.free_ship_max_km ?? 10, "number", 'step="0.5" min="0"')}
-        ${f("sWelcome", "Primer pedido con cuenta: gratis desde $ (0 = apagado)", s.welcome_ship_min ?? 0, "number", 'step="1" min="0"')}
+        ${f("sWelcome", "Primer pedido con cuenta: gratis desde $ (0 = apagado)", s.welcome_ship_min ?? 0, "number", 'step="0.01" min="0"')}
       </div>
       <p class="muted small">Más lejos de los km gratis, el cliente paga solo la diferencia. Con envío gratis, el motorizado igual recibe el envío completo y la diferencia sale del negocio (la ves en Ventas).</p>
       <h3 class="group-title">Pagos y contacto</h3>
