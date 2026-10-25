@@ -2,7 +2,7 @@
 // Insumos (ingredientes y envases) → Recetas (cuánto rinden y qué llevan) → Cómo se vende (presentación + su envase + precio)
 import { sb, $, $$, money, esc, toast, tableSearch } from "./common.js";
 
-const C = { view: "resumen", recipe: null, data: null };
+const C = { view: "resumen", recipe: null, data: null, sort: { key: "m", dir: 1 } };
 const UNITS = ["g", "ml", "uni"];
 const pct = (x) => (isFinite(x) ? `${Math.round(x * 100)}%` : "—");
 const num = (v) => Number(String(v ?? "").replace(",", ".")) || 0;
@@ -69,8 +69,44 @@ function draw() {
 }
 
 // ---------- rentabilidad ----------
+// Columnas de la tabla: [clave, título, valor para ordenar]. Por defecto, margen de menor a mayor.
+const SUM_COLS = [
+  ["name", "Producto", (x) => x.p.name],
+  ["recipe", "Receta", (x) => x.r.name],
+  ["cost", "Costo", (x) => x.cost],
+  ["price", "Precio", (x) => x.price || NaN],
+  ["profit", "Ganancia", (x) => (x.price ? x.price - x.cost : NaN)],
+  ["m", "Margen", (x) => x.m],
+  ["sug", "Precio sugerido", (x) => suggested(x.cost)],
+];
+function sortRows(rows) {
+  const { key, dir } = C.sort;
+  const get = SUM_COLS.find((c) => c[0] === key)[2];
+  return rows.sort((a, b) => {
+    const va = get(a), vb = get(b);
+    if (typeof va === "string") return dir * va.localeCompare(vb, "es", { sensitivity: "base" });
+    const fa = isFinite(va), fb = isFinite(vb);
+    if (!fa || !fb) return fa === fb ? 0 : fa ? -1 : 1; // los vacíos siempre al final
+    return dir * (va - vb);
+  });
+}
+function sortLabel() {
+  const { key, dir } = C.sort;
+  if (key === "m" && dir === 1) return "Ordenado del menos al más rentable.";
+  const name = SUM_COLS.find((c) => c[0] === key)[1].toLowerCase();
+  if (key === "name" || key === "recipe") return `Ordenado por ${name} (${dir === 1 ? "A → Z" : "Z → A"}).`;
+  return `Ordenado por ${name}, de ${dir === -1 ? "mayor a menor" : "menor a mayor"}.`;
+}
+const rowHtml = ({ p, r, cost, price, m }) => `<tr>
+        <td><b>${esc(p.name)}</b>${p.product_id ? ` <span class="muted small">· menú</span>` : ""}</td>
+        <td><button type="button" class="linkbtn" data-open="${r.id}">${esc(r.name)}</button></td>
+        <td class="tabnum">${money(cost)}</td><td class="tabnum">${price ? money(price) : "—"}</td>
+        <td class="tabnum">${price ? money(price - cost) : "—"}</td>
+        <td class="tabnum"><span class="mchip ${level(m)}">${pct(m)}</span></td>
+        <td class="tabnum">${money(suggested(cost))}</td></tr>`;
+
 function drawSummary() {
-  const rows = allRows().sort((a, b) => (isFinite(a.m) ? a.m : -9) - (isFinite(b.m) ? b.m : -9));
+  const rows = allRows();
   const valid = rows.filter((x) => isFinite(x.m));
   const avg = valid.length ? valid.reduce((s, x) => s + x.m, 0) / valid.length : NaN;
   const costed = new Set(D().pres.map((p) => p.product_id).filter(Boolean));
@@ -86,19 +122,30 @@ function drawSummary() {
       <div><b>${pct(D().target)}</b>meta</div>
       <div><b>${valid.filter((x) => x.m >= D().target).length} / ${valid.length}</b>productos en la meta</div>
     </div>
-    <p class="muted small" style="margin:0 0 8px">Ordenado del menos al más rentable. <b>Costo</b> = ingredientes (con IVA) de las unidades que lleva + su envase. <b>Precio sugerido</b> = el precio para llegar a la meta.</p>
-    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Producto</th><th>Receta</th><th>Costo</th><th>Precio</th><th>Ganancia</th><th>Margen</th><th>Precio sugerido</th></tr></thead><tbody>
-      ${rows.map(({ p, r, cost, price, m }) => `<tr>
-        <td><b>${esc(p.name)}</b>${p.product_id ? ` <span class="muted small">· menú</span>` : ""}</td>
-        <td><button type="button" class="linkbtn" data-open="${r.id}">${esc(r.name)}</button></td>
-        <td class="tabnum">${money(cost)}</td><td class="tabnum">${price ? money(price) : "—"}</td>
-        <td class="tabnum">${price ? money(price - cost) : "—"}</td>
-        <td class="tabnum"><span class="mchip ${level(m)}">${pct(m)}</span></td>
-        <td class="tabnum">${money(suggested(cost))}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">Aún no hay recetas con presentaciones.</td></tr>`}
-    </tbody></table></div>
+    <p class="muted small" style="margin:0 0 8px"><span id="cSortLbl"></span> Toca el título de una columna para ordenar por ella; tócalo otra vez para invertir. <b>Costo</b> = ingredientes (con IVA) de las unidades que lleva + su envase. <b>Precio sugerido</b> = el precio para llegar a la meta.</p>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr>${SUM_COLS.map(([k, l]) => `<th aria-sort="none"><button type="button" class="sortbtn" data-sort="${k}">${l}<span class="sarr" aria-hidden="true"></span></button></th>`).join("")}</tr></thead><tbody id="cRows"></tbody></table></div>
     ${missing.length ? `<p class="muted small" style="margin-top:12px"><b>Sin costear todavía (${missing.length}):</b> ${missing.map((p) => esc(p.name)).join(" · ")}</p>` : ""}`;
-  tableSearch($("#cBody"), "Buscar producto o receta…");
-  $$("[data-open]").forEach((b) => (b.onclick = () => openRecipe(Number(b.dataset.open))));
+  const search = tableSearch($("#cBody"), "Buscar producto o receta…");
+  const paint = () => {
+    $("#cRows").innerHTML = sortRows(rows).map(rowHtml).join("") || `<tr><td colspan="7" class="muted">Aún no hay recetas con presentaciones.</td></tr>`;
+    $$("[data-open]", $("#cRows")).forEach((b) => (b.onclick = () => openRecipe(Number(b.dataset.open))));
+    $$("[data-sort]").forEach((b) => {
+      const on = b.dataset.sort === C.sort.key;
+      b.closest("th").setAttribute("aria-sort", on ? (C.sort.dir === 1 ? "ascending" : "descending") : "none");
+      b.classList.toggle("on", on);
+      b.querySelector(".sarr").textContent = on ? (C.sort.dir === 1 ? " ▲" : " ▼") : "";
+    });
+    $("#cSortLbl").textContent = sortLabel();
+    if (search && search.value) search.dispatchEvent(new Event("input"));
+  };
+  $$("[data-sort]").forEach((b) => (b.onclick = () => {
+    const k = b.dataset.sort;
+    if (C.sort.key === k) C.sort.dir *= -1;
+    // primer toque: números de mayor a menor (el margen, como siempre, de menor a mayor); textos de A a Z
+    else C.sort = { key: k, dir: k === "m" || k === "name" || k === "recipe" ? 1 : -1 };
+    paint();
+  }));
+  paint();
   $("#cSaveSet").onclick = async () => {
     const t = num($("#cTarget").value) / 100, iva = num($("#cIva").value) / 100;
     if (!(t > 0 && t < 0.96)) return toast("Revisa la meta de margen.");

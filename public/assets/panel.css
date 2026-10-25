@@ -33,6 +33,9 @@
 table.tbl { width: 100%; border-collapse: collapse; font-size: 14px; }
 .tbl th, .tbl td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--cacao); vertical-align: middle; }
 .tbl th { color: var(--crema-2); font-weight: 600; font-size: 12.5px; text-transform: uppercase; letter-spacing: .06em; }
+.tbl th .sortbtn { background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer; white-space: nowrap; }
+.tbl th .sortbtn:hover, .tbl th .sortbtn.on { color: var(--crema); }
+.tbl th .sortbtn:focus-visible { outline: 2px solid var(--crema-2); outline-offset: 2px; border-radius: 4px; }
 .tbl input.in { min-height: 36px; padding: 6px 8px; }
 .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0 12px; }
 .confirm-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; width: 100%; }
