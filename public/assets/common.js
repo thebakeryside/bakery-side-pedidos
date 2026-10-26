@@ -3,6 +3,13 @@ import { SUPABASE_URL, SUPABASE_KEY, API_URL } from "./config.js";
 
 export const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// Fotos y video del bucket «productos»: se piden por /media/… (caché de Cloudflare, ver src/worker.js)
+// para no gastar el cupo de transferencia de Supabase. En localhost se usan directo.
+const MEDIA_ORIGIN = `${SUPABASE_URL}/storage/v1/object/public/productos/`;
+const viaSite = /^https?:$/.test(location.protocol) && !/^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+export const media = (u) => (viaSite && typeof u === "string" && u.startsWith(MEDIA_ORIGIN) ? `/media/${u.slice(MEDIA_ORIGIN.length)}` : u);
+export const mediaPath = (path) => media(MEDIA_ORIGIN + path);
+
 export async function api(action, body = {}) {
   let r;
   const { data } = await sb.auth.getSession();

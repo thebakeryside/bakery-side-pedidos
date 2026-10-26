@@ -17,6 +17,49 @@ const PAGES = {
 
 let cache = { at: 0, data: null };
 
+// ---------- fotos y video: /media/* ----------
+// Sirve el bucket público «productos» de Supabase a través de la caché de Cloudflare.
+// Supabase entrega cada archivo una sola vez; las siguientes visitas salen de Cloudflare,
+// que no cobra transferencia. Así no se gasta el cupo de Supabase (5 GB/mes en el plan gratis).
+const MEDIA_ORIGIN = `${SUPABASE_URL}/storage/v1/object/public/productos/`;
+const YEAR = 31536000;
+// Archivos que se reemplazan con el mismo nombre (hero.json y los QR de pago): caché corta.
+const SHORT = /^(portada\/hero\.json|pagos\/)/;
+const mediaURL = (u) => (typeof u === "string" && u.startsWith(MEDIA_ORIGIN) ? `${SITE}/media/${u.slice(MEDIA_ORIGIN.length)}` : u);
+
+async function media(request, url, ctx) {
+  if (request.method !== "GET" && request.method !== "HEAD") return new Response(null, { status: 405 });
+  const key = decodeURIComponent(url.pathname.slice("/media/".length));
+  if (!key || key.includes("..")) return new Response("No encontrado", { status: 404 });
+  const short = SHORT.test(key);
+  // «t» solo sirve para saltarse la caché del navegador; no debe crear una copia nueva en Cloudflare
+  const q = new URLSearchParams(url.search); q.delete("t");
+  const qs = q.toString() ? `?${q}` : "";
+  const keyUrl = `${url.origin}/media/${encodeURI(key)}${qs}`;
+  const range = request.headers.get("range");
+  const store = caches.default;
+  const lookup = new Request(keyUrl, { headers: range ? { range } : {} });
+  let hit = await store.match(lookup);
+  if (!hit) {
+    const up = await fetch(MEDIA_ORIGIN + encodeURI(key) + qs);
+    if (!up.ok) return new Response(up.status === 404 || up.status === 400 ? "No encontrado" : "Error", { status: up.status === 400 ? 404 : up.status, headers: { "cache-control": "no-store" } });
+    const body = await up.arrayBuffer();
+    const h = new Headers({
+      "content-type": up.headers.get("content-type") || "application/octet-stream",
+      "content-length": String(body.byteLength),
+      "cache-control": short ? "public, max-age=60" : `public, max-age=${YEAR}, immutable`,
+      "accept-ranges": "bytes",
+      "access-control-allow-origin": "*",
+    });
+    for (const k of ["etag", "last-modified"]) { const v = up.headers.get(k); if (v) h.set(k, v); }
+    const full = new Response(body, { status: 200, headers: h });
+    const put = store.put(new Request(keyUrl), full.clone());
+    if (range) { await put; hit = await store.match(lookup); } else ctx.waitUntil(put);
+    if (!hit) hit = full;
+  }
+  return request.method === "HEAD" ? new Response(null, hit) : hit;
+}
+
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const money = (n) => `$${Number(n).toFixed(2)}`;
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -74,7 +117,7 @@ function jsonLd(groups, cfg) {
           "@type": "MenuItem",
           name: p.name,
           description: p.description || undefined,
-          image: p.image_url || undefined,
+          image: mediaURL(p.image_url) || undefined,
           offers: { "@type": "Offer", price: Number(p.price).toFixed(2), priceCurrency: "USD", availability: "https://schema.org/InStock" },
         })),
       })),
@@ -94,7 +137,7 @@ function menuList(groups) {
 // Tarjetas con foto para las páginas de búsqueda
 function menuCards(groups) {
   return groups.map((g) => `<h2 class="lp-cat">${esc(g.name)}</h2><div class="lp-grid">${g.items.map((p) => `<a class="lp-card" href="/#cat-${g.id}">
-    ${p.image_url ? `<img src="${esc(p.image_url)}" alt="${esc(p.name)} de The Bakery Side" loading="lazy" width="400" height="400">` : ""}
+    ${p.image_url ? `<img src="${esc(mediaURL(p.image_url))}" alt="${esc(p.name)} de The Bakery Side" loading="lazy" width="400" height="400">` : ""}
     <span class="lp-body"><b>${esc(p.name)}</b>${p.servings ? `<small>Porciones: ${esc(p.servings)}</small>` : ""}${p.description ? `<small>${esc(p.description)}</small>` : ""}
     <span class="lp-price">${money(p.price)}${p.lead_hours ? ` · pedir con ${p.lead_hours} h` : ""}</span></span></a>`).join("")}</div>`).join("");
 }
@@ -116,8 +159,11 @@ async function llms(asset) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    if (url.pathname.startsWith("/media/")) {
+      try { return await media(request, url, ctx); } catch { return Response.redirect(MEDIA_ORIGIN + url.pathname.slice(7) + url.search, 302); }
+    }
     const path = url.pathname.replace(/\/+$/, "") || "/";
     const asset = await env.ASSETS.fetch(request);
     if (request.method !== "GET" || !asset.ok) return asset;

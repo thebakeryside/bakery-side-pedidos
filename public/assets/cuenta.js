@@ -1,4 +1,4 @@
-import { sb, api, $, money, esc, when, dayLabel, orderRange, toast, STATUS, mountSocial, isTodayLocal } from "./common.js";
+import { sb, api, $, money, esc, when, dayLabel, orderRange, toast, STATUS, mountSocial, isTodayLocal, media } from "./common.js";
 import { captureRef, currentUser, loadAccount, setAccount, signOut, stampCard, googleButton, mountGoogle, STAMPS_TOTAL } from "./account.js";
 import { createMap } from "./mapa.js";
 import { reviewForm } from "./reviews.js";
@@ -156,7 +156,7 @@ async function renderFavs(orders) {
   box.hidden = false;
   box.innerHTML = `<div class="sec-h"><h2 class="display">Tus favoritos</h2><a class="linkbtn" href="/?carrito=1">Ver carrito ›</a></div>
     <div class="favs">${favs.map((f) => { const p = pm.get(f.id); return `<div class="fav">
-      ${p.image_url ? `<img src="${esc(p.image_url)}" alt="" loading="lazy">` : `<span class="fav-ph">🧁</span>`}
+      ${p.image_url ? `<img src="${esc(media(p.image_url))}" alt="" loading="lazy">` : `<span class="fav-ph">🧁</span>`}
       <div class="fav-t"><b>${esc(f.name)}</b><span class="tabnum">${money(p.price)}</span></div>
       <button class="fav-add" type="button" data-fav="${esc(f.k)}" aria-label="Agregar ${esc(f.name)} al carrito">+</button></div>`; }).join("")}</div>`;
   box.querySelectorAll("[data-fav]").forEach((b) => (b.onclick = () => {
@@ -257,7 +257,7 @@ async function panePedidos(_acc, orders) {
     return `<article class="oc ${STATE_COLOR[o.status] || "go"}">
       <div class="top"><b>${esc(o.code)}</b><span class="st">${STATUS[o.status]}</span></div>
       <div class="d">${esc(sub)}</div>
-      <div class="thumbs">${items.slice(0, 5).map((i) => { const p = img.get(i.product_id); return `<span title="${esc(i.name)}">${p?.image_url ? `<img src="${esc(p.image_url)}" alt="" loading="lazy">` : esc(initials(p?.name || i.name))}<i>${i.quantity}</i></span>`; }).join("")}${items.length > 5 ? `<span class="more">+${items.length - 5}</span>` : ""}</div>
+      <div class="thumbs">${items.slice(0, 5).map((i) => { const p = img.get(i.product_id); return `<span title="${esc(i.name)}">${p?.image_url ? `<img src="${esc(media(p.image_url))}" alt="" loading="lazy">` : esc(initials(p?.name || i.name))}<i>${i.quantity}</i></span>`; }).join("")}${items.length > 5 ? `<span class="more">+${items.length - 5}</span>` : ""}</div>
       ${canRate && o.status === "entregado" ? `<div class="rate-row">${[...new Map(items.filter((i) => i.product_id && Number(i.line_total) > 0).map((i) => [i.product_id, i])).values()].map((i) => {
         const st = rev.get(i.product_id), nm = img.get(i.product_id)?.name || i.name;
         return st ? `<span class="rated">${st === "publicada" ? "✓ Calificado" : st === "oculta" ? "Calificado" : "⏳ En revisión"} · ${esc(nm)}</span>`

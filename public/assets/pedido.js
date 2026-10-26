@@ -1,4 +1,4 @@
-import { sb, api, $, money, esc, hhmm, when, dayLabel, orderRange, parseBank, STATUS, socialLinks, SOCIAL } from "./common.js";
+import { sb, api, $, money, esc, hhmm, when, dayLabel, orderRange, parseBank, STATUS, socialLinks, SOCIAL, media } from "./common.js";
 import { openPayphone } from "./payphone.js";
 
 const token = new URLSearchParams(location.search).get("t") || localStorage.getItem("tbs_ultimo_pedido");
@@ -151,7 +151,7 @@ function renderPayOptions(info) {
       $("#payPane").querySelectorAll("[data-copy]").forEach((b) => (b.onclick = () => navigator.clipboard?.writeText(b.dataset.copy).then(() => { b.textContent = "¡Copiado!"; setTimeout(() => (b.textContent = "Copiar"), 1500); })));
       return;
     }
-    const url = info.qr[k], name = k === "deuna" ? "DeUna" : "PeiGo";
+    const url = media(info.qr[k]), name = k === "deuna" ? "DeUna" : "PeiGo";
     $("#payPane").innerHTML = `<div class="qrbox"><img src="${esc(url)}" alt="Código QR de ${name} de The Bakery Side" width="220" height="220">
       <div><p class="small" style="margin:0"><b>Desde otro celular:</b> abre ${name} y escanea el código.</p>
       <p class="small" style="margin:6px 0 0"><b>Desde este celular:</b> guarda la imagen y en ${name} elige escanear desde tu galería.</p>

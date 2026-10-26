@@ -1,4 +1,4 @@
-import { sb, api, $, $$, money, esc, hhmm, hm, etaRange, dayLabel, localToISO, todayLocal, toast, mountSocial, ALLERGENS, allergenNames } from "./common.js";
+import { sb, api, $, $$, money, esc, hhmm, hm, etaRange, dayLabel, localToISO, todayLocal, toast, mountSocial, ALLERGENS, allergenNames, media, mediaPath } from "./common.js";
 import { openPayphone } from "./payphone.js";
 import { createMap } from "./mapa.js";
 import { captureRef, storedRef, currentUser, loadAccount, stampCard, stampsFor, googleButton, mountGoogle } from "./account.js";
@@ -11,7 +11,7 @@ captureRef();
 // La foto carga primero; el video se baja solo después, para no frenar la página.
 async function heroVideo() {
   const img = document.querySelector(".hero-b .hb-media"); if (!img) return;
-  const pub = (k) => sb.storage.from("productos").getPublicUrl(`portada/${k}`).data.publicUrl;
+  const pub = (k) => mediaPath(`portada/${k}`);
   let meta;
   try { const r = await fetch(`${pub("hero.json")}?t=${Date.now()}`, { cache: "no-store" }); if (!r.ok) return; meta = await r.json(); } catch { return; }
   if (!meta?.video) return;
@@ -263,7 +263,7 @@ function rateRow(p) {
 }
 function itemCard(p) {
   const q = qtyOf(p.id), left = leftToday(p), opts = groupsOf(p.id).length > 0;
-  const img = p.image_url ? `<img src="${esc(p.image_url)}" alt="${esc(p.name)}" loading="lazy">` : `<span class="can" aria-hidden="true">${esc(p.name.split(" ").map((w) => w[0]).join("").slice(0, 2))}</span>`;
+  const img = p.image_url ? `<img src="${esc(media(p.image_url))}" alt="${esc(p.name)}" loading="lazy">` : `<span class="can" aria-hidden="true">${esc(p.name.split(" ").map((w) => w[0]).join("").slice(0, 2))}</span>`;
   const lead = p.lead_hours ? `<span class="tag">Pedir con ${p.lead_hours} h de anticipación</span>` : "";
   const stock = left === 0 ? `<span class="tag">Agotado por hoy · vuelve mañana</span>` : left != null ? `<span class="tag">Quedan ${left} hoy</span>` : "";
   const hint = opts ? `<span class="optnote">Eliges ${groupsOf(p.id).map((g) => g.name.toLowerCase()).join(" y ")} al agregar</span>` : "";
@@ -445,7 +445,7 @@ function renderUpsell() {
   const pick = state.cart.size ? chooseUpsell() : null;
   if (!pick) { box.innerHTML = ""; return; }
   const p = product(pick.id);
-  box.innerHTML = `<div class="upsell"><span class="up-k">¿Le sumas?</span><div class="up-row">${p.image_url ? `<img src="${esc(p.image_url)}" alt="" loading="lazy">` : ""}<div class="up-tx"><b>${esc(p.name)}</b><span class="tabnum">${money(p.price)}</span></div><button type="button" class="btn small" data-up="${p.id}">+ Agregar</button></div></div>`;
+  box.innerHTML = `<div class="upsell"><span class="up-k">¿Le sumas?</span><div class="up-row">${p.image_url ? `<img src="${esc(media(p.image_url))}" alt="" loading="lazy">` : ""}<div class="up-tx"><b>${esc(p.name)}</b><span class="tabnum">${money(p.price)}</span></div><button type="button" class="btn small" data-up="${p.id}">+ Agregar</button></div></div>`;
   const key = `${pick.rule}:${pick.id}`;
   if (!upsellSeen.has(key)) { upsellSeen.add(key); logUpsell("shown", pick); }
 }

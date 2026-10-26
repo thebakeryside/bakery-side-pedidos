@@ -1,4 +1,4 @@
-import { sb, $, $$, money, esc, toast, parseBank, ALLERGENS, tableSearch } from "./common.js";
+import { sb, $, $$, money, esc, toast, parseBank, ALLERGENS, tableSearch, media, mediaPath } from "./common.js";
 import { requireLogin, loginHTML } from "./auth.js";
 import { renderManual } from "./manual.js";
 import { costos } from "./costos.js";
@@ -173,6 +173,56 @@ async function accesos() {
   })));
 }
 
+// ---------- fotos livianas ----------
+// Las fotos se guardan en WebP de máximo 1200 px: se ven igual en la tienda y pesan ~10 veces menos.
+const STORE_PUB = sb.storage.from("productos").getPublicUrl("").data.publicUrl.replace(/\/?$/, "/");
+const storePath = (u) => (typeof u === "string" && u.startsWith(STORE_PUB) ? decodeURIComponent(u.slice(STORE_PUB.length).split("?")[0]) : null);
+const extOf = (b) => ({ "image/webp": "webp", "image/jpeg": "jpg", "image/png": "png" }[b.type] || "jpg");
+const toBlob = (c, type, q) => new Promise((r) => c.toBlob(r, type, q));
+async function shrinkImage(file, max = 1200) {
+  try {
+    const bmp = await createImageBitmap(file);
+    const s = Math.min(1, max / Math.max(bmp.width, bmp.height));
+    const c = Object.assign(document.createElement("canvas"), { width: Math.round(bmp.width * s), height: Math.round(bmp.height * s) });
+    const g = c.getContext("2d");
+    g.drawImage(bmp, 0, 0, c.width, c.height);
+    let b = await toBlob(c, "image/webp", 0.82);
+    if (!b || b.type !== "image/webp") { // navegadores sin WebP: JPEG sobre fondo blanco
+      g.globalCompositeOperation = "destination-over"; g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+      b = await toBlob(c, "image/jpeg", 0.85);
+    }
+    bmp.close?.();
+    return b && b.size < file.size ? b : file;
+  } catch { return file; }
+}
+// Fotos guardadas en Supabase que todavía no están en WebP
+const heavyPhotos = (prods) => (prods || []).filter((p) => storePath(p.image_url) && !/\.webp$/i.test(storePath(p.image_url)));
+async function shrinkAllPhotos(prods, btn) {
+  const list = heavyPhotos(prods); let ok = 0, before = 0, after = 0;
+  btn.disabled = true;
+  for (const [i, p] of list.entries()) {
+    btn.textContent = `Aligerando ${i + 1} de ${list.length}…`;
+    try {
+      const old = storePath(p.image_url);
+      const src = await (await fetch(media(p.image_url))).blob();
+      const b = await shrinkImage(src);
+      if (b === src) continue;
+      const path = `${p.id}-${Date.now()}.${extOf(b)}`;
+      const up = await sb.storage.from("productos").upload(path, b, { contentType: b.type, cacheControl: "31536000" });
+      if (up.error) throw up.error;
+      const url = sb.storage.from("productos").getPublicUrl(path).data.publicUrl;
+      const { error } = await sb.from("products").update({ image_url: url }).eq("id", p.id);
+      if (error) throw error;
+      // borra la versión pesada solo si ningún otro producto la usa
+      if (!prods.some((q) => q.id !== p.id && storePath(q.image_url) === old)) await sb.storage.from("productos").remove([old]);
+      ok++; before += src.size; after += b.size;
+    } catch (e) { console.warn("foto", p.name, e); }
+  }
+  const mb = (n) => (n / 1048576).toFixed(1).replace(".", ",");
+  toast(ok ? `Listo: ${ok} fotos pasaron de ${mb(before)} MB a ${mb(after)} MB` : "No se pudo aligerar las fotos. Intenta de nuevo.", 6000);
+  menu();
+}
+
 // ---------- menú ----------
 // Preparación: congelado (listo en 50 min) o al momento (2 h); más el trayecto del motorizado
 const PREP = [[50, "Congelado · 50 min"], [120, "Al momento · 2 h"]];
@@ -186,9 +236,10 @@ async function menu() {
   $("#view").innerHTML = `<div class="panel">
     <h2 class="display" style="font-size:30px">Menú</h2>
     <p class="muted small">Los cambios se ven en la tienda al instante. <b>Preparación</b> = congelado (listo en 50 min) o al momento (2 h); a eso se suma el trayecto del envío. <b>Anticipación</b> = horas antes que hay que agendar ese producto (0 = se puede pedir para hoy). <b>Visible</b> lo oculta o muestra en la tienda. Eliminar es definitivo; los pedidos anteriores conservan nombre y precio.</p>
+    ${heavyPhotos(prods).length ? `<div class="reflink" style="margin:0 0 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button class="btn small" type="button" id="shrinkAll">Aligerar ${heavyPhotos(prods).length} fotos</button><span class="muted small">Las pasa a un formato más liviano (se ven igual). Así la tienda carga más rápido.</span></div>` : ""}
     <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Foto</th><th>Producto</th><th>Categoría</th><th>Precio $</th><th>Preparación</th><th>Anticip. h</th><th>Visible</th><th></th></tr></thead><tbody>
     ${(prods || []).map((p) => `<tr data-pid="${p.id}">
-      <td>${p.image_url ? `<img src="${esc(p.image_url)}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:8px;margin-bottom:4px">` : ""}<label class="btn small ghost" style="cursor:pointer">${p.image_url ? "Cambiar" : "Subir"}<input type="file" accept="image/*" data-photo="${p.id}" hidden></label></td>
+      <td>${p.image_url ? `<img src="${esc(media(p.image_url))}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:8px;margin-bottom:4px">` : ""}<label class="btn small ghost" style="cursor:pointer">${p.image_url ? "Cambiar" : "Subir"}<input type="file" accept="image/*" data-photo="${p.id}" hidden></label></td>
       <td><input class="in" data-f="name" value="${esc(p.name)}" style="min-width:170px" aria-label="Nombre"><input class="in" data-f="description" value="${esc(p.description)}" placeholder="Descripción" style="margin-top:4px;min-width:170px" aria-label="Descripción"><input class="in" data-f="servings" value="${esc(p.servings ?? "")}" placeholder="Porciones (ej.: 8 a 12)" style="margin-top:4px;min-width:170px" aria-label="Porciones"><fieldset class="alg-pick"><legend>Contiene</legend>${ALLERGENS.map(([k, i, n]) => `<label><input type="checkbox" data-alg="${k}" ${(p.allergens || []).includes(k) ? "checked" : ""}> ${i} ${n}</label>`).join("")}</fieldset></td>
       <td><select class="in" data-f="category_id" aria-label="Categoría">${catOpts(p.category_id)}</select></td>
       <td><input class="in" data-f="price" type="number" step="0.01" min="0" value="${p.price}" style="width:90px" aria-label="Precio"></td>
@@ -224,16 +275,21 @@ async function menu() {
     if (error) return rpcErr(error); toast("Producto guardado");
   }));
   $$("[data-photo]").forEach((inp) => (inp.onchange = async () => {
-    const f = inp.files[0]; if (!f) return;
+    const f0 = inp.files[0]; if (!f0) return;
+    if (f0.size > 30 * 1024 * 1024) return toast("La foto pesa más de 30 MB. Usa una más liviana.");
+    toast("Preparando la foto…");
+    const f = await shrinkImage(f0);
     if (f.size > 5 * 1024 * 1024) return toast("La foto pesa más de 5 MB. Usa una más liviana.");
-    const id = Number(inp.dataset.photo), path = `${id}-${Date.now()}.${(f.name.split(".").pop() || "jpg").toLowerCase()}`;
-    const { error } = await sb.storage.from("productos").upload(path, f, { contentType: f.type });
+    const id = Number(inp.dataset.photo), path = `${id}-${Date.now()}.${extOf(f)}`;
+    const { error } = await sb.storage.from("productos").upload(path, f, { contentType: f.type, cacheControl: "31536000" });
     if (error) return toast("No se pudo subir la foto: " + error.message);
     const url = sb.storage.from("productos").getPublicUrl(path).data.publicUrl;
     const { error: e2 } = await sb.from("products").update({ image_url: url }).eq("id", id);
     if (e2) return rpcErr(e2);
     toast("Foto actualizada"); menu();
   }));
+  const sa = $("#shrinkAll");
+  if (sa) sa.onclick = () => shrinkAllPhotos(prods, sa);
   $$("[data-delprod]").forEach((b) => (b.onclick = () => confirmRow(b, `Eliminar «${b.dataset.name}» del menú para siempre.`, async () => {
     const { error } = await sb.from("products").delete().eq("id", Number(b.dataset.delprod));
     if (error) return rpcErr(error);
@@ -563,37 +619,40 @@ async function renderQrAdmin() {
 }
 
 // Video de portada (storage público productos/portada/: hero.json + video + poster.jpg)
+// Antes de subirlo se convierte a MP4 liviano (máx. 720 px de ancho, sin sonido): pesa ~4 veces menos
+// y lo reproducen todos los navegadores. Si el navegador no puede convertirlo, se sube tal cual.
 async function renderHeroAdmin() {
   const box = $("#heroAdmin"); if (!box) return;
-  const pub = (k) => sb.storage.from("productos").getPublicUrl(`portada/${k}`).data.publicUrl;
+  const pub = (k) => mediaPath(`portada/${k}`);
   let meta = null;
   try { const r = await fetch(`${pub("hero.json")}?t=${Date.now()}`, { cache: "no-store" }); if (r.ok) meta = await r.json(); } catch {}
   const v = encodeURIComponent(meta?.v || "");
+  const heavy = meta?.video && !meta.light;
   box.innerHTML = `<div class="qr-slot confirm-host">
       ${meta?.video ? `<video src="${esc(pub(meta.video))}?v=${v}" poster="${meta.poster ? esc(pub(meta.poster)) + "?v=" + v : ""}" muted loop playsinline autoplay style="width:96px;height:128px;object-fit:cover;border-radius:10px"></video>` : `<div class="qr-empty" style="height:128px">Foto fija</div>`}
       <div style="display:grid;gap:6px"><b>${meta?.video ? "Video actual" : "Sin video: se ve la foto"}</b>
         <label class="btn small" style="cursor:pointer"><span>${meta?.video ? "Cambiar video" : "Subir video"}</span><input type="file" accept="video/mp4,video/quicktime,video/*" id="heroFile" hidden></label>
-        ${meta?.video ? `<button class="btn small ghost" type="button" id="heroDel">Quitar video</button>` : ""}</div>
+        ${heavy ? `<button class="btn small" type="button" id="heroShrink">Aligerar video actual</button>` : ""}
+        ${meta?.video ? `<button class="btn small ghost" type="button" id="heroDel">Quitar video</button>` : ""}
+        <span class="muted small" id="heroMsg"></span></div>
     </div>`;
+  const msg = (t) => { const m = $("#heroMsg"); if (m) m.textContent = t; };
   $("#heroFile").onchange = async (e) => {
     const f = e.target.files[0]; if (!f) return;
-    if (f.size > 20 * 1024 * 1024) return toast("El video pesa más de 20 MB. Expórtalo más corto o en menor calidad.");
-    const label = e.target.previousElementSibling; label.textContent = "Subiendo…";
+    if (f.size > 60 * 1024 * 1024) return toast("El video pesa más de 60 MB. Expórtalo más corto.");
+    e.target.previousElementSibling.textContent = "Preparando…";
+    try { await saveHero(f, msg); toast("Video de portada guardado"); } catch (err) { rpcErr(err); }
+    renderHeroAdmin();
+  };
+  const sh = $("#heroShrink");
+  if (sh) sh.onclick = async () => {
+    sh.disabled = true; sh.textContent = "Aligerando…";
     try {
-      const poster = await videoPoster(f);
-      const ts = Date.now(), ext = /quicktime|mov/i.test(f.type + f.name) ? "mov" : "mp4", name = `video-${ts}.${ext}`;
-      let r = await sb.storage.from("productos").upload(`portada/${name}`, f, { contentType: f.type || "video/mp4", cacheControl: "31536000" });
-      if (r.error) throw r.error;
-      if (poster) { r = await sb.storage.from("productos").upload(`portada/poster-${ts}.jpg`, poster, { contentType: "image/jpeg", cacheControl: "31536000" }); if (r.error) throw r.error; }
-      const json = new Blob([JSON.stringify({ v: String(ts), video: name, poster: poster ? `poster-${ts}.jpg` : null })], { type: "application/json" });
-      r = await sb.storage.from("productos").upload("portada/hero.json", json, { upsert: true, contentType: "application/json", cacheControl: "60" });
-      if (r.error) throw r.error;
-      // borra los videos anteriores para no acumular espacio
-      const { data: old } = await sb.storage.from("productos").list("portada");
-      const stale = (old || []).map((o) => o.name).filter((n) => n !== "hero.json" && !n.includes(String(ts)));
-      if (stale.length) await sb.storage.from("productos").remove(stale.map((n) => `portada/${n}`));
-      toast("Video de portada guardado");
-    } catch (err) { rpcErr(err); }
+      const src = await (await fetch(`${pub(meta.video)}?v=${v}`)).blob();
+      const file = new File([src], meta.video, { type: src.type || (/\.mov$/i.test(meta.video) ? "video/quicktime" : "video/mp4") });
+      const r = await saveHero(file, msg, { requireLight: true });
+      toast(`Listo: el video pasó de ${mb(src.size)} MB a ${mb(r.size)} MB`, 6000);
+    } catch (err) { toast(err?.message || "No se pudo aligerar el video.", 7000); }
     renderHeroAdmin();
   };
   const del = $("#heroDel");
@@ -603,6 +662,91 @@ async function renderHeroAdmin() {
     if (error) return rpcErr(error);
     toast("Video quitado"); renderHeroAdmin();
   });
+}
+const mb = (n) => (n / 1048576).toFixed(1).replace(".", ",");
+
+// Convierte (si se puede), sube video + portada, actualiza hero.json y borra los anteriores
+async function saveHero(f, msg = () => {}, { requireLight = false } = {}) {
+  msg("Convirtiendo el video… deja esta pantalla abierta.");
+  let light = null;
+  try { light = await compressVideo(f, (p) => msg(`Convirtiendo el video… ${Math.round(p * 100)} %`)); } catch (e) { console.warn("video", e); }
+  if (!light && requireLight) throw new Error("Este navegador no pudo convertir el video. Ábrelo desde el iPhone (Safari) o desde Chrome en la computadora.");
+  const up = light || f;
+  if (!light && up.size > 20 * 1024 * 1024) throw new Error("El video pesa más de 20 MB. Expórtalo más corto o en menor calidad.");
+  msg("Subiendo…");
+  const poster = await videoPoster(up);
+  const ts = Date.now(), ext = light ? "mp4" : /quicktime|mov/i.test(f.type + f.name) ? "mov" : "mp4", name = `video-${ts}.${ext}`;
+  let r = await sb.storage.from("productos").upload(`portada/${name}`, up, { contentType: light ? "video/mp4" : f.type || "video/mp4", cacheControl: "31536000" });
+  if (r.error) throw r.error;
+  if (poster) { r = await sb.storage.from("productos").upload(`portada/poster-${ts}.jpg`, poster, { contentType: "image/jpeg", cacheControl: "31536000" }); if (r.error) throw r.error; }
+  const json = new Blob([JSON.stringify({ v: String(ts), video: name, poster: poster ? `poster-${ts}.jpg` : null, light: !!light })], { type: "application/json" });
+  r = await sb.storage.from("productos").upload("portada/hero.json", json, { upsert: true, contentType: "application/json", cacheControl: "60" });
+  if (r.error) throw r.error;
+  // borra los videos anteriores para no acumular espacio
+  const { data: old } = await sb.storage.from("productos").list("portada");
+  const stale = (old || []).map((o) => o.name).filter((n) => n !== "hero.json" && !n.includes(String(ts)));
+  if (stale.length) await sb.storage.from("productos").remove(stale.map((n) => `portada/${n}`));
+  msg("");
+  return up;
+}
+
+// MP4 H.264 liviano con WebCodecs: reproduce el video sin sonido y vuelve a codificar cada cuadro.
+// Devuelve null si el navegador no puede (entonces se sube el original).
+async function compressVideo(file, onProgress = () => {}) {
+  if (!("VideoEncoder" in window) || !("requestVideoFrameCallback" in HTMLVideoElement.prototype)) return null;
+  const { Muxer, ArrayBufferTarget } = await import("./vendor/mp4-muxer.mjs");
+  const url = URL.createObjectURL(file);
+  const vid = document.createElement("video");
+  vid.muted = true; vid.playsInline = true; vid.preload = "auto"; vid.loop = false; vid.src = url;
+  // Safari solo decodifica videos que están en la página (aunque sean invisibles)
+  Object.assign(vid.style, { position: "fixed", width: "2px", height: "2px", opacity: "0", pointerEvents: "none", left: "0", top: "0" });
+  document.body.append(vid);
+  const cleanup = () => { vid.pause(); vid.remove(); URL.revokeObjectURL(url); };
+  try {
+    await new Promise((ok, ko) => { vid.onloadedmetadata = ok; vid.onerror = () => ko(new Error("no se pudo leer el video")); setTimeout(() => ko(new Error("tiempo")), 20000); });
+    const dur = vid.duration;
+    if (!dur || !isFinite(dur) || dur > 90) return null;
+    const even = (n) => Math.max(2, Math.round(n / 2) * 2);
+    const s = Math.min(1, 720 / vid.videoWidth, 1280 / vid.videoHeight);
+    const W = even(vid.videoWidth * s), H = even(vid.videoHeight * s);
+    let config = null;
+    for (const codec of ["avc1.4d001f", "avc1.42001f", "avc1.640028"]) {
+      const c = { codec, width: W, height: H, bitrate: 1_000_000, framerate: 30, avc: { format: "avc" } };
+      try { if ((await VideoEncoder.isConfigSupported(c)).supported) { config = c; break; } } catch {}
+    }
+    if (!config) return null;
+    const target = new ArrayBufferTarget();
+    const muxer = new Muxer({ target, video: { codec: "avc", width: W, height: H }, fastStart: "in-memory", firstTimestampBehavior: "offset" });
+    let fail = null;
+    const enc = new VideoEncoder({ output: (chunk, meta) => muxer.addVideoChunk(chunk, meta), error: (e) => (fail = e) });
+    enc.configure(config);
+    const c = Object.assign(document.createElement("canvas"), { width: W, height: H }), g = c.getContext("2d");
+    let frames = 0, lastT = -1, lastKey = -Infinity;
+    await new Promise((done, ko) => {
+      const step = (_now, md) => {
+        if (fail) return ko(fail);
+        const t = Math.round(md.mediaTime * 1e6);
+        if (t > lastT) {
+          g.drawImage(vid, 0, 0, W, H);
+          const fr = new VideoFrame(c, { timestamp: t });
+          const key = t - lastKey >= 2e6; if (key) lastKey = t;
+          enc.encode(fr, { keyFrame: key }); fr.close();
+          lastT = t; frames++;
+          onProgress(Math.min(1, md.mediaTime / dur));
+        }
+        if (!vid.ended) vid.requestVideoFrameCallback(step);
+      };
+      vid.requestVideoFrameCallback(step);
+      vid.onended = () => done();
+      setTimeout(() => done(), (dur + 15) * 1000);
+      vid.play().catch(ko);
+    });
+    await enc.flush(); enc.close();
+    if (fail || frames < 10) return null;
+    muxer.finalize();
+    const out = new Blob([target.buffer], { type: "video/mp4" });
+    return out.size < file.size ? new File([out], "portada.mp4", { type: "video/mp4" }) : null;
+  } finally { cleanup(); }
 }
 
 // Portada del video (cuadro a 1 s, recortado 3:4) para que se vea algo mientras carga
