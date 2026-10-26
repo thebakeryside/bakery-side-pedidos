@@ -39,7 +39,7 @@ async function heroVideo() {
 }
 if (document.readyState === "complete") heroVideo(); else addEventListener("load", heroVideo, { once: true });
 
-const state = { cfg: null, cats: [], products: [], cart: new Map(), filter: "Todo", loc: null, quote: null, acct: null, guest: false };
+const state = { cfg: null, cats: [], products: [], cart: new Map(), filter: "Todo", loc: null, quote: null, acct: null, guest: false, signedIn: false, firstOrder: false };
 const CART_KEY = "tbs_cart";
 const PROFILE_KEY = "tbs_cliente";
 
@@ -82,6 +82,8 @@ async function init() {
     $("#shipStripTxt").textContent = `en pedidos desde ${m0(fsc.min)}`;
     $("#shipStrip").hidden = false;
   }
+  try { state.signedIn = Boolean(await currentUser()); } catch {}
+  renderWelcomeBar();
   mountSocial(c.whatsapp);
   try { JSON.parse(localStorage.getItem(CART_KEY) || "[]").forEach(([k, q]) => { k = String(k); if (state.products.some((p) => p.id === keyId(k)) && validKey(k)) state.cart.set(k, q); }); } catch {}
   renderCats(); renderMenu(); renderCart();
@@ -131,9 +133,61 @@ async function refreshAccount() {
   // sellos siempre a la vista junto a «Mi cuenta» (🎁 si ya tiene un postre sorpresa)
   const chip = $("#acctStamps");
   if (chip) { chip.hidden = !state.acct; if (state.acct) chip.textContent = `${state.acct.rewards_available ? "🎁 " : ""}${Math.min(8, state.acct.stamps)}/8`; }
+  // ¿Le toca el primer envío gratis? (cuenta sin pedidos pagados, misma regla que el servidor)
+  state.signedIn = Boolean(state.acct); state.firstOrder = false;
+  if (state.acct && Number(state.cfg?.free_ship?.welcome_min) > 0) {
+    try {
+      const u = await currentUser();
+      const { count, error } = await sb.from("orders").select("id", { count: "exact", head: true })
+        .eq("user_id", u.id).in("payment_status", ["pagado", "en_revision"]);
+      state.firstOrder = !error && (count ?? 0) === 0;
+    } catch {}
+  }
+  renderWelcomeBar(); renderCart();
+  // Volvió de crear la cuenta desde la barra (ingreso por redirección)
+  let fromBar = false;
+  try { fromBar = sessionStorage.getItem(WBAR_KEY) === "1"; if (state.acct) sessionStorage.removeItem(WBAR_KEY); } catch {}
+  if (fromBar && state.acct) welcomeToast();
   if (!$("#checkout").hidden) { renderAcctBox(); renderPerks(); renderSummary(); }
   if (state.loc && !$("#checkout").hidden) requestQuote(); // con cuenta puede tocarle el primer envío gratis
 }
+
+// ---------- barra de primer envío gratis ----------
+const WBAR_KEY = "tbs_wbar";
+const wMin = () => { const n = Number(state.cfg?.free_ship?.welcome_min || 0); return Number.isInteger(n) ? `$${n}` : moneyEs(n); };
+function renderWelcomeBar() {
+  const bar = $("#welcomeBar"); if (!bar) return;
+  const on = Number(state.cfg?.free_ship?.welcome_min) > 0;
+  const guest = on && !state.signedIn, member = on && state.signedIn && state.firstOrder;
+  bar.hidden = !(guest || member);
+  bar.classList.toggle("member", member);
+  $("#welcomeTxt").textContent = member ? "Tu primer envío es GRATIS" : "Primer envío GRATIS";
+  $("#welcomeBtn").hidden = !guest;
+}
+function welcomeToast() {
+  const n = Number(state.acct?.claimed_stamps || 0);
+  const msg = state.firstOrder ? `¡Listo, baker! Tu primer envío es gratis en pedidos desde ${wMin()} 🎁` : "¡Listo, baker! Ya entraste a tu cuenta.";
+  setTimeout(() => toast(msg, 6000), n > 0 ? 5600 : 300);
+}
+function openWelcome() {
+  const box = $("#welcomeModal"), fs = state.cfg?.free_ship || {};
+  $("#wmMin").textContent = wMin();
+  $("#wmNote").textContent = fs.max_km > 0 ? `Envío gratis hasta ${String(fs.max_km).replace(".", ",")} km; más lejos pagas solo la diferencia.` : "";
+  $("#wmGo").innerHTML = googleButton("filled_black");
+  box.hidden = false;
+  try { localStorage.setItem(CART_KEY, JSON.stringify([...state.cart])); sessionStorage.setItem(WBAR_KEY, "1"); } catch {}
+  mountGoogle(box, async () => {
+    box.hidden = true;
+    try { sessionStorage.removeItem(WBAR_KEY); } catch {}
+    await refreshAccount();
+    welcomeToast();
+  }, (e) => toast(e.message));
+}
+function closeWelcome() { $("#welcomeModal").hidden = true; try { sessionStorage.removeItem(WBAR_KEY); } catch {} }
+$("#welcomeBtn").onclick = openWelcome;
+$("#welcomeModal").querySelector(".wm-close").onclick = closeWelcome;
+$("#welcomeModal").addEventListener("click", (e) => { if (e.target.id === "welcomeModal") closeWelcome(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#welcomeModal").hidden) closeWelcome(); });
 
 // ---------- menú ----------
 // Las categorías quedan fijas arriba al bajar; tocar una lleva a su sección y la activa se marca sola
@@ -304,9 +358,12 @@ function shipFee(q, net, firstOrder) {
 }
 // Texto corto del avance hacia el envío gratis
 function freeShipHint(net) {
-  const fs = state.cfg?.free_ship || {};
+  const fs = state.cfg?.free_ship || {}, wmin = Number(fs.welcome_min) || 0;
+  if (fs.min > 0 && net >= fs.min - 1e-9) return `<p class="ship-hint ok">🎉 Tu envío es gratis${fs.max_km > 0 ? ` hasta ${String(fs.max_km).replace(".", ",")} km` : ""}.</p>`;
+  if (wmin > 0 && state.firstOrder) return net >= wmin - 1e-9
+    ? `<p class="ship-hint ok">🎁 Tu primer envío es gratis${fs.max_km > 0 ? ` hasta ${String(fs.max_km).replace(".", ",")} km` : ""}.</p>`
+    : `<p class="ship-hint">Te faltan <b>${moneyEs(wmin - net)}</b> para tu envío gratis.</p>`;
   if (!(fs.min > 0)) return "";
-  if (net >= fs.min - 1e-9) return `<p class="ship-hint ok">🎉 Tu envío es gratis${fs.max_km > 0 ? ` hasta ${String(fs.max_km).replace(".", ",")} km` : ""}.</p>`;
   return `<p class="ship-hint">Te faltan <b>${moneyEs(fs.min - net)}</b> para envío gratis.</p>`;
 }
 

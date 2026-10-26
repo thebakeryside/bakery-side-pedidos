@@ -132,7 +132,7 @@
 .wa-fab:hover { background: #3ee07a; }
 body:has(#mobileBar:not([hidden])) .wa-fab, .cartfab:not([hidden]) ~ .wa-fab { bottom: calc(86px + env(safe-area-inset-bottom, 0px)); }
 @media (max-width: 560px) { .wa-fab span { display: none; } .wa-fab { padding: 12px; } }
-body.in-checkout .how, body.in-checkout .steps, body.in-checkout .ship-strip, body.in-checkout .closed-bar, body.in-checkout .wa-fab { display: none !important; }
+body.in-checkout .welcome-bar, body.in-checkout .how, body.in-checkout .steps, body.in-checkout .ship-strip, body.in-checkout .closed-bar, body.in-checkout .wa-fab { display: none !important; }
 
 /* opciones del producto */
 .optnote { font-size: 12.5px; color: var(--text-2); }
@@ -352,3 +352,18 @@ body.light .wrap { max-width: 1260px; }
 .ship-strip { max-width: 760px; margin: 8px 0 0; text-align: center; font-size: 13px; line-height: 1.4; color: var(--text-2); }
 .ship-strip[hidden] { display: none; }
 .ship-strip b { color: var(--accent-ink); font-weight: 700; }
+
+/* Barra de primer envío gratis: arriba del todo, quieta, en tinta con el botón tostado */
+.welcome-bar { background: #1C1714; color: #F6F7DE; padding-top: env(safe-area-inset-top, 0px); }
+.welcome-bar[hidden], .wb-btn[hidden] { display: none; }
+.wb-in { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; padding-block: 8px; }
+.welcome-bar.member .wb-in { justify-content: center; }
+.wb-msg { display: inline-flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 600; line-height: 1.25; }
+.wb-msg svg { width: 22px; height: 22px; color: #C68A4E; flex: none; }
+.wb-btn { flex: none; border: 0; border-radius: 999px; background: #C68A4E; color: #FFFFFF; font-family: var(--display); font-size: 17px; letter-spacing: .05em; line-height: 1; padding: 8px 16px 6px; cursor: pointer; white-space: nowrap; }
+.wb-btn:hover { background: #B67B41; }
+.wb-btn:focus-visible { outline: 2px solid #F6F7DE; outline-offset: 2px; }
+@media (min-width: 700px) { .wb-in { justify-content: center; gap: 22px; } }
+.welcome-card .wm-t { margin: 4px 0 14px; font-size: 15px; line-height: 1.5; }
+.welcome-card .wm-go { display: flex; justify-content: center; min-height: 44px; }
+.welcome-card .wm-note { margin: 12px 0 0; text-align: center; }
