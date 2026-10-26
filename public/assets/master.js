@@ -690,10 +690,10 @@ async function saveHero(f, msg = () => {}, { requireLight = false } = {}) {
   return up;
 }
 
-// MP4 H.264 liviano con WebCodecs: reproduce el video sin sonido y vuelve a codificar cada cuadro.
+// MP4 H.264 liviano con WebCodecs: recorre el video cuadro por cuadro (sin sonido) y lo vuelve a codificar.
 // Devuelve null si el navegador no puede (entonces se sube el original).
 async function compressVideo(file, onProgress = () => {}) {
-  if (!("VideoEncoder" in window) || !("requestVideoFrameCallback" in HTMLVideoElement.prototype)) return null;
+  if (!("VideoEncoder" in window) || !("VideoFrame" in window)) return null;
   const { Muxer, ArrayBufferTarget } = await import("./vendor/mp4-muxer.mjs");
   const url = URL.createObjectURL(file);
   const vid = document.createElement("video");
@@ -721,26 +721,20 @@ async function compressVideo(file, onProgress = () => {}) {
     const enc = new VideoEncoder({ output: (chunk, meta) => muxer.addVideoChunk(chunk, meta), error: (e) => (fail = e) });
     enc.configure(config);
     const c = Object.assign(document.createElement("canvas"), { width: W, height: H }), g = c.getContext("2d");
-    let frames = 0, lastT = -1, lastKey = -Infinity;
-    await new Promise((done, ko) => {
-      const step = (_now, md) => {
-        if (fail) return ko(fail);
-        const t = Math.round(md.mediaTime * 1e6);
-        if (t > lastT) {
-          g.drawImage(vid, 0, 0, W, H);
-          const fr = new VideoFrame(c, { timestamp: t });
-          const key = t - lastKey >= 2e6; if (key) lastKey = t;
-          enc.encode(fr, { keyFrame: key }); fr.close();
-          lastT = t; frames++;
-          onProgress(Math.min(1, md.mediaTime / dur));
-        }
-        if (!vid.ended) vid.requestVideoFrameCallback(step);
-      };
-      vid.requestVideoFrameCallback(step);
-      vid.onended = () => done();
-      setTimeout(() => done(), (dur + 15) * 1000);
-      vid.play().catch(ko);
-    });
+    // Cuadro por cuadro saltando en el tiempo (no depende de que el video se vea en pantalla)
+    const FPS = 30, total = Math.max(1, Math.floor(dur * FPS));
+    let frames = 0;
+    const seek = (t) => new Promise((ok) => { const done = () => { vid.removeEventListener("seeked", done); ok(); }; vid.addEventListener("seeked", done); vid.currentTime = t; setTimeout(done, 5000); });
+    for (let i = 0; i < total; i++) {
+      if (fail) throw fail;
+      await seek(Math.min(dur - 0.001, i / FPS));
+      g.drawImage(vid, 0, 0, W, H);
+      const fr = new VideoFrame(c, { timestamp: Math.round((i * 1e6) / FPS), duration: Math.round(1e6 / FPS) });
+      enc.encode(fr, { keyFrame: i % (FPS * 2) === 0 }); fr.close();
+      frames++;
+      if (enc.encodeQueueSize > 10) await new Promise((r) => setTimeout(r, 0));
+      onProgress((i + 1) / total);
+    }
     await enc.flush(); enc.close();
     if (fail || frames < 10) return null;
     muxer.finalize();
