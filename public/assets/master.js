@@ -624,8 +624,10 @@ async function renderQrAdmin() {
 async function renderHeroAdmin() {
   const box = $("#heroAdmin"); if (!box) return;
   const pub = (k) => mediaPath(`portada/${k}`);
+  // hero.json se lee directo de Supabase (la copia de Cloudflare tarda hasta 1 min en cambiar)
+  const direct = sb.storage.from("productos").getPublicUrl("portada/hero.json").data.publicUrl;
   let meta = null;
-  try { const r = await fetch(`${pub("hero.json")}?t=${Date.now()}`, { cache: "no-store" }); if (r.ok) meta = await r.json(); } catch {}
+  try { const r = await fetch(`${direct}?t=${Date.now()}`, { cache: "no-store" }); if (r.ok) meta = await r.json(); } catch {}
   const v = encodeURIComponent(meta?.v || "");
   const heavy = meta?.video && !meta.light;
   box.innerHTML = `<div class="qr-slot confirm-host">
