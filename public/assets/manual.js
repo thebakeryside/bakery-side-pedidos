@@ -1,5 +1,5 @@
 // Pedido por WhatsApp: cocina o master lo registran con lo mínimo y le mandan al cliente el enlace de pago
-import { sb, api, $, $$, money, esc, hhmm, when, toast, waLink, localToISO, todayLocal } from "./common.js";
+import { sb, api, $, $$, money, esc, hhmm, when, toast, waLink, localToISO, todayLocal, parseBank } from "./common.js";
 import { createMap } from "./mapa.js";
 
 const SITE = "https://thebakeryside.com";
@@ -14,12 +14,14 @@ let st = null;
 export async function renderManual(view) {
   st = { cart: new Map(), loc: null, locLabel: "", quote: null, cfg: null, prods: [], cats: [], map: null, filter: "" };
   view.innerHTML = `<p class="muted">Cargando…</p>`;
-  const [cfg, cats, prods, opts] = await Promise.all([
+  const [cfg, cats, prods, opts, sets] = await Promise.all([
     api("config"),
     sb.from("categories").select("id,name,sort").eq("active", true).order("sort"),
     sb.from("products").select("*").eq("active", true).order("sort"),
     sb.from("product_option_groups").select("product_id, option_groups(id,name,required,option_choices(id,name,price_delta,sort,active))"),
+    sb.from("settings").select("bank_info").single(),
   ]);
+  st.bank = parseBank(sets?.data?.bank_info);
   st.cfg = cfg; st.cats = cats.data || []; st.prods = prods.data || [];
   // opciones (endulzante, etc.): cada opción se muestra como su propia fila
   st.opts = {};
@@ -101,6 +103,7 @@ export async function renderManual(view) {
           <p class="muted small" id="mDepNote" style="margin:6px 0 0"></p>
         </div>
         <div id="mSum" class="msum"></div>
+        <div id="mCopyBox" class="mcopy" hidden></div>
         <button class="btn primary big" id="mGo" style="margin-top:12px">Registrar pedido</button>
         <p class="err" id="mErr" role="alert"></p>
       </section>
@@ -129,6 +132,11 @@ export async function renderManual(view) {
   $("#mFind").onclick = findPasted;
   $("#mPaste").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); findPasted(); } });
   $("#mForm").onsubmit = submit;
+  $("#mCopyBox").onclick = (e) => {
+    const b = e.target.closest("[data-cp]"); if (!b) return;
+    const k = b.dataset.cp;
+    copy(k === "res" ? summaryText() : k === "banks" ? banksText() : st.bank.accounts[+k].number);
+  };
   fillDates(); drawProds();
 
   const k = cfg.kitchen?.lat ? { lat: cfg.kitchen.lat, lng: cfg.kitchen.lng } : null;
@@ -192,7 +200,36 @@ function drawSum() {
     const d = depNow();
     $("#mDepNote").innerHTML = t ? `${t <= 50 ? `<span class="err">Ojo: los eventos son pedidos de más de $50. </span>` : ""}Saldo por cobrar el día del evento: <b>${money(Math.max(t - d, 0))}</b>` : "";
   }
+  drawCopy();
   $("#mGo").textContent = lines.length && fee != null ? (isDeposit() ? `Registrar evento · anticipo ${money(depNow())}` : paid ? `Registrar pedido pagado · ${money(t)}` : `Registrar y crear enlace · ${money(t)}`) : "Registrar pedido";
+}
+
+// Textos para mandarle al cliente por WhatsApp (siempre de "usted")
+const payAmount = () => (isDeposit() ? depNow() : subtotal() + (feeNow() || 0));
+function summaryText() {
+  const fee = feeNow();
+  const lines = [...st.cart].map(([k, q]) => `${q} × ${lName(k)} · ${money(lPrice(k) * q)}`).join("\n");
+  const ship = isPickup() ? "Retira en nuestra cocina" : freeShip() ? "Envío: ¡gratis! 🎁" : `Envío: ${money(fee || 0)}`;
+  const dep = isDeposit() ? `\nAnticipo para reservar: ${money(depNow())}\nSaldo el día del evento: ${money(Math.max(subtotal() + (fee || 0) - depNow(), 0))}` : "";
+  return `Este es el detalle de su pedido en The Bakery Side 🧁\n\n${lines}\n\nSubtotal: ${money(subtotal())}\n${ship}\nTotal: ${money(subtotal() + (fee || 0))}${dep}`;
+}
+function banksText() {
+  const b = st.bank;
+  const accs = b.accounts.map((a) => `${a.bank}\nCuenta de ${String(a.type || "ahorros").toLowerCase()}\n${a.number}`).join("\n\n");
+  return `Puede transferir a cualquiera de estas cuentas:\n\n${accs}\n\nA nombre de: ${b.holder}${b.email ? `\nCorreo: ${b.email}` : ""}\nMonto: ${money(payAmount())}\n\nPor favor, envíenos el comprobante por aquí. ¡Gracias! 🙌`;
+}
+function drawCopy() {
+  const box = $("#mCopyBox"); if (!box) return;
+  const ready = st.cart.size && feeNow() != null;
+  box.hidden = !ready; if (!ready) return;
+  const hasBank = st.bank && st.bank.accounts.length;
+  box.innerHTML = `
+    <p class="mcopy-t">Para mandarle al cliente <span class="muted small">— copie y pegue en WhatsApp</span></p>
+    <div class="mcopy-item"><div class="mcopy-h"><b>Resumen del pedido</b><button class="btn small" type="button" data-cp="res">Copiar resumen</button></div><pre class="msg">${esc(summaryText())}</pre></div>
+    ${hasBank ? `<div class="mcopy-item"><div class="mcopy-h"><b>Cuentas para transferir</b><button class="btn small" type="button" data-cp="banks">Copiar cuentas</button></div><pre class="msg">${esc(banksText())}</pre>
+      <div class="mcopy-nums">${st.bank.accounts.map((a, i) => `<button class="btn small ghost" type="button" data-cp="${i}">${esc(a.bank.replace(/^banco\s+(del?\s+)?/i, ""))} · ${esc(a.number)}</button>`).join("")}</div>
+      <p class="muted small" style="margin:6px 0 0">Toque un banco para copiar solo su número.</p></div>`
+      : `<p class="muted small">No hay cuentas guardadas. Agréguelas en Master → Ajustes → Transferencia directa.</p>`}`;
 }
 
 let qTimer;
