@@ -409,6 +409,7 @@ async function horarios() {
           <b>${name}</b>
           <label class="check" style="margin:0"><input type="checkbox" data-on ${h ? "checked" : ""}> Abierto</label>
           <div class="times"><input class="in" type="time" data-open value="${h?.open || "09:00"}" aria-label="${name}: abre"><span class="muted">a</span><input class="in" type="time" data-close value="${h?.close || "21:00"}" aria-label="${name}: cierra"></div>
+          <div class="times brk"><label class="check" style="margin:0"><input type="checkbox" data-brk ${h?.break_from ? "checked" : ""}> Pausa</label><input class="in" type="time" data-bfrom value="${h?.break_from || "13:00"}" aria-label="${name}: pausa desde"><span class="muted">a</span><input class="in" type="time" data-bto value="${h?.break_to || "15:30"}" aria-label="${name}: pausa hasta"></div>
         </div>`; }).join("")}</div>
       <div class="row-btns" style="margin-top:12px"><button class="btn primary">Guardar horario</button><button class="btn ghost" type="button" id="copyMon">Copiar el lunes a todos los días abiertos</button></div>
     </form>
@@ -452,7 +453,9 @@ async function horarios() {
     for (const r of $$(".wk")) {
       const on = r.querySelector("[data-on]").checked, o = r.querySelector("[data-open]").value, c = r.querySelector("[data-close]").value;
       if (on && (!o || !c || o >= c)) return toast(`${r.querySelector("b").textContent}: la apertura debe ser antes del cierre.`);
-      wh[r.dataset.dow] = on ? { open: o, close: c } : null;
+      const brk = r.querySelector("[data-brk]").checked, bf = r.querySelector("[data-bfrom]").value, bt = r.querySelector("[data-bto]").value;
+      if (on && brk && (!bf || !bt || bf >= bt || bf <= o || bt >= c)) return toast(`${r.querySelector("b").textContent}: la pausa debe quedar dentro del horario.`);
+      wh[r.dataset.dow] = on ? { open: o, close: c, ...(brk ? { break_from: bf, break_to: bt } : {}) } : null;
     }
     if (!Object.values(wh).some(Boolean)) return toast("Deja al menos un día abierto.");
     const { error } = await sb.from("settings").update({ weekly_hours: wh, updated_at: new Date().toISOString() }).eq("id", true);

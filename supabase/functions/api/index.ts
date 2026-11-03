@@ -24,7 +24,7 @@ const json = (body: unknown, status = 200) =>
 class UserError extends Error {}
 const fail = (msg: string): never => { throw new UserError(msg); };
 
-type Hours = { open: string; close: string } | null;
+type Hours = { open: string; close: string; break_from?: string | null; break_to?: string | null } | null;
 type Exception = { day: string; closed: boolean; open_time: string | null; close_time: string | null; note: string | null };
 type Settings = {
   open_time: string; close_time: string; store_open: boolean;
@@ -70,7 +70,10 @@ function hoursOn(day: string, s: Settings): (Hours & { note?: string | null }) |
   if (s.weekly_hours) {
     const dow = new Date(day + "T12:00:00Z").getUTCDay();
     const h = s.weekly_hours[String(dow)];
-    return h && h.open && h.close ? { open: h.open, close: h.close } : null;
+    if (!(h && h.open && h.close)) return null;
+    // Pausa opcional dentro del día (por ejemplo, sábados y domingos de 13:00 a 15:30)
+    const pause = h.break_from && h.break_to && h.break_from < h.break_to ? { break_from: h.break_from, break_to: h.break_to } : {};
+    return { open: h.open, close: h.close, ...pause };
   }
   return { open: s.open_time.slice(0, 5), close: s.close_time.slice(0, 5) };
 }
@@ -78,11 +81,16 @@ function isOpenAt(d: Date, s: Settings) {
   const h = hoursOn(localDay(d), s);
   if (!h) return false;
   const m = localMinutes(d);
-  return m >= minutesOf(h.open) && m <= minutesOf(h.close);
+  return m >= minutesOf(h.open) && m <= minutesOf(h.close) && !inBreak(m, h);
 }
+// ¿Ese minuto cae dentro de la pausa del día? (a la hora exacta de volver ya está abierto)
+const inBreak = (m: number, h: Hours) => Boolean(h?.break_from && h?.break_to && m > minutesOf(h.break_from) && m < minutesOf(h.break_to));
+// ¿El trabajo de ese pedido (desde que empezamos hasta que llega) se cruza con la pausa?
+const crossesBreak = (start: number, end: number, h: Hours) => Boolean(h?.break_from && h?.break_to && end > minutesOf(h.break_from) && start < minutesOf(h.break_to));
+const hh = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}h${String(m % 60).padStart(2, "0")}`;
 function hoursText(d: Date, s: Settings) {
   const h = hoursOn(localDay(d), s);
-  return h ? `de ${h.open} a ${h.close}` : "cerrado ese día";
+  return h ? `de ${h.open} a ${h.close}${h.break_from ? ` (cerramos de ${h.break_from} a ${h.break_to})` : ""}` : "cerrado ese día";
 }
 // Minutos extra cuando cocina activó "más tiempo de entrega"
 function busyExtra(s: Settings) {
@@ -226,6 +234,7 @@ async function validateSchedule(s: Settings, scheduled: string | null, prep: num
     const eta = new Date(now.getTime() + need * 60000);
     const h = hoursOn(localDay(now), s);
     if (h && (localDay(eta) !== localDay(now) || localMinutes(eta) > minutesOf(h.close))) fail("Ya no alcanzamos a prepararlo y entregarlo hoy. Agenda tu entrega para otro momento.");
+    if (h && !staff && crossesBreak(localMinutes(now), localMinutes(eta), h)) fail(`No alcanzamos a entregarlo antes de nuestra pausa de ${h.break_from} a ${h.break_to}. Agenda tu entrega para después.`);
     return { scheduled_for: null, eta };
   }
   const when = new Date(scheduled);
@@ -240,6 +249,10 @@ async function validateSchedule(s: Settings, scheduled: string | null, prep: num
   }
   if (when.getTime() > now.getTime() + 30 * 86400000) fail("Puedes agendar hasta 30 días antes.");
   if (!isOpenAt(when, s)) fail(`Ese día atendemos ${hoursText(when, s)}. Elige otra hora.`);
+  // Durante la pausa no se prepara: el pedido tiene que salir antes o empezar después
+  if (dayH && !staff && crossesBreak(localMinutes(when) - need, localMinutes(when), dayH)) {
+    fail(`Ese día cerramos de ${dayH.break_from} a ${dayH.break_to}. Elige una franja antes o desde las ${hh(minutesOf(dayH.break_to!) + need)}.`);
+  }
   if (localMinutes(when) % s.slot_minutes !== 0) fail("Elige una de las franjas disponibles.");
   const { count, error } = await db.from("orders").select("id", { count: "exact", head: true })
     .eq("scheduled_for", when.toISOString()).neq("status", "cancelado")
@@ -382,7 +395,7 @@ function nextDays(s: Settings, n: number) {
   return Array.from({ length: n }, (_, i) => {
     const day = localDay(new Date(Date.now() + i * 86400000));
     const h = hoursOn(day, s);
-    return h ? { day, open: h.open, close: h.close, note: h.note ?? null } : { day, closed: true, note: s.exceptions.find((x) => x.day === day)?.note ?? null };
+    return h ? { day, open: h.open, close: h.close, break_from: h.break_from ?? null, break_to: h.break_to ?? null, note: h.note ?? null } : { day, closed: true, note: s.exceptions.find((x) => x.day === day)?.note ?? null };
   });
 }
 function nextOpen(s: Settings) {
@@ -392,6 +405,8 @@ function nextOpen(s: Settings) {
     const day = localDay(new Date(Date.now() + i * 86400000));
     const h = hoursOn(day, s);
     if (h && (i > 0 || minutesOf(h.open) > nowM)) return { day, time: h.open, in_days: i };
+    // hoy, en plena pausa: volvemos a abrir al terminar la pausa
+    if (h && i === 0 && inBreak(nowM, h)) return { day, time: h.break_to!, in_days: 0 };
   }
   return null;
 }
@@ -403,7 +418,7 @@ function firstSlotWhenClosed(s: Settings) {
 }
 function todayHours(s: Settings) {
   const h = hoursOn(localDay(new Date()), s);
-  return h ? { open_time: h.open, close_time: h.close } : { open_time: null, close_time: null };
+  return h ? { open_time: h.open, close_time: h.close, break_from: h.break_from ?? null, break_to: h.break_to ?? null } : { open_time: null, close_time: null };
 }
 
 // QR de cobro que el master sube en Ajustes (storage: productos/pagos/deuna y productos/pagos/peigo)

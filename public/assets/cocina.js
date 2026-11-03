@@ -335,7 +335,7 @@ async function todayHoursText() {
   const { data: ex } = await sb.from("store_exceptions").select("*").eq("day", day).maybeSingle().then((r) => r, () => ({ data: null }));
   if (ex) return ex.closed ? `Hoy cerrado${ex.note ? ` (${ex.note})` : ""}` : `Hoy de ${hm(ex.open_time)} a ${hm(ex.close_time)}${ex.note ? ` (${ex.note})` : ""}`;
   const w = s.weekly_hours?.[String(new Date(day + "T12:00:00Z").getUTCDay())];
-  if (s.weekly_hours) return w ? `Hoy de ${w.open} a ${w.close}` : "Hoy es día de descanso";
+  if (s.weekly_hours) return w ? (w.break_from ? `Hoy de ${w.open} a ${w.break_from} y de ${w.break_to} a ${w.close}` : `Hoy de ${w.open} a ${w.close}`) : "Hoy es día de descanso";
   return `Hoy de ${hm(s.open_time)} a ${hm(s.close_time)}`;
 }
 async function renderSettings() {

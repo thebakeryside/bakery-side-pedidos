@@ -234,6 +234,7 @@ function timesFor(date) {
   for (let m = oh * 60 + om; m <= ch * 60 + cm; m += st.cfg.slot_minutes) {
     const t = `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
     const at = new Date(localToISO(date, t)).getTime();
+    if (h.break_from && h.break_to && t > h.break_from && t < h.break_to) continue; // pausa del día
     if (at >= earliest && at <= Date.now() + 30 * 86400000 - 5 * 60000) out.push(t);
   }
   return out;

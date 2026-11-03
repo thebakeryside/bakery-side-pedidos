@@ -72,7 +72,9 @@ button.chip:hover { border-color: var(--crema-2); color: var(--crema); }
 .wk .times { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .wk .times input { width: 150px; }
 .wk.off .times { opacity: .35; pointer-events: none; }
-@media (max-width: 560px) { .wk { grid-template-columns: 1fr auto; } .wk .times { grid-column: 1 / -1; } }
+.wk .times.brk { grid-column: 2 / -1; }
+.wk .times.brk input[type="time"] { width: 120px; }
+@media (max-width: 560px) { .wk { grid-template-columns: 1fr auto; } .wk .times, .wk .times.brk { grid-column: 1 / -1; } }
 .exc-list { display: grid; gap: 8px; margin-top: 10px; }
 .exc { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px 12px; border: 1px solid var(--cacao); border-radius: 12px; }
 .exc b { min-width: 150px; }

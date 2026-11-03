@@ -109,12 +109,17 @@ function renderStatus(c) {
   const n = c.next_open, today = c.days?.[0];
   const nextTxt = !n ? "pronto" : n.in_days <= 1 ? hTxt(n.time) : whenLabel(n);
   // Todo el estado de la tienda vive en la etiqueta de arriba (ya no hay barra de "descansando")
-  $("#openTxt").innerHTML = c.open_now ? `Abierto<span class="long"> · hasta ${hTxt(c.close_time)}</span>`
+  // Si hoy hay pausa y todavía no llega, "hasta" es el inicio de la pausa
+  const nowHM = new Date(Date.now() - 5 * 3600000).toISOString().slice(11, 16);
+  const until = c.break_from && nowHM < c.break_from ? c.break_from : c.close_time;
+  $("#openTxt").innerHTML = c.open_now ? `Abierto<span class="long"> · hasta ${hTxt(until)}</span>`
     : !c.store_open || today?.closed ? "Hoy descansamos"
     : `Descansando<span class="long"> · abrimos ${nextTxt}</span>`;
   $("#openPill").classList.toggle("closed", !c.open_now);
   $("#openPill").classList.toggle("off", !c.open_now && (!c.store_open || !!today?.closed));
-  $("#hoursTxt").textContent = c.open_now || today?.open ? `hoy de ${c.open_time} a ${c.close_time}` : "según el día";
+  $("#hoursTxt").textContent = c.open_now || today?.open
+    ? (c.break_from ? `hoy de ${c.open_time} a ${c.break_from} y de ${c.break_to} a ${c.close_time}` : `hoy de ${c.open_time} a ${c.close_time}`)
+    : "según el día";
 }
 // wa.me necesita el número internacional sin signos (0991234567 → 593991234567)
 function waLink(num, text) {
@@ -672,10 +677,13 @@ function timesFor(date, keys) {
   for (let m = Math.ceil(first / c.slot_minutes) * c.slot_minutes; m <= ch * 60 + cm; m += c.slot_minutes) {
     const t = `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
     const at = new Date(localToISO(date, t)).getTime();
+    // pausa del día: no se prepara ni se entrega mientras estamos cerrados
+    if (h.break_from && h.break_to && m > hmMin(h.break_from) && m - need < hmMin(h.break_to)) continue;
     if (at >= earliest && at <= Date.now() + 30 * 86400000 - 5 * 60000) out.push(t);
   }
   return out;
 }
+const hmMin = (t) => { const [a, b] = String(t).split(":").map(Number); return a * 60 + b; };
 function fillTimes() {
   const cur = $("#schedTime").value;
   const ts = timesFor($("#schedDate").value, schedKeys());

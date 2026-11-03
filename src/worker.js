@@ -91,12 +91,12 @@ async function loadData() {
 // Horario semanal real (a partir de los próximos 7 días del sistema de pedidos)
 function hoursSpec(cfg) {
   const days = (cfg?.days || []).slice(0, 7).filter((d) => !d.closed && d.open && d.close);
-  return days.map((d) => ({
-    "@type": "OpeningHoursSpecification",
-    dayOfWeek: DAYS[new Date(`${d.day}T12:00:00-05:00`).getUTCDay()],
-    opens: d.open,
-    closes: d.close,
-  }));
+  // Días con pausa: dos tramos (antes y después de la pausa)
+  return days.flatMap((d) => {
+    const dayOfWeek = DAYS[new Date(`${d.day}T12:00:00-05:00`).getUTCDay()];
+    const spans = d.break_from && d.break_to ? [[d.open, d.break_from], [d.break_to, d.close]] : [[d.open, d.close]];
+    return spans.map(([opens, closes]) => ({ "@type": "OpeningHoursSpecification", dayOfWeek, opens, closes }));
+  });
 }
 
 function jsonLd(groups, cfg) {
@@ -145,7 +145,7 @@ function menuCards(groups) {
 function hoursText(cfg) {
   const days = (cfg?.days || []).slice(0, 7);
   const names = ["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"];
-  return days.map((d) => `${names[new Date(`${d.day}T12:00:00-05:00`).getUTCDay()]}: ${d.closed ? "cerrado" : `${d.open} a ${d.close}`}`).join("; ");
+  return days.map((d) => `${names[new Date(`${d.day}T12:00:00-05:00`).getUTCDay()]}: ${d.closed ? "cerrado" : (d.break_from && d.break_to ? `${d.open} a ${d.break_from} y ${d.break_to} a ${d.close}` : `${d.open} a ${d.close}`)}`).join("; ");
 }
 
 async function llms(asset) {
