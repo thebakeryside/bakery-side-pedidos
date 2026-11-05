@@ -168,6 +168,7 @@ function card(o) {
   // acción principal según el estado (una sola, grande)
   let main = "";
   if (o.status === "por_confirmar") main = `<button class="btn small" data-act="receipt" data-id="${o.id}">Ver comprobante</button><button class="btn primary" data-act="confirmPay" data-id="${o.id}">Confirmar pago</button>`;
+  else if (o.status === "pendiente_pago") main = `<button class="btn primary" data-act="manualPayAsk" data-id="${o.id}">Marcar pagado</button>`;
   else if (o.status === "confirmado") main = `<button class="btn primary" data-act="prep" data-id="${o.id}">Empezar a preparar</button>`;
   else if (o.status === "preparando") main = `<button class="btn primary" data-act="ready" data-id="${o.id}">${pick ? "Listo · para que lo retire" : "Listo · pedir el Uber"}</button>`;
   else if (o.status === "listo" && pick) main = `<button class="btn primary" data-act="pickedUp" data-id="${o.id}">Entregado · ya lo retiró</button>`;
@@ -209,6 +210,12 @@ function card(o) {
       ${canForce && o.status === "listo" ? `<button class="btn small ghost" data-act="forceAsk" data-id="${o.id}">Marcar entregado</button>` : ""}
       ${canCancel ? `<button class="btn small ghost" data-act="cancelAsk" data-id="${o.id}">Cancelar</button>` : ""}
     </div>
+    ${o.status === "pendiente_pago" ? `<div class="confirm-row" data-mpay="${o.id}" hidden>
+      <p class="small" style="margin:0;width:100%">¿Cómo pagó los <b>${money(o.total)}</b>? Revisa que el dinero ya esté en la cuenta o en Payphone.</p>
+      <select class="in" data-mpaym="${o.id}" aria-label="Forma de pago"><option value="link">Link de pago Payphone</option><option value="transferencia">Transferencia</option></select>
+      <input class="in" placeholder="Referencia o nombre de quien pagó (opcional)" data-mpayr="${o.id}" style="flex:1;min-width:160px">
+      <button class="btn small primary" data-act="manualPay" data-id="${o.id}">Sí, ya pagó</button>
+    </div>` : ""}
     <div class="confirm-row" data-force="${o.id}" hidden>
       <p class="small" style="margin:0;width:100%">¿Quién lo recibió o qué pasó? (opcional)</p>
       <input class="in" placeholder="Ej.: lo recibió el guardia" data-freason="${o.id}" style="flex:1;min-width:160px">
@@ -245,6 +252,20 @@ document.addEventListener("click", async (e) => {
         if (error) return toast("No se pudo guardar: " + error.message);
       }
       toast(`${o.code}: pago confirmado (las dos entregas)`); await loadOrders(); render(); return;
+    }
+    // Pago fuera de la tienda (link de pago o transferencia por WhatsApp): cocina lo marca a mano
+    case "manualPayAsk": $(`[data-mpay="${id}"]`).hidden = false; break;
+    case "manualPay": {
+      const link = $(`[data-mpaym="${id}"]`).value === "link";
+      const note = $(`[data-mpayr="${id}"]`).value.trim().slice(0, 120);
+      const ref = `${link ? "Link de pago Payphone" : "Transferencia"} · marcado en cocina${note ? " · " + note : ""}`;
+      const patch = { payment_status: "pagado", status: "confirmado", paid_at: now, payment_method: link ? "tarjeta" : "transferencia", payment_ref: ref };
+      const group = o.group_id ? S.orders.filter((x) => x.group_id === o.group_id && x.status !== "cancelado") : [o];
+      for (const g of group) {
+        const { error } = await sb.from("orders").update({ ...patch, eta: etaFromNow(g, 5 + g.prep_minutes) }).eq("id", g.id);
+        if (error) return toast("No se pudo guardar: " + error.message);
+      }
+      toast(`${o.code}: marcado como pagado${group.length > 1 ? " (las dos entregas)" : ""}`); await loadOrders(); render(); return;
     }
     case "prep": return upd(id, { status: "preparando", prep_started_at: now, eta: etaFromNow(o, o.prep_minutes) }, `${o.code} en preparación`);
     case "ready": return upd(id, { status: "listo", ready_at: now }, `${o.code} listo`);
