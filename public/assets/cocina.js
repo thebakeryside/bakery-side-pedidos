@@ -158,8 +158,7 @@ function itemLine(i) {
 }
 const win = () => Number(S.settings?.eta_window_minutes || 30);
 const travelMin = (km) => Math.max(8, Math.round(Number(km) / 25 * 60 + 5)); // igual que el servidor
-// Nueva hora de llegada contando desde ahora (al confirmar el pago o al empezar a preparar)
-const etaFromNow = (o, prepLeft) => o.scheduled_for || new Date(Date.now() + (prepLeft + travelMin(o.distance_km)) * 60000).toISOString();
+// La hora de entrega (eta) es la que pidió el cliente al hacer el pedido: cocina nunca la cambia.
 function card(o) {
   const pick = o.fulfillment === "pickup";
   const t = o.scheduled_for ? `${dayLabel(o.scheduled_for)} · ${orderRange(o, win())}` : `Entre ${orderRange(o, win())}`;
@@ -246,9 +245,9 @@ document.addEventListener("click", async (e) => {
     case "confirmPay": {
       // la hora de llegada se cuenta desde que se confirma el pago; si son dos entregas, se confirman ambas
       const patch = { payment_status: "pagado", status: "confirmado", paid_at: now };
-      if (!o.group_id) return upd(id, { ...patch, eta: etaFromNow(o, 5 + o.prep_minutes) }, `${o.code}: pago confirmado`);
+      if (!o.group_id) return upd(id, patch, `${o.code}: pago confirmado`);
       for (const g of S.orders.filter((x) => x.group_id === o.group_id && x.status !== "cancelado")) {
-        const { error } = await sb.from("orders").update({ ...patch, eta: etaFromNow(g, 5 + g.prep_minutes) }).eq("id", g.id);
+        const { error } = await sb.from("orders").update(patch).eq("id", g.id);
         if (error) return toast("No se pudo guardar: " + error.message);
       }
       toast(`${o.code}: pago confirmado (las dos entregas)`); await loadOrders(); render(); return;
@@ -262,12 +261,12 @@ document.addEventListener("click", async (e) => {
       const patch = { payment_status: "pagado", status: "confirmado", paid_at: now, payment_method: link ? "tarjeta" : "transferencia", payment_ref: ref };
       const group = o.group_id ? S.orders.filter((x) => x.group_id === o.group_id && x.status !== "cancelado") : [o];
       for (const g of group) {
-        const { error } = await sb.from("orders").update({ ...patch, eta: etaFromNow(g, 5 + g.prep_minutes) }).eq("id", g.id);
+        const { error } = await sb.from("orders").update(patch).eq("id", g.id);
         if (error) return toast("No se pudo guardar: " + error.message);
       }
       toast(`${o.code}: marcado como pagado${group.length > 1 ? " (las dos entregas)" : ""}`); await loadOrders(); render(); return;
     }
-    case "prep": return upd(id, { status: "preparando", prep_started_at: now, eta: etaFromNow(o, o.prep_minutes) }, `${o.code} en preparación`);
+    case "prep": return upd(id, { status: "preparando", prep_started_at: now }, `${o.code} en preparación`);
     case "ready": return upd(id, { status: "listo", ready_at: now }, `${o.code} listo`);
     case "balanceAsk": $(`[data-bal="${id}"]`).hidden = false; break;
     case "balancePaid": return upd(id, { balance_paid_at: now }, `Saldo de ${o.code} cobrado`);
