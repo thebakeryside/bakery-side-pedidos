@@ -60,6 +60,10 @@
 <link rel="stylesheet" href="/assets/account.css">
 </head>
 <body class="light">
+<!-- Aviso de alta demanda: aparece solo mientras está activo "Solo pedidos para el día siguiente" en Master → Ajustes -->
+<div class="demand-bar" id="demandBar" role="status" hidden>
+  <div class="wrap db-in"><p>🤍 <b>Bakers, ¡gracias por tanto cariño!</b> Hoy nos superó la demanda, así que todos los pedidos se entregan mañana. Agende el suyo ahora y lo preparamos con todo el amor 🍪✨</p></div>
+</div>
 <!-- Barra de primer envío gratis (sale de Master → Ajustes; se oculta si el monto es 0 o después del primer pedido) -->
 <div class="welcome-bar" id="welcomeBar" hidden>
   <div class="wrap wb-in">

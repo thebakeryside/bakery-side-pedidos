@@ -353,6 +353,14 @@ body.light .wrap { max-width: 1260px; }
 .ship-strip[hidden] { display: none; }
 .ship-strip b { color: var(--accent-ink); font-weight: 700; }
 
+/* Aviso de alta demanda: arriba de todo, en tostado para que se note sobre la barra tinta */
+.demand-bar { background: #C68A4E; color: #1C1714; padding-top: env(safe-area-inset-top, 0px); }
+.demand-bar[hidden] { display: none; }
+.db-in { padding-block: 10px; }
+.demand-bar p { margin: 0 auto; max-width: 760px; text-align: center; font-size: 15px; line-height: 1.4; }
+.demand-bar:not([hidden]) + .welcome-bar { padding-top: 0; }
+body.in-checkout .demand-bar { display: none !important; }
+
 /* Barra de primer envío gratis: arriba del todo, quieta, en tinta con el botón tostado */
 .welcome-bar { background: #1C1714; color: #F6F7DE; padding-top: env(safe-area-inset-top, 0px); }
 .welcome-bar[hidden], .wb-btn[hidden] { display: none; }

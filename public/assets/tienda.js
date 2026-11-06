@@ -83,6 +83,7 @@ async function init() {
     $("#shipStrip").hidden = false;
   }
   try { state.signedIn = Boolean(await currentUser()); } catch {}
+  $("#demandBar").hidden = !c.next_day_only; // aviso de alta demanda
   renderWelcomeBar();
   mountSocial(c.whatsapp);
   try { JSON.parse(localStorage.getItem(CART_KEY) || "[]").forEach(([k, q]) => { k = String(k); if (state.products.some((p) => p.id === keyId(k)) && validKey(k)) state.cart.set(k, q); }); } catch {}
