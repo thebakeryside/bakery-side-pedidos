@@ -1,4 +1,8 @@
 import { sb, api, $, money, esc, hhmm, when, dayLabel, orderRange, parseBank, STATUS, socialLinks, SOCIAL, media } from "./common.js";
+
+// Textos de temporada (Navidad): ver assets/temporada.js
+const S = (key, normal, vars) => globalThis.TBS_SEASON?.t?.(key, normal, vars) ?? normal;
+const SS = (key, i, normal) => { const v = S(key, null); return Array.isArray(v) && v[i] != null ? v[i] : normal; };
 import { openPayphone } from "./payphone.js";
 
 const token = new URLSearchParams(location.search).get("t") || localStorage.getItem("tbs_ultimo_pedido");
@@ -15,16 +19,16 @@ function render(o) {
   const order = ["confirmado", "preparando", "en_camino", "entregado"];
   const idx = o.status === "listo" ? 1.5 : order.indexOf(o.status);
   const steps = [
-    ["confirmado", "Pago confirmado", o.paid_at, "Tu pedido entró a cocina"],
-    ["preparando", "En preparación", o.prep_started_at, "Lo estamos preparando"],
-    ["en_camino", "En camino", o.picked_at, o.rider_name ? `${o.rider_name}${o.rider_plate ? " · placa " + o.rider_plate : ""}` : "Con nuestro servicio de entrega"],
-    ["entregado", "Entregado", o.delivered_at, "¡Que lo disfrutes!"],
+    ["confirmado", SS("st_paid", 0, "Pago confirmado"), o.paid_at, SS("st_paid", 1, "Tu pedido entró a cocina")],
+    ["preparando", SS("st_prep", 0, "En preparación"), o.prep_started_at, SS("st_prep", 1, "Lo estamos preparando")],
+    ["en_camino", SS("st_way", 0, "En camino"), o.picked_at, o.rider_name ? `${o.rider_name}${o.rider_plate ? " · placa " + o.rider_plate : ""}` : S("st_way_sub", "Con nuestro servicio de entrega")],
+    ["entregado", SS("st_done", 0, "Entregado"), o.delivered_at, SS("st_done", 1, "¡Que lo disfrutes!")],
   ];
   const unpaid = o.status === "pendiente_pago";
   const wantAlt = new URLSearchParams(location.search).get("pagar") === "1";
   let head;
   if (o.status === "cancelado") head = `<p class="eyebrow">Pedido ${esc(o.code)}</p><div class="big">Cancelado</div><p class="muted">Si tienes dudas, escríbenos por WhatsApp.</p>`;
-  else if (o.status === "entregado") head = `<p class="eyebrow">Pedido ${esc(o.code)}</p><div class="big">Entregado</div><p class="muted">${when(o.delivered_at)}</p>`;
+  else if (o.status === "entregado") head = `<p class="eyebrow">Pedido ${esc(o.code)}</p><div class="big">${S("st_done_big", "Entregado")}</div><p class="muted">${when(o.delivered_at)}</p>`;
   else if (unpaid) head = `<p class="eyebrow">Pedido ${esc(o.code)}</p><div class="big">Falta el pago</div><p class="muted">${o.payment_status === "fallido" ? "El último intento de pago no se aprobó." : "Tu pedido está guardado, pero aún no recibimos el pago."} Lo preparamos apenas se confirme.</p>`;
   else if (o.status === "por_confirmar") head = `<p class="eyebrow">Pedido ${esc(o.code)}</p><div class="big">Verificando tu transferencia</div><p class="muted">Recibimos tu comprobante. Te avisamos por correo apenas lo confirmemos.</p>`;
   else head = `<p class="eyebrow">Pedido ${esc(o.code)} · ${o.scheduled_for ? `Entrega agendada · ${dayLabel(o.scheduled_for)}` : "Llega entre"}</p><div class="big tabnum range">${orderRange(o, o.eta_window || 30)}</div>`;

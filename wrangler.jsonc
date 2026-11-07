@@ -15,6 +15,8 @@
     "directory": "./public/",
     "binding": "ASSETS",
     "run_worker_first": true,
-    "html_handling": "auto-trailing-slash"
+    "html_handling": "auto-trailing-slash",
+    // Página propia para direcciones que no existen (public/404.html)
+    "not_found_handling": "404-page"
   }
 }

@@ -536,6 +536,9 @@ async function ajustes() {
       <h3 class="group-title">Video de portada</h3>
       <p class="muted small" style="margin:0 0 8px">El video corto que se ve arriba en la tienda, sin sonido y en bucle. Sube el mismo archivo que publicaste en redes (mp4 o mov, vertical, idealmente de 5 a 15 segundos y menos de 20 MB). Puedes cambiarlo cuando quieras; el cambio se ve en 1 minuto.</p>
       <div id="heroAdmin"><p class="muted small">Cargando…</p></div>
+      <h3 class="group-title">Temporada navideña</h3>
+      <p class="muted small" style="margin:0 0 8px">Viste la tienda de Navidad (luces, ramita en el logo, azúcar glas cayendo y textos navideños) entre estas fechas y se apaga sola. No cambia precios ni pedidos. Los cambios se ven en 1 minuto.</p>
+      <div id="seasonAdmin"><p class="muted small">Cargando…</p></div>
       <h3 class="group-title">Transferencia directa</h3>
       <p class="muted small" style="margin:0 0 8px">Cuentas para que el cliente transfiera desde su mismo banco: así no le pide cédula. Pon solo tu nombre y correo, sin cédula. Las ve únicamente quien ya hizo un pedido.</p>
       <div class="form-grid">
@@ -558,7 +561,7 @@ async function ajustes() {
   ["#sBase", "#sIncl", "#sPerKm", "#sBreak", "#sPerKmFar"].forEach((k) => $(k).addEventListener("input", ex)); ex();
   const winEx = () => { const w = Number($("#sWin").value) || 30, end = 10 * 60 + 15 + w; $("#winEx").textContent = `10h15 – ${Math.floor(end / 60)}h${String(end % 60).padStart(2, "0")}`; };
   $("#sWin").addEventListener("input", winEx); winEx();
-  renderQrAdmin(); renderHeroAdmin();
+  renderQrAdmin(); renderHeroAdmin(); renderSeasonAdmin();
   // cuentas bancarias: una fila por banco
   const rowHTML = (a = {}) => `<div class="bank-row">
     <input class="in" placeholder="Banco (ej.: Banco Pichincha)" value="${esc(a.bank || "")}" data-k="bank">
@@ -669,6 +672,39 @@ async function renderHeroAdmin() {
   });
 }
 const mb = (n) => (n / 1048576).toFixed(1).replace(".", ",");
+
+// Temporada navideña (storage público productos/temporada/navidad.json, lo lee assets/temporada.js)
+const SEASON_DEF = { on: true, from: "2026-11-09", to: "2027-01-06", xmas_deadline: "2026-12-22", ny_deadline: "2026-12-29" };
+async function renderSeasonAdmin() {
+  const box = $("#seasonAdmin"); if (!box) return;
+  const direct = sb.storage.from("productos").getPublicUrl("temporada/navidad.json").data.publicUrl;
+  let c = null;
+  try { const r = await fetch(`${direct}?t=${Date.now()}`, { cache: "no-store" }); if (r.ok) c = await r.json(); } catch {}
+  c = { ...SEASON_DEF, ...(c || {}) };
+  const today = new Date(Date.now() - 5 * 3600000).toISOString().slice(0, 10);
+  const live = c.on !== false && today >= c.from && today <= c.to;
+  const d = (id, label, v) => `<div><label class="f" for="${id}">${label}</label><input class="in" id="${id}" type="date" value="${esc(v || "")}"></div>`;
+  box.innerHTML = `
+    <label class="check" style="margin:4px 0 10px"><input type="checkbox" id="seaOn" ${c.on !== false ? "checked" : ""}> <b>Encendida</b>&nbsp;<span class="muted small">${live ? "· se ve en la tienda ahora" : c.on === false ? "· apagada" : today < c.from ? "· empieza sola en la fecha de inicio" : "· ya terminó"}</span></label>
+    <div class="form-grid">
+      ${d("seaFrom", "Desde", c.from)}${d("seaTo", "Hasta (incluido)", c.to)}
+      ${d("seaXmas", "Último día para pedir para Nochebuena", c.xmas_deadline)}${d("seaNy", "Último día para pedir para Fin de año", c.ny_deadline)}
+    </div>
+    <p class="muted small" style="margin:6px 0 0">Del inicio al 24 de diciembre: cuenta regresiva a Navidad. Del 25 al 31: Año Nuevo. Del 1 de enero al final: Reyes.</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+      <button class="btn small" type="button" id="seaSave">Guardar temporada</button>
+      <a class="btn small ghost" href="/?navidad=1" target="_blank" rel="noopener">Ver vista previa</a>
+    </div>`;
+  $("#seaSave").onclick = async () => {
+    const j = { on: $("#seaOn").checked, from: $("#seaFrom").value, to: $("#seaTo").value, xmas_deadline: $("#seaXmas").value, ny_deadline: $("#seaNy").value, v: Date.now() };
+    if (!j.from || !j.to || j.to < j.from) return toast("Revisa las fechas: «Hasta» debe ser igual o después de «Desde».");
+    const blob = new Blob([JSON.stringify(j)], { type: "application/json" });
+    const { error } = await sb.storage.from("productos").upload("temporada/navidad.json", blob, { upsert: true, contentType: "application/json", cacheControl: "60" });
+    if (error) return rpcErr(error);
+    toast("Temporada guardada. Se ve en la tienda en 1 minuto.");
+    renderSeasonAdmin();
+  };
+}
 
 // Convierte (si se puede), sube video + portada, actualiza hero.json y borra los anteriores
 async function saveHero(f, msg = () => {}, { requireLight = false } = {}) {

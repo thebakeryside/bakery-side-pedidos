@@ -23,8 +23,8 @@ let cache = { at: 0, data: null };
 // que no cobra transferencia. Así no se gasta el cupo de Supabase (5 GB/mes en el plan gratis).
 const MEDIA_ORIGIN = `${SUPABASE_URL}/storage/v1/object/public/productos/`;
 const YEAR = 31536000;
-// Archivos que se reemplazan con el mismo nombre (hero.json y los QR de pago): caché corta.
-const SHORT = /^(portada\/hero\.json|pagos\/)/;
+// Archivos que se reemplazan con el mismo nombre (hero.json, QR de pago y temporada navideña): caché corta.
+const SHORT = /^(portada\/hero\.json|pagos\/|temporada\/)/;
 const mediaURL = (u) => (typeof u === "string" && u.startsWith(MEDIA_ORIGIN) ? `${SITE}/media/${u.slice(MEDIA_ORIGIN.length)}` : u);
 
 async function media(request, url, ctx) {

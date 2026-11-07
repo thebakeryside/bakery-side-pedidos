@@ -29,3 +29,7 @@ Nunca se guardan claves en este repositorio. La clave publicable de Supabase en 
 ## Envío
 
 `envío = máx(base, base + precio_km × (km − km_incluidos))`, redondeado hacia arriba a $0,25. Los valores se editan en `/cocina` → Ajustes.
+
+## Temporada navideña
+
+`public/assets/temporada.js` y `temporada.css` visten las páginas del cliente entre dos fechas (por defecto del 9 nov 2026 al 6 ene 2027) y se apagan solas. Las fechas, el interruptor y los últimos días para pedir se cambian en Master → Ajustes → Temporada navideña (guarda `productos/temporada/navidad.json`). Vista previa: `/?navidad=1` (y `&acto=adviento|fiestas|reyes`); `/?navidad=0` la quita.

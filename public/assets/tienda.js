@@ -6,6 +6,9 @@ import { loadRatings, reviewsPanel } from "./reviews.js";
 
 captureRef();
 
+// Textos de temporada (Navidad): ver assets/temporada.js. Fuera de temporada devuelve el texto normal.
+const S = (key, normal, vars) => globalThis.TBS_SEASON?.t?.(key, normal, vars) ?? normal;
+
 // ---------- video de portada ----------
 // Se cambia desde Master → Ajustes → «Video de portada» (storage productos/portada/*).
 // La foto carga primero; el video se baja solo después, para no frenar la página.
@@ -74,7 +77,7 @@ async function init() {
   }
   const c = state.cfg;
   renderStatus(c);
-  const wa = waLink(c.whatsapp, "Hola The Bakery Side, tengo una consulta 🙂");
+  const wa = waLink(c.whatsapp, S("wa_msg", "Hola The Bakery Side, tengo una consulta 🙂"));
   if (wa) { $("#waFab").href = wa; $("#waFab").hidden = false; }
   // pasos de la portada: costo mínimo de envío y desde cuándo se entrega
   if (c.fee?.base != null) $("#stFee").textContent = `desde $${Number(c.fee.base).toFixed(2).replace(".", ",")}`;
@@ -97,7 +100,7 @@ async function init() {
   if (new URLSearchParams(location.search).get("regalo") === "1") {
     try { sessionStorage.setItem("tbs_regalo", "1"); } catch {}
     history.replaceState(null, "", "/");
-    toast("🎁 Elige el regalo: al pagar ya estará marcado para enviarlo con tu tarjeta.");
+    toast(S("gift_toast", "🎁 Elige el regalo: al pagar ya estará marcado para enviarlo con tu tarjeta."));
   }
   if (new URLSearchParams(location.search).get("carrito") === "1") { history.replaceState(null, "", "/"); if (state.cart.size) openCart(); }
   if (new URLSearchParams(location.search).get("checkout") === "1" && state.cart.size) {
@@ -116,9 +119,9 @@ function renderStatus(c) {
   // Si hoy hay pausa y todavía no llega, "hasta" es el inicio de la pausa
   const nowHM = new Date(Date.now() - 5 * 3600000).toISOString().slice(11, 16);
   const until = c.break_from && nowHM < c.break_from ? c.break_from : c.close_time;
-  $("#openTxt").innerHTML = c.open_now ? `Abierto<span class="long"> · hasta ${hTxt(until)}</span>`
-    : !c.store_open || today?.closed ? "Hoy descansamos"
-    : `Descansando<span class="long"> · abrimos ${nextTxt}</span>`;
+  $("#openTxt").innerHTML = c.open_now ? S("open_now", `Abierto<span class="long"> · hasta ${hTxt(until)}</span>`, { until: hTxt(until) })
+    : !c.store_open || today?.closed ? S("closed_today", "Hoy descansamos")
+    : S("closed_next", `Descansando<span class="long"> · abrimos ${nextTxt}</span>`, { next: nextTxt });
   $("#openPill").classList.toggle("closed", !c.open_now);
   $("#openPill").classList.toggle("off", !c.open_now && (!c.store_open || !!today?.closed));
   $("#hoursTxt").textContent = c.open_now || today?.open
@@ -170,12 +173,12 @@ function renderWelcomeBar() {
   const guest = on && !state.signedIn, member = on && state.signedIn && state.firstOrder;
   bar.hidden = !(guest || member);
   bar.classList.toggle("member", member);
-  $("#welcomeTxt").textContent = member ? "Tu primer envío es GRATIS" : "Primer envío GRATIS";
+  $("#welcomeTxt").textContent = member ? S("welcome_member", "Tu primer envío es GRATIS") : S("welcome_guest", "Primer envío GRATIS");
   $("#welcomeBtn").hidden = !guest;
 }
 function welcomeToast() {
   const n = Number(state.acct?.claimed_stamps || 0);
-  const msg = state.firstOrder ? `¡Listo, baker! Tu primer envío es gratis en pedidos desde ${wMin()} 🎁` : "¡Listo, baker! Ya entraste a tu cuenta.";
+  const msg = state.firstOrder ? S("welcome_toast_first", `¡Listo, baker! Tu primer envío es gratis en pedidos desde ${wMin()} 🎁`, { min: wMin() }) : S("welcome_toast", "¡Listo, baker! Ya entraste a tu cuenta.");
   setTimeout(() => toast(msg, 6000), n > 0 ? 5600 : 300);
 }
 function openWelcome() {
@@ -370,12 +373,13 @@ function shipFee(q, net, firstOrder) {
 // Texto corto del avance hacia el envío gratis
 function freeShipHint(net) {
   const fs = state.cfg?.free_ship || {}, wmin = Number(fs.welcome_min) || 0;
-  if (fs.min > 0 && net >= fs.min - 1e-9) return `<p class="ship-hint ok">🎉 Tu envío es gratis${fs.max_km > 0 ? ` hasta ${String(fs.max_km).replace(".", ",")} km` : ""}.</p>`;
+  const km = fs.max_km > 0 ? String(fs.max_km).replace(".", ",") : "";
+  if (fs.min > 0 && net >= fs.min - 1e-9) return `<p class="ship-hint ok">${S("hint_ok", `🎉 Tu envío es gratis${km ? ` hasta ${km} km` : ""}.`, { km })}</p>`;
   if (wmin > 0 && state.firstOrder) return net >= wmin - 1e-9
-    ? `<p class="ship-hint ok">🎁 Tu primer envío es gratis${fs.max_km > 0 ? ` hasta ${String(fs.max_km).replace(".", ",")} km` : ""}.</p>`
-    : `<p class="ship-hint">Te faltan <b>${moneyEs(wmin - net)}</b> para tu envío gratis.</p>`;
+    ? `<p class="ship-hint ok">${S("hint_first_ok", `🎁 Tu primer envío es gratis${km ? ` hasta ${km} km` : ""}.`, { km })}</p>`
+    : `<p class="ship-hint">${S("hint_first_left", `Te faltan <b>${moneyEs(wmin - net)}</b> para tu envío gratis.`, { left: moneyEs(wmin - net) })}</p>`;
   if (!(fs.min > 0)) return "";
-  return `<p class="ship-hint">Te faltan <b>${moneyEs(fs.min - net)}</b> para envío gratis.</p>`;
+  return `<p class="ship-hint">${S("hint_left", `Te faltan <b>${moneyEs(fs.min - net)}</b> para envío gratis.`, { left: moneyEs(fs.min - net) })}</p>`;
 }
 
 // Productos con opciones (por ejemplo, el endulzante de las bebidas)
@@ -404,7 +408,7 @@ function openPicker(p) {
     const ids = live().map(picked).filter(Boolean);
     box.hidden = true;
     changeQty(ids.length ? `${p.id}:${ids.join(".")}` : String(p.id), 1);
-    toast(`${lineName(ids.length ? `${p.id}:${ids.join(".")}` : String(p.id))} agregado`);
+    { const nm = lineName(ids.length ? `${p.id}:${ids.join(".")}` : String(p.id)); toast(S("added", `${nm} agregado`, { name: nm })); }
   };
   box.querySelector(".opt-close").onclick = () => (box.hidden = true);
   box.hidden = false;
@@ -421,7 +425,7 @@ function renderCart() {
   });
   $("#cartLines").innerHTML = lines.length
     ? lines.join("") + (state.acct?.rewards_available ? `<p class="reward-note">🎁 Tienes un postre sorpresa: actívalo al pagar si lo quieres en este pedido.</p>` : "")
-    : `<div class="cart-empty"><b>Tu pedido está vacío</b><span class="muted small">Agrega algo rico del menú para empezar.</span></div>`;
+    : S("cart_empty", `<div class="cart-empty"><b>Tu pedido está vacío</b><span class="muted small">Agrega algo rico del menú para empezar.</span></div>`);
   // Subtotal fuera de la lista: siempre a la vista junto al botón, aunque haya muchos productos
   $("#cartSum").innerHTML = lines.length
     ? `<div class="line total"><span>Subtotal</span><span class="tabnum">${money(subtotal())}</span></div><p class="muted small" style="margin:0">El envío se calcula con tu ubicación.</p>${freeShipHint(subtotal())}` : "";
