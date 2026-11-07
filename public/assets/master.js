@@ -51,6 +51,7 @@ async function ventas() {
   const py = pyAll || [], monthStart = S.month + "-01", monthEnd = new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10);
   const pyMonth = py.filter((w) => (w.settled_on || w.period_to) >= monthStart && (w.settled_on || w.period_to) < monthEnd);
   const pyNet = pyMonth.reduce((s, w) => s + Number(w.net), 0), pyOrders = pyMonth.reduce((s, w) => s + Number(w.orders || 0), 0);
+  const pyPending = py.filter((w) => w.status !== "pagado").reduce((s, w) => s + Number(w.net), 0);
   const sum = (f) => orders.reduce((s, o) => s + Number(f(o)), 0);
   const products = sum((o) => o.subtotal - o.discount), fees = sum((o) => o.delivery_fee), total = sum((o) => o.total);
   // envío completo de cada pedido (lo que cuesta el motorizado) y lo que pusiste por envíos gratis
@@ -75,7 +76,8 @@ async function ventas() {
         ${shipGift > 0.004 ? `<div><b>${money(shipGift)}</b>envíos gratis que pusiste</div>` : ""}
         <div><b>${money(total)}</b>cobrado en total</div>
         <div><b>${money(cardFee)}</b>comisión Payphone aprox.</div>
-        <div><b>${money(pyNet)}</b>depositado por PedidosYa${pyOrders ? ` · ${pyOrders} pedidos` : ""}</div>
+        <div><b>${money(pyNet)}</b>liquidado por PedidosYa${pyOrders ? ` · ${pyOrders} pedidos` : ""}</div>
+        ${pyPending > 0.004 ? `<div><b>${money(pyPending)}</b>PedidosYa por depositarte</div>` : ""}
         <div><b>${money(products + pyNet)}</b>web (productos) + PedidosYa</div>
       </div>
       <p class="muted small" style="margin:0">${card.length} con tarjeta · ${orders.length - card.length} por transferencia. La comisión es un estimado del 5,75% sobre lo cobrado con tarjeta.</p>
@@ -104,11 +106,11 @@ function pyPanel(py, monthStart, monthEnd) {
   return `<div class="panel" style="margin-top:14px">
     <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;justify-content:space-between">
       <h3 class="group-title" style="margin:0">PedidosYa · liquidaciones semanales</h3>
-      <span class="muted small">Total depositado desde el inicio: <b>${money(total)}</b></span>
+      <span class="muted small">Total liquidado desde el inicio: <b>${money(total)}</b> · ya depositado: <b>${money(py.filter((w) => w.status === "pagado").reduce((s, w) => s + Number(w.net), 0))}</b></span>
     </div>
-    <p class="muted small" style="margin:6px 0 10px">Semana de lunes a domingo. PedidosYa manda el estado de cuenta el jueves y Claude lo registra aquí cada viernes. Cuenta en el mes en que se liquida. Resaltadas: las de este mes.</p>
-    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Semana</th><th>Pedidos</th><th>Precio de lista</th><th>Tus descuentos</th><th>Comisión + IVA</th><th>Otros cargos</th><th>Depositado</th><th>Liquidado</th></tr></thead><tbody>
-    ${py.map((w) => `<tr${inMonth(w) ? ' style="background:var(--crema)"' : ""} title="${esc([w.notes, w.app_discounts != null ? `Descuentos que puso PedidosYa: ${money(Number(w.app_discounts))}` : "", w.source].filter(Boolean).join(" · "))}">
+    <p class="muted small" style="margin:6px 0 10px">Semana de lunes a domingo. PedidosYa manda el estado de cuenta el jueves y Claude lo registra aquí cada viernes con el detalle del Partner Portal. Cuenta en el mes en que se liquida; «Pago» dice si ya llegó a tu cuenta. Resaltadas: las de este mes.</p>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Semana</th><th>Pedidos</th><th>Precio de lista</th><th>Tus descuentos</th><th>Comisión + IVA</th><th>Otros cargos</th><th>A recibir</th><th>Pago</th></tr></thead><tbody>
+    ${py.map((w) => `<tr${inMonth(w) ? ' style="background:var(--crema)"' : ""} title="${esc([w.notes, w.net_sales != null ? `Ventas netas ${money(Number(w.net_sales))}` : "", w.extra_income != null ? `Ingresos adicionales ${money(Number(w.extra_income))}` : "", w.app_discounts_paid != null ? `Descuentos de PedidosYa a cobrar ${money(Number(w.app_discounts_paid))}` : "", w.app_discounts != null ? `Descuentos que puso PedidosYa: ${money(Number(w.app_discounts))}` : "", w.bank, w.source].filter(Boolean).join(" · "))}">
       <td>${dShort(w.period_from)} – ${dShort(w.period_to)}</td>
       <td class="tabnum">${w.orders ?? "—"}</td>
       <td class="tabnum">${m2(w.gross)}</td>
@@ -116,7 +118,7 @@ function pyPanel(py, monthStart, monthEnd) {
       <td class="tabnum">${w.commission == null ? "—" : "−" + money(Number(w.commission) + Number(w.commission_tax || 0))}</td>
       <td class="tabnum">${Number(w.other_charges) ? "−" + money(Number(w.other_charges)) : "—"}</td>
       <td class="tabnum"><b>${money(Number(w.net))}</b></td>
-      <td class="small">${dShort(w.settled_on)}${w.bank ? `<br><span class="muted">${esc(w.bank)}</span>` : ""}</td></tr>`).join("") || `<tr><td colspan="8" class="muted">Aún no hay liquidaciones registradas.</td></tr>`}
+      <td class="small">${w.status === "pagado" ? `<span class="st st-entregado">Pagado</span>${w.paid_on ? " " + dShort(w.paid_on) : ""}` : `<span class="st st-pendiente_pago">Por depositar</span>`}<br><span class="muted">Liquidado ${dShort(w.settled_on)}${w.invoice_no ? ` · fact. ${esc(w.invoice_no)}` : ""}</span></td></tr>`).join("") || `<tr><td colspan="8" class="muted">Aún no hay liquidaciones registradas.</td></tr>`}
     </tbody></table></div>
     <details style="margin-top:10px"><summary class="small" style="cursor:pointer">Registrar una semana a mano</summary>
       <form id="pyForm" class="form-grid" novalidate style="margin-top:8px">
