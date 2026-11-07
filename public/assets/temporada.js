@@ -54,7 +54,7 @@
   var COPY = {
     // barra de primer envío gratis
     welcome_guest: "Tu regalo: envío GRATIS",
-    welcome_member: "Tu primer envío es GRATIS: considéralo tu regalo 🎁",
+    welcome_member: "Tu primer envío va de regalo 🎁",
     welcome_title: "Tu primer regalo de Navidad",
     welcome_toast_first: function (v) { return "¡Listo, baker! Ya estás en la lista de los buenos 🎅 Tu primer envío es gratis en pedidos desde " + v.min + " 🎁"; },
     welcome_toast: "¡Listo, baker! Ya estás en la lista de los buenos 🎅",
