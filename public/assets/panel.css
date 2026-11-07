@@ -5,8 +5,14 @@ body.panel {
   --surface: #FFFFFF;
   --surface-2: #F0EDE4;   /* chips, notas, bloques internos */
   --line: #E2DDD0;
-  --line-strong: #B9B0A0;
-  --header-bg: #FFFFFF;
+  --line-strong: #C9BFAE;
+  --text-2: var(--cacao); /* texto secundario en cacao: legible y de marca */
+  --header-bg: var(--tinta);
+  /* colores de estado (sólidos, fáciles de distinguir de lejos) */
+  --st-aviso: #F0C35B;
+  --st-azul: #2F5C8C;
+  --st-ok: #3E7A34;
+  --st-error: #B03A28;
 }
 .panel-top .wrap { flex-wrap: wrap; padding-block: 8px; }
 .who { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--text-2); }
@@ -216,3 +222,126 @@ button.chip:hover { border-color: var(--text-2); color: var(--text); }
 .ctabs .chip-btn { border: 1px solid var(--line); background: var(--surface); color: inherit; font: inherit; font-weight: 600; padding: 8px 14px; border-radius: 999px; cursor: pointer; }
 .ctabs .chip-btn[aria-pressed="true"] { background: var(--tinta); border-color: var(--tinta); color: var(--crema); }
 .cpack .mdep-row select { flex: 1; min-width: 0; max-width: 320px; }
+
+
+/* ===================== Detalle de marca para los paneles ===================== */
+/* Barra superior en café tinta: marco de marca, el contenido queda claro */
+body.panel .panel-top { background: var(--tinta); border-bottom: 3px solid var(--tostado); color: var(--crema); backdrop-filter: none; }
+body.panel .panel-top .brand { color: var(--crema); }
+body.panel .panel-top .brand span { color: var(--tostado); }
+body.panel .panel-top .who { color: var(--crema-2); }
+body.panel .panel-top .clock { color: var(--crema); }
+body.panel header.panel-top .btn, body.panel header.panel-top .btn.ghost { background: transparent; color: var(--crema); border-color: rgb(246 247 222 / .32); }
+body.panel header.panel-top .btn:hover { background: rgb(246 247 222 / .1); border-color: var(--crema); }
+body.panel header.panel-top .btn.primary { background: var(--tostado); border-color: var(--tostado); color: var(--tinta); }
+body.panel header.panel-top .btn.primary:hover { background: var(--tostado-2); border-color: var(--tostado-2); }
+
+/* Pestañas */
+body.panel .tabs button { border: 1px solid var(--line-strong); background: var(--surface); color: var(--cacao); }
+body.panel .tabs button:hover { background: var(--crema); color: var(--tinta); border-color: var(--tostado); }
+body.panel .tabs button[aria-selected="true"] { background: var(--tinta); color: var(--crema); border-color: var(--tinta); box-shadow: 0 2px 6px rgb(28 23 20 / .2); }
+body.panel .tabs .count { background: var(--tostado); color: var(--tinta); font-weight: 700; }
+
+/* Títulos con acento tostado */
+body.panel .group-title { color: var(--tinta); border-left: 4px solid var(--tostado); padding-left: 10px; line-height: 1.05; }
+body.panel h2.display { color: var(--tinta); }
+body.panel .muted { color: var(--cacao); }
+
+/* Paneles y campos */
+body.panel .panel { border-color: var(--line); box-shadow: 0 1px 3px rgb(28 23 20 / .06); }
+body.panel label.f { color: var(--tinta); }
+body.panel input.in, body.panel select.in, body.panel textarea.in { border-color: var(--line-strong); color: var(--tinta); }
+body.panel input.in:hover, body.panel select.in:hover, body.panel textarea.in:hover { border-color: var(--cacao); }
+body.panel input.in:focus, body.panel select.in:focus, body.panel textarea.in:focus { border-color: var(--tostado); box-shadow: 0 0 0 3px rgb(198 138 78 / .22); }
+body.panel .btn { border-color: var(--line-strong); color: var(--tinta); }
+body.panel .btn:hover { background: var(--crema); border-color: var(--tostado); }
+body.panel .btn.ghost { background: var(--surface); }
+body.panel .btn.primary { background: var(--tinta); border-color: var(--tinta); color: var(--crema); }
+body.panel .btn.primary:hover { background: var(--cacao); border-color: var(--cacao); }
+body.panel .btn.danger { color: var(--st-error); border-color: rgb(176 58 40 / .45); }
+body.panel .btn.danger:hover { background: rgb(176 58 40 / .07); border-color: var(--st-error); }
+body.panel .note { background: var(--crema); color: var(--tinta); border-left: 3px solid var(--tostado); }
+
+/* Números del día: tarjetitas crema */
+body.panel .stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; color: var(--cacao); font-size: 13px; font-weight: 600; }
+body.panel .stats > div { background: var(--crema); border: 1px solid #E4E5C4; border-top: 3px solid var(--tostado); border-radius: 12px; padding: 10px 12px; }
+body.panel .stats b { font-family: var(--display); font-weight: 400; font-size: 32px; line-height: 1; letter-spacing: .02em; color: var(--tinta); margin-bottom: 4px; }
+
+/* Estados: píldoras sólidas */
+body.panel .st { font-size: 12px; padding: 4px 10px; background: var(--cacao); color: var(--crema); }
+body.panel .st-por_confirmar, body.panel .st-pendiente_pago { background: var(--st-aviso); color: var(--tinta); }
+body.panel .st-confirmado, body.panel .st-preparando { background: var(--tostado); color: var(--tinta); }
+body.panel .st-listo, body.panel .st-en_camino { background: var(--st-azul); color: #fff; }
+body.panel .st-entregado { background: var(--st-ok); color: #fff; }
+body.panel .st-cancelado { background: var(--st-error); color: #fff; }
+
+/* Tarjetas de pedido */
+body.panel .ocard { border-top-width: 6px; padding-top: 0; gap: 12px; align-content: start; }
+body.panel .ocard[data-s="por_confirmar"], body.panel .ocard[data-s="pendiente_pago"] { border-top-color: var(--st-aviso); }
+body.panel .ocard[data-s="listo"], body.panel .ocard[data-s="en_camino"] { border-top-color: var(--st-azul); }
+body.panel .ocard[data-s="entregado"] { border-top-color: var(--st-ok); opacity: 1; }
+body.panel .ocard[data-s="cancelado"] { border-top-color: var(--st-error); opacity: .75; }
+body.panel .ohead { margin: 0 -14px; padding: 10px 14px; background: #FBFAF5; border-bottom: 1px solid var(--line); border-radius: 0; }
+body.panel .oid { font-family: var(--display); font-weight: 400; font-size: 24px; letter-spacing: .04em; line-height: 1; color: var(--tinta); }
+body.panel .owhen { font-size: 34px; color: var(--tinta); }
+body.panel .rel { background: var(--surface-2); color: var(--cacao); border: 1px solid var(--line); }
+body.panel .rel.soon { background: var(--st-aviso); color: var(--tinta); border-color: var(--st-aviso); }
+body.panel .rel.late { background: var(--st-error); color: #fff; border-color: var(--st-error); }
+
+/* Lo que se prepara: bloque crema con cantidades en tinta */
+body.panel .kitems { background: var(--crema); border: 1px solid #E4E5C4; padding: 12px; gap: 9px; }
+body.panel .kitems li { grid-template-columns: 34px 1fr; color: var(--tinta); align-items: center; }
+body.panel .kitems .q { background: var(--tinta); color: var(--crema); border-radius: 8px; text-align: center; font-size: 22px; padding: 4px 0 2px; align-self: start; }
+body.panel .kitems em { color: #8A3A12; font-weight: 700; }
+body.panel .ocard .gift { background: #FCF4EA; border: 1.5px dashed var(--tostado); }
+body.panel .ocard .gift b { color: var(--accent-ink); }
+body.panel .ocard .gift span { color: var(--cacao); }
+
+/* Chips de información */
+body.panel .chip { background: var(--surface); border: 1px solid var(--line-strong); color: var(--cacao); }
+body.panel .chip.ok { background: rgb(62 122 52 / .1); border-color: rgb(62 122 52 / .45); color: var(--st-ok); }
+body.panel .chip.warn { background: rgb(240 195 91 / .25); border-color: #D9A43A; color: #6E4A0B; }
+body.panel .chip.bad { background: rgb(176 58 40 / .08); border-color: rgb(176 58 40 / .45); color: var(--st-error); }
+body.panel .chip:has(input:checked) { background: var(--crema); border-color: var(--tostado); color: var(--tinta); }
+body.panel .meta { color: var(--cacao); }
+body.panel .meta b { color: var(--tinta); font-weight: 700; }
+body.panel .linknote { background: #FCF4EA; border-left: 3px solid var(--tostado); color: var(--tinta); }
+body.panel .more { border-top-color: var(--line); }
+body.panel .more summary { color: var(--tinta); }
+
+/* Tablas: encabezado crema, filas que se siguen con la vista */
+body.panel .tbl th { background: var(--crema); color: var(--cacao); border-bottom: 2px solid var(--tostado); padding: 10px 8px; }
+body.panel .tbl th:first-child { border-top-left-radius: 8px; }
+body.panel .tbl th:last-child { border-top-right-radius: 8px; }
+body.panel .tbl td { border-bottom: 1px solid var(--line); padding: 10px 8px; color: var(--tinta); }
+body.panel .tbl tbody tr:nth-child(even) td { background: #FBFAF5; }
+body.panel .tbl tbody tr:hover td { background: #F8F4EA; }
+body.panel .tbl th .sortbtn:hover, body.panel .tbl th .sortbtn.on { color: var(--tinta); }
+
+/* Motorizado: dirección bien marcada */
+body.panel .dest { border: 1px solid #E4E5C4; border-left: 5px solid var(--tostado); }
+body.panel .dest .lbl { color: var(--cacao); opacity: 1; font-weight: 700; }
+
+/* Pedido por WhatsApp y costos */
+body.panel .mtitle { color: var(--tinta); }
+body.panel .mtitle span { background: var(--tostado); color: var(--tinta); }
+body.panel .mcat { color: var(--tinta); border-bottom: 2px solid var(--tostado); padding-bottom: 2px; }
+body.panel .mprod { background: var(--surface); }
+body.panel .mprod.on { background: var(--crema); border-color: var(--tostado); }
+body.panel .mprod .qty button { background: var(--crema); border-color: var(--line-strong); color: var(--tinta); }
+body.panel .mprod .qty button:hover { background: var(--tostado); border-color: var(--tostado); }
+body.panel .ccard:hover { background: var(--crema); }
+body.panel .ccard.add { color: var(--accent-ink); border-color: var(--tostado); }
+body.panel .ctabs .chip-btn { border-color: var(--line-strong); color: var(--cacao); }
+body.panel .ctabs .chip-btn[aria-pressed="true"] { color: var(--crema); }
+body.panel .wk, body.panel .exc, body.panel .qr-slot, body.panel .quick-item, body.panel .mcopy-item, body.panel .optg, body.panel .cp { background: var(--surface); border-color: var(--line-strong); }
+body.panel .wk.off { background: var(--surface-2); }
+body.panel .store-state:not(.is-closed) { border-left: 5px solid var(--st-ok); }
+body.panel .store-state.is-closed { border-left: 5px solid var(--st-error); background: rgb(176 58 40 / .04); }
+body.panel header.panel-top .brand { white-space: nowrap; }
+@media (max-width: 560px) {
+  body.panel header.panel-top .brand { font-size: 22px; }
+  body.panel .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; font-size: 12px; }
+  body.panel .stats > div { padding: 8px 9px; }
+  body.panel .stats b { font-size: 26px; }
+}
