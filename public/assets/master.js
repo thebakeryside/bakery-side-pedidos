@@ -46,6 +46,11 @@ async function ventas() {
     .select("id,subtotal,discount,delivery_fee,rider_fee,total,payment_method,rider_id,status,riders(full_name),order_items(name,quantity,line_total)")
     .eq("payment_status", "pagado").gte("paid_at", from).lt("paid_at", to);
   if (error) return ($("#view").innerHTML = `<p class="err">${esc(error.message)}</p>`);
+  // Liquidaciones semanales de PedidosYa (las registra Claude cada viernes; cuentan en el mes en que se liquidan)
+  const { data: pyAll } = await sb.from("channel_settlements").select("*").eq("channel", "pedidosya").order("period_from", { ascending: false });
+  const py = pyAll || [], monthStart = S.month + "-01", monthEnd = new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10);
+  const pyMonth = py.filter((w) => (w.settled_on || w.period_to) >= monthStart && (w.settled_on || w.period_to) < monthEnd);
+  const pyNet = pyMonth.reduce((s, w) => s + Number(w.net), 0), pyOrders = pyMonth.reduce((s, w) => s + Number(w.orders || 0), 0);
   const sum = (f) => orders.reduce((s, o) => s + Number(f(o)), 0);
   const products = sum((o) => o.subtotal - o.discount), fees = sum((o) => o.delivery_fee), total = sum((o) => o.total);
   // envío completo de cada pedido (lo que cuesta el motorizado) y lo que pusiste por envíos gratis
@@ -70,9 +75,12 @@ async function ventas() {
         ${shipGift > 0.004 ? `<div><b>${money(shipGift)}</b>envíos gratis que pusiste</div>` : ""}
         <div><b>${money(total)}</b>cobrado en total</div>
         <div><b>${money(cardFee)}</b>comisión Payphone aprox.</div>
+        <div><b>${money(pyNet)}</b>depositado por PedidosYa${pyOrders ? ` · ${pyOrders} pedidos` : ""}</div>
+        <div><b>${money(products + pyNet)}</b>web (productos) + PedidosYa</div>
       </div>
       <p class="muted small" style="margin:0">${card.length} con tarjeta · ${orders.length - card.length} por transferencia. La comisión es un estimado del 5,75% sobre lo cobrado con tarjeta.</p>
     </div>
+    ${pyPanel(py, monthStart, monthEnd)}
     <div class="cards" style="margin-top:14px">
       <div class="panel"><h3 class="group-title" style="margin-top:0">Pago a motorizados</h3>
         <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Motorizado</th><th>Entregas</th><th>Envíos a pagar</th></tr></thead><tbody>
@@ -84,6 +92,63 @@ async function ventas() {
         </tbody></table></div></div>
     </div>`;
   $("#month").onchange = (e) => { S.month = e.target.value || S.month; ventas(); };
+  bindPyForm();
+}
+
+// PedidosYa: tabla de semanas liquidadas (de lunes a domingo; el estado de cuenta llega el jueves)
+const dShort = (d) => d ? new Date(d + "T12:00:00Z").toLocaleDateString("es-EC", { day: "numeric", month: "short", timeZone: "UTC" }).replace(".", "") : "—";
+const m2 = (v) => v == null ? "—" : money(Number(v));
+function pyPanel(py, monthStart, monthEnd) {
+  const total = py.reduce((s, w) => s + Number(w.net), 0);
+  const inMonth = (w) => (w.settled_on || w.period_to) >= monthStart && (w.settled_on || w.period_to) < monthEnd;
+  return `<div class="panel" style="margin-top:14px">
+    <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;justify-content:space-between">
+      <h3 class="group-title" style="margin:0">PedidosYa · liquidaciones semanales</h3>
+      <span class="muted small">Total depositado desde el inicio: <b>${money(total)}</b></span>
+    </div>
+    <p class="muted small" style="margin:6px 0 10px">Semana de lunes a domingo. PedidosYa manda el estado de cuenta el jueves y Claude lo registra aquí cada viernes. Cuenta en el mes en que se liquida. Resaltadas: las de este mes.</p>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Semana</th><th>Pedidos</th><th>Precio de lista</th><th>Tus descuentos</th><th>Comisión + IVA</th><th>Otros cargos</th><th>Depositado</th><th>Liquidado</th></tr></thead><tbody>
+    ${py.map((w) => `<tr${inMonth(w) ? ' style="background:var(--crema)"' : ""} title="${esc([w.notes, w.app_discounts != null ? `Descuentos que puso PedidosYa: ${money(Number(w.app_discounts))}` : "", w.source].filter(Boolean).join(" · "))}">
+      <td>${dShort(w.period_from)} – ${dShort(w.period_to)}</td>
+      <td class="tabnum">${w.orders ?? "—"}</td>
+      <td class="tabnum">${m2(w.gross)}</td>
+      <td class="tabnum">${w.discounts == null ? "—" : "−" + money(Number(w.discounts))}</td>
+      <td class="tabnum">${w.commission == null ? "—" : "−" + money(Number(w.commission) + Number(w.commission_tax || 0))}</td>
+      <td class="tabnum">${Number(w.other_charges) ? "−" + money(Number(w.other_charges)) : "—"}</td>
+      <td class="tabnum"><b>${money(Number(w.net))}</b></td>
+      <td class="small">${dShort(w.settled_on)}${w.bank ? `<br><span class="muted">${esc(w.bank)}</span>` : ""}</td></tr>`).join("") || `<tr><td colspan="8" class="muted">Aún no hay liquidaciones registradas.</td></tr>`}
+    </tbody></table></div>
+    <details style="margin-top:10px"><summary class="small" style="cursor:pointer">Registrar una semana a mano</summary>
+      <form id="pyForm" class="form-grid" novalidate style="margin-top:8px">
+        <div><label class="f" for="pyFrom">Lunes de la semana</label><input class="in" id="pyFrom" type="date" required></div>
+        <div><label class="f" for="pyNet">Depositado ($)</label><input class="in" id="pyNet" inputmode="decimal" required></div>
+        <div><label class="f" for="pyOrders">Pedidos</label><input class="in" id="pyOrders" inputmode="numeric"></div>
+        <div><label class="f" for="pyGross">Precio de lista ($)</label><input class="in" id="pyGross" inputmode="decimal"></div>
+        <div><label class="f" for="pyDisc">Tus descuentos ($)</label><input class="in" id="pyDisc" inputmode="decimal"></div>
+        <div><label class="f" for="pyCom">Comisión ($)</label><input class="in" id="pyCom" inputmode="decimal"></div>
+        <div><label class="f" for="pyTax">IVA de la comisión ($)</label><input class="in" id="pyTax" inputmode="decimal"></div>
+        <div><label class="f" for="pySettled">Fecha del estado de cuenta</label><input class="in" id="pySettled" type="date"></div>
+        <div style="align-self:end;padding-top:14px"><button class="btn primary block">Guardar semana</button></div>
+      </form>
+      <p class="muted small">Si la semana ya existe, se reemplaza con estos datos.</p>
+    </details>
+  </div>`;
+}
+function bindPyForm() {
+  const f = $("#pyForm"); if (!f) return;
+  const num = (id) => { const v = $(id).value.trim().replace(",", "."); return v === "" ? null : Number(v); };
+  f.onsubmit = async (e) => {
+    e.preventDefault();
+    const from = $("#pyFrom").value, net = num("#pyNet");
+    if (!from || net == null || isNaN(net)) return toast("Pon el lunes de la semana y lo depositado.");
+    const mon = new Date(from + "T12:00:00Z"); if (mon.getUTCDay() !== 1) return toast("La semana empieza en lunes. Elige el lunes.");
+    const to = new Date(mon.getTime() + 6 * 86400000).toISOString().slice(0, 10);
+    const row = { channel: "pedidosya", period_from: from, period_to: to, net, orders: num("#pyOrders"), gross: num("#pyGross"), discounts: num("#pyDisc") ?? 0,
+      commission: num("#pyCom"), commission_tax: num("#pyTax"), settled_on: $("#pySettled").value || null, source: "Registrada a mano en Master", updated_at: new Date().toISOString() };
+    const { error } = await sb.from("channel_settlements").upsert(row, { onConflict: "channel,period_from" });
+    if (error) return rpcErr(error);
+    toast("Semana guardada"); ventas();
+  };
 }
 
 // ---------- motorizados ----------
