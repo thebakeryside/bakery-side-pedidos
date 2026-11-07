@@ -21,7 +21,7 @@ requireLogin(async (user) => {
   sb.channel("cocina").on("postgres_changes", { event: "*", schema: "public", table: "orders" }, async (p) => {
     await loadOrders();
     const o = p.new;
-    if (o && ["por_confirmar", "confirmado"].includes(o.status) && !S.seen.has(o.id + o.status)) { beep(); toast(`Pedido ${o.code}: ${STATUS[o.status]}`); }
+    if (o && ["por_confirmar", "confirmado"].includes(o.status) && !S.seen.has(o.id + o.status)) { beep(); flashTitle(`🔔 Pedido ${o.code}`); toast(`Pedido ${o.code}: ${STATUS[o.status]}`); }
     render();
   }).subscribe();
   setInterval(() => { if (S.tab === "pedidos") render(); }, 60000); // refresca tiempos
@@ -54,10 +54,45 @@ async function loadMenu() {
 async function loadSettings() { const { data } = await sb.from("settings").select("*").single(); S.settings = data; }
 
 // ---------- sonido ----------
+// Siempre activo salvo que alguien lo apague (se recuerda en este equipo).
+// El navegador solo deja sonar después del primer toque/clic en la página:
+// el audio se desbloquea solo con cualquier interacción, sin botón especial.
 let ctx;
-$("#sound").onclick = () => { ctx ||= new AudioContext(); S.sound = true; $("#sound").textContent = "Sonido activo"; beep(); };
+const sndKey = "tbs-cocina-sonido";
+try { S.sound = localStorage.getItem(sndKey) !== "off"; } catch { S.sound = true; }
+function audioReady() { return ctx && ctx.state === "running"; }
+function unlockAudio() {
+  if (!S.sound) return;
+  try { ctx ||= new AudioContext(); if (ctx.state === "suspended") ctx.resume().then(soundLabel, () => {}); } catch {}
+  soundLabel();
+}
+function soundLabel() {
+  const b = $("#sound"); if (!b) return;
+  const blocked = S.sound && !audioReady();
+  b.textContent = !S.sound ? "🔇 Sonido apagado" : blocked ? "🔔 Toca para activar sonido" : "🔔 Sonido activo";
+  b.classList.toggle("primary", blocked);
+  b.classList.toggle("ghost", !blocked);
+}
+["pointerdown", "keydown", "touchstart"].forEach((ev) => document.addEventListener(ev, unlockAudio, { passive: true }));
+unlockAudio(); // si el navegador ya lo permite (app instalada), queda listo sin tocar nada
+setTimeout(soundLabel, 300);
+$("#sound").onclick = () => {
+  if (S.sound && audioReady()) { S.sound = false; }
+  else { S.sound = true; unlockAudio(); setTimeout(beep, 50); }
+  try { localStorage.setItem(sndKey, S.sound ? "on" : "off"); } catch {}
+  soundLabel(); render();
+};
+let titleTimer;
+function flashTitle(msg) {
+  if (!document.hidden) return;
+  const base = document.title; let on = false;
+  clearInterval(titleTimer);
+  titleTimer = setInterval(() => { document.title = (on = !on) ? msg : base; }, 1000);
+  document.addEventListener("visibilitychange", () => { clearInterval(titleTimer); document.title = base; }, { once: true });
+}
 function beep() {
-  if (!S.sound || !ctx) return;
+  if (!S.sound) return;
+  if (!audioReady()) { unlockAudio(); if (!audioReady()) return; }
   [0, 0.25].forEach((t) => { const o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.value = 880; g.gain.value = 0.15; o.connect(g).connect(ctx.destination); o.start(ctx.currentTime + t); o.stop(ctx.currentTime + t + 0.15); });
 }
 
@@ -88,7 +123,7 @@ function render() {
       ${group("Confirmados · por preparar", by(["confirmado"]))}
       ${group("En preparación", by(["preparando"]))}
       ${group("Listos y en camino", by(["listo", "en_camino"]))}
-      ${!active.length ? `<div class="panel"><p class="muted">No hay pedidos en curso. Cuando entre uno, aparecerá aquí ${S.sound ? "y sonará" : "(toca «Activar sonido» para escuchar la alerta)"}.</p></div>` : ""}
+      ${!active.length ? `<div class="panel"><p class="muted">No hay pedidos en curso. Cuando entre uno, aparecerá aquí ${S.sound ? "y sonará" : "(el sonido está apagado; tócalo arriba para encenderlo)"}.</p></div>` : ""}
       ${unpaid.length ? `<details style="margin-top:18px"><summary class="muted">Pedidos sin pagar en las últimas 2 horas (${unpaid.length})</summary><div class="cards" style="margin-top:10px">${unpaid.map(card).join("")}</div></details>` : ""}`;
   } else if (S.tab === "agenda") {
     const list = agenda.sort((a, b) => new Date(a.scheduled_for) - new Date(b.scheduled_for));
