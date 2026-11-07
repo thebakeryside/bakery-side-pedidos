@@ -50,7 +50,8 @@ async function init() {
       api("config"),
       sb.from("categories").select("id,name,sort").eq("active", true).order("sort"),
       sb.from("products").select("*").eq("active", true).order("sort"),
-      sb.from("product_option_groups").select("product_id, option_groups(id,name,required,sort,option_choices(id,name,price_delta,sort,active))"),
+      sb.from("product_option_groups").select("product_id, only_if, option_groups(id,name,required,sort,option_choices(id,name,price_delta,sort,active))")
+        .then((r) => r.error ? sb.from("product_option_groups").select("product_id, option_groups(id,name,required,sort,option_choices(id,name,price_delta,sort,active))") : r),
     ]);
     // opciones por producto (si la tabla aún no existe, no hay opciones)
     state.opts = {};
@@ -58,8 +59,10 @@ async function init() {
       const g = r.option_groups; if (!g) continue;
       g.option_choices = (g.option_choices || []).filter((c) => c.active).sort((a, b) => a.sort - b.sort);
       if (!g.option_choices.length) continue; // grupo sin opciones activas: no se muestra
-      (state.opts[r.product_id] ||= []).push(g);
+      (state.opts[r.product_id] ||= []).push({ ...g, only_if: r.only_if?.length ? r.only_if.map(Number) : null });
     }
+    // los grupos condicionales (ej.: endulzante según la bebida del combo) van después
+    for (const gs of Object.values(state.opts)) gs.sort((a, b) => (a.only_if ? 1 : 0) - (b.only_if ? 1 : 0) || (a.sort || 0) - (b.sort || 0));
     if (cats.error) throw cats.error;
     if (prods.error) throw prods.error;
     state.cfg = cfg; state.products = prods.data;
@@ -342,9 +345,11 @@ const groupsOf = (id) => state.opts?.[id] || [];
 const lastKeyOf = (id) => [...state.cart.keys()].filter((k) => keyId(k) === id).pop() ?? String(id);
 const qtyOf = (id) => [...state.cart].reduce((s, [k, q]) => s + (keyId(k) === id ? q : 0), 0);
 const choiceOf = (cid) => { for (const gs of Object.values(state.opts || {})) for (const g of gs) { const c = g.option_choices.find((x) => x.id === cid); if (c) return c; } return null; };
+// un grupo condicional solo aplica si se eligió una de las opciones que lo activan
+const applies = (g, chosen) => !g.only_if || g.only_if.some((c) => chosen.includes(c));
 function validKey(k) {
   const gs = groupsOf(keyId(k)), opts = keyOpts(k);
-  return gs.every((g) => !g.required || g.option_choices.some((c) => opts.includes(c.id)));
+  return gs.every((g) => !g.required || !applies(g, opts) || g.option_choices.some((c) => opts.includes(c.id)));
 }
 const lineName = (k) => { const n = keyOpts(k).map((c) => choiceOf(c)?.name).filter(Boolean); return product(keyId(k)).name + (n.length ? ` (${n.join(", ")})` : ""); };
 const linePrice = (k) => Number(product(keyId(k)).price) + keyOpts(k).reduce((s, c) => s + Number(choiceOf(c)?.price_delta || 0), 0);
@@ -378,14 +383,25 @@ function openPicker(p) {
   const gs = groupsOf(p.id);
   const box = $("#optModal");
   box.querySelector(".opt-title").textContent = p.name;
-  box.querySelector(".opt-body").innerHTML = gs.map((g) => `<fieldset class="optgroup"><legend>${esc(g.name)}${g.required ? "" : ' <span class="muted small">(opcional)</span>'}</legend>
+  box.querySelector(".opt-body").innerHTML = gs.map((g) => `<fieldset class="optgroup" data-g="${g.id}"${g.only_if ? " hidden" : ""}><legend>${esc(g.name)}${g.required ? "" : ' <span class="muted small">(opcional)</span>'}</legend>
     ${g.option_choices.map((c) => `<label class="optchoice"><input type="radio" name="g${g.id}" value="${c.id}"><span>${esc(c.name)}</span>${Number(c.price_delta) > 0 ? `<span class="muted small">+${money(c.price_delta)}</span>` : `<span class="free">${g.option_choices.some((x) => Number(x.price_delta) > 0) ? "Incluido" : "+$0.00"}</span>`}</label>`).join("")}
     ${g.option_choices.every((c) => !Number(c.price_delta)) ? `<p class="freenote">🎁 Cualquier opción, sin recargo adicional.</p>` : ""}</fieldset>`).join("");
   const add = box.querySelector(".opt-add");
-  const sync = () => { add.disabled = gs.some((g) => g.required && !box.querySelector(`input[name="g${g.id}"]:checked`)); };
+  const picked = (g) => Number(box.querySelector(`input[name="g${g.id}"]:checked`)?.value || 0);
+  // grupos que aplican según lo elegido (el endulzante aparece solo si la bebida lo lleva)
+  const live = () => { const ch = gs.filter((g) => !g.only_if).map(picked).filter(Boolean); return gs.filter((g) => applies(g, ch)); };
+  const sync = () => {
+    const on = live();
+    gs.forEach((g) => {
+      const fs = box.querySelector(`[data-g="${g.id}"]`), show = on.includes(g);
+      if (fs.hidden === show) { fs.hidden = !show; if (show) fs.animate?.([{ opacity: 0 }, { opacity: 1 }], 200); }
+      if (!show) fs.querySelectorAll("input").forEach((i) => (i.checked = false));
+    });
+    add.disabled = on.some((g) => g.required && !picked(g));
+  };
   box.querySelectorAll("input").forEach((i) => (i.onchange = sync)); sync();
   add.onclick = () => {
-    const ids = gs.map((g) => Number(box.querySelector(`input[name="g${g.id}"]:checked`)?.value || 0)).filter(Boolean);
+    const ids = live().map(picked).filter(Boolean);
     box.hidden = true;
     changeQty(ids.length ? `${p.id}:${ids.join(".")}` : String(p.id), 1);
     toast(`${lineName(ids.length ? `${p.id}:${ids.join(".")}` : String(p.id))} agregado`);

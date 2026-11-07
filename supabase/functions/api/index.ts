@@ -166,19 +166,24 @@ async function quote(s: Settings, lat: number, lng: number) {
 // ---------- pedido ----------
 type Item = { product_id: number; quantity: number; options?: number[] };
 type Choice = { id: number; name: string; price_delta: number; active: boolean };
-type Group = { id: number; name: string; required: boolean; option_choices: Choice[] };
+type Group = { id: number; name: string; required: boolean; option_choices: Choice[]; only_if?: number[] | null };
 
 // Opciones de cada producto (endulzante, etc.); si las tablas aún no existen, no hay opciones
 async function optionGroups(ids: number[]) {
   const m = new Map<number, Group[]>();
-  const { data, error } = await db.from("product_option_groups")
-    .select("product_id, option_groups(id,name,required,option_choices(id,name,price_delta,active))").in("product_id", ids);
+  // only_if: el grupo solo aplica si se eligió una de esas opciones (ej.: endulzante solo con bebidas que lo llevan)
+  let { data, error }: { data: any[] | null; error: any } = await db.from("product_option_groups")
+    .select("product_id, only_if, option_groups(id,name,required,sort,option_choices(id,name,price_delta,active))").in("product_id", ids);
+  if (error) ({ data, error } = await db.from("product_option_groups")
+    .select("product_id, option_groups(id,name,required,sort,option_choices(id,name,price_delta,active))").in("product_id", ids));
   if (error) return m;
   for (const r of (data ?? []) as any[]) {
     if (!r.option_groups) continue;
     if (!m.has(r.product_id)) m.set(r.product_id, []);
-    m.get(r.product_id)!.push(r.option_groups);
+    m.get(r.product_id)!.push({ ...r.option_groups, only_if: r.only_if?.length ? r.only_if.map(Number) : null });
   }
+  // los grupos condicionales van después de los que los activan
+  for (const gs of m.values()) gs.sort((a: any, b: any) => (a.only_if ? 1 : 0) - (b.only_if ? 1 : 0) || (a.sort ?? 0) - (b.sort ?? 0));
   return m;
 }
 
@@ -199,6 +204,7 @@ async function priceCart(items: Item[]) {
     const picked: { group: string; choice: string; choice_id: number }[] = [];
     let delta = 0;
     for (const g of groups.get(p!.id) ?? []) {
+      if (g.only_if && !g.only_if.some((c) => chosen.includes(c))) continue; // no aplica a lo elegido
       const hits = g.option_choices.filter((c) => c.active && chosen.includes(c.id));
       if (hits.length > 1) fail(`Elige solo una opción de ${g.name.toLowerCase()} para ${p!.name}.`);
       if (!hits.length) { if (g.required) fail(`Elige ${g.name.toLowerCase()} para ${p!.name}.`); continue; }

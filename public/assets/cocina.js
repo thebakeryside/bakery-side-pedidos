@@ -33,7 +33,7 @@ $$(".tabs [data-tab]").forEach((b) => b.addEventListener("click", () => { S.tab 
 async function loadOrders() {
   const since = new Date(Date.now() - 3 * 86400000).toISOString();
   const { data, error } = await sb.from("orders")
-    .select("*, order_items(name,quantity,line_total), riders(full_name,phone)")
+    .select("*, order_items(name,quantity,line_total,options), riders(full_name,phone)")
     .or(`status.in.(${ACTIVE.join(",")}),created_at.gte."${since}",scheduled_for.gte."${new Date().toISOString()}"`)
     .order("created_at", { ascending: false }).limit(300);
   if (error) return toast("No pudimos cargar los pedidos: " + error.message);
@@ -189,6 +189,9 @@ function riderChip(o) {
 }
 function itemLine(i) {
   const m = String(i.name).match(/^(.*?) \(([^()]*)\)$/); // "Cold Brew (11oz) (Stevia)" → opción aparte
+  // con las elecciones guardadas: una línea por cada una (Postre, Bebida, Endulzante…)
+  if (m && Array.isArray(i.options) && i.options.length)
+    return `<li><b class="q">${i.quantity}</b><span>${esc(m[1])}${i.options.map((o) => `<em><small>${esc(o.group)}:</small> ${esc(o.choice)}</em>`).join("")}</span></li>`;
   return m ? `<li><b class="q">${i.quantity}</b><span>${esc(m[1])}<em>${esc(m[2])}</em></span></li>` : `<li><b class="q">${i.quantity}</b><span>${esc(i.name)}</span></li>`;
 }
 const win = () => Number(S.settings?.eta_window_minutes || 30);

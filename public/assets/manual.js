@@ -18,7 +18,8 @@ export async function renderManual(view) {
     api("config"),
     sb.from("categories").select("id,name,sort").eq("active", true).order("sort"),
     sb.from("products").select("*").eq("active", true).order("sort"),
-    sb.from("product_option_groups").select("product_id, option_groups(id,name,required,option_choices(id,name,price_delta,sort,active))"),
+    sb.from("product_option_groups").select("product_id, only_if, option_groups(id,name,required,sort,option_choices(id,name,price_delta,sort,active))")
+      .then((r) => r.error ? sb.from("product_option_groups").select("product_id, option_groups(id,name,required,sort,option_choices(id,name,price_delta,sort,active))") : r),
     sb.from("settings").select("bank_info").single(),
   ]);
   st.bank = parseBank(sets?.data?.bank_info);
@@ -28,8 +29,11 @@ export async function renderManual(view) {
   for (const r of opts.error ? [] : opts.data || []) {
     const g = r.option_groups; if (!g) continue;
     g.option_choices = (g.option_choices || []).filter((c) => c.active).sort((a, b) => a.sort - b.sort);
-    (st.opts[r.product_id] ||= []).push(g);
+    if (!g.option_choices.length) continue;
+    (st.opts[r.product_id] ||= []).push({ ...g, only_if: r.only_if?.length ? r.only_if.map(Number) : null });
   }
+  // los grupos condicionales (ej.: endulzante según la bebida del combo) van después
+  for (const gs of Object.values(st.opts)) gs.sort((a, b) => (a.only_if ? 1 : 0) - (b.only_if ? 1 : 0) || (a.sort || 0) - (b.sort || 0));
 
   view.innerHTML = `
     <details class="panel quick">
@@ -112,7 +116,24 @@ export async function renderManual(view) {
 
   $$("[data-copy]", view).forEach((b) => (b.onclick = () => copy(QUICK[+b.dataset.copy][1])));
   $("#mSearch").oninput = () => { st.filter = $("#mSearch").value.trim().toLowerCase(); drawProds(); };
+  // armar un combo: muestra el endulzante solo si la bebida elegida lo lleva
+  const buildLive = (box) => {
+    const gs = st.opts[box.dataset.pid] || [];
+    const val = (g) => Number(box.querySelector(`[data-g="${g.id}"]`).value || 0);
+    const base = gs.filter((g) => !g.only_if).map(val).filter(Boolean);
+    const on = gs.filter((g) => !g.only_if || g.only_if.some((c) => base.includes(c)));
+    gs.forEach((g) => { const sel = box.querySelector(`[data-g="${g.id}"]`); sel.hidden = !on.includes(g); if (sel.hidden) sel.value = ""; });
+    box.querySelector("[data-build]").disabled = on.some((g) => g.required && !val(g));
+    return on.map(val).filter(Boolean);
+  };
+  $("#mProds").onchange = (e) => { const box = e.target.closest(".mbuild"); if (box) buildLive(box); };
   $("#mProds").onclick = (e) => {
+    const nb = e.target.closest("[data-build]");
+    if (nb) {
+      const ids = buildLive(nb.closest(".mbuild")); if (nb.disabled) return;
+      const k = `${nb.dataset.build}:${ids.join(".")}`;
+      st.cart.set(k, Math.min((st.cart.get(k) || 0) + 1, 50)); drawProds(); quote(); return;
+    }
     const b = e.target.closest("[data-q]"); if (!b) return;
     const k = b.dataset.id, q = (st.cart.get(k) || 0) + Number(b.dataset.q);
     if (q <= 0) st.cart.delete(k); else st.cart.set(k, Math.min(q, 50));
@@ -161,8 +182,15 @@ function drawProds() {
         <span class="qty"><button type="button" data-q="-1" data-id="${k}" aria-label="Quitar uno">−</button><b>${q}</b><button type="button" data-q="1" data-id="${k}" aria-label="Agregar uno">+</button></span></div>`;
     };
     return `<h3 class="mcat">${esc(c.name)}</h3>${items.map((p) => {
-      const g = (st.opts[p.id] || [])[0];
+      const gs = st.opts[p.id] || [], g = gs[0];
       if (!g) return row(String(p.id), p.name, p.price);
+      // varias elecciones (combo: postre, bebida y endulzante si la bebida lo lleva): se arma con listas
+      if (gs.length > 1 || g.only_if) {
+        const added = [...st.cart.keys()].filter((k) => kId(k) === p.id);
+        return `<div class="mopt"><b>${esc(p.name)}</b> <span class="muted small">· elige ${gs.filter((x) => !x.only_if).map((x) => x.name.toLowerCase()).join(" y ")} y toca Agregar</span></div>` +
+          added.map((k) => row(k, `↳ ${kOpts(k).map((c) => choice(c)?.name).filter(Boolean).join(" · ")}`, lPrice(k))).join("") +
+          `<div class="mbuild" data-pid="${p.id}">${gs.map((x) => `<select class="in" data-g="${x.id}"${x.only_if ? " hidden" : ""} aria-label="${esc(x.name)}"><option value="">${esc(x.name)}…</option>${x.option_choices.map((c) => `<option value="${c.id}">${esc(c.name)}${Number(c.price_delta) > 0 ? ` +${money(c.price_delta)}` : ""}</option>`).join("")}</select>`).join("")}<button type="button" class="btn small primary" data-build="${p.id}" disabled>Agregar</button></div>`;
+      }
       return `<div class="mopt"><b>${esc(p.name)}</b> <span class="muted small">· ${esc(g.name.toLowerCase())}</span></div>` +
         g.option_choices.map((ch) => row(`${p.id}:${ch.id}`, `↳ ${ch.name}`, Number(p.price) + Number(ch.price_delta || 0))).join("");
     }).join("")}`;

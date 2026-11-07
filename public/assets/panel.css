@@ -345,3 +345,7 @@ body.panel header.panel-top .brand { white-space: nowrap; }
   body.panel .stats > div { padding: 8px 9px; }
   body.panel .stats b { font-size: 26px; }
 }
+/* armar combo en pedido por WhatsApp */
+.mbuild { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; padding: 8px 10px; border: 1px dashed var(--tostado); border-radius: 10px; background: var(--crema); }
+.mbuild select.in { width: auto; flex: 1 1 140px; min-height: 38px; padding: 6px 10px; }
+.kitems em small { font-size: 12px; font-weight: 600; color: var(--cacao); text-transform: uppercase; letter-spacing: .04em; }
