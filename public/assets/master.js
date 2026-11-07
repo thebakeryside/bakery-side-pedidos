@@ -778,9 +778,9 @@ async function resenas() {
   const cnt = $("#cntRev"); cnt.hidden = !pend.length; cnt.textContent = pend.length;
   const card = (r) => `<article class="ocard" data-s="${r.status === "publicada" ? "entregado" : r.status === "oculta" ? "cancelado" : "por_confirmar"}">
     <div class="ohead"><b>${esc(pn.get(r.product_id) || "Producto")}</b><span class="st">${r.status === "pendiente" ? "Por revisar" : r.status === "publicada" ? "Publicada" : "Oculta"}</span></div>
-    <div><span style="color:var(--tostado);font-size:18px">${"★".repeat(r.rating)}</span><span style="opacity:.35;font-size:18px">${"★".repeat(5 - r.rating)}</span></div>
+    <div><span style="color:var(--accent-ink);font-size:18px">${"★".repeat(r.rating)}</span><span style="opacity:.35;font-size:18px">${"★".repeat(5 - r.rating)}</span></div>
     <div class="meta"><span><b>${esc(r.author || "Cliente")}</b> · ${r.verified ? "✓ Compra comprobada" : "Sin compra comprobada"}</span>
-      ${r.comment ? `<span style="color:var(--crema)">“${esc(r.comment)}”</span>` : `<span class="muted">Sin comentario</span>`}</div>
+      ${r.comment ? `<span style="color:var(--text)">“${esc(r.comment)}”</span>` : `<span class="muted">Sin comentario</span>`}</div>
     <div class="acts">${r.status !== "publicada" ? `<button class="btn small primary" data-rv="${r.id}" data-st="publicada">Publicar</button>` : ""}
       ${r.status !== "oculta" ? `<button class="btn small ghost" data-rv="${r.id}" data-st="oculta">Ocultar</button>` : ""}</div>
   </article>`;
