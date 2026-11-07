@@ -47,10 +47,11 @@ async function ventas() {
     .eq("payment_status", "pagado").gte("paid_at", from).lt("paid_at", to);
   if (error) return ($("#view").innerHTML = `<p class="err">${esc(error.message)}</p>`);
   // Liquidaciones semanales de PedidosYa (las registra Claude cada viernes; cuentan en el mes en que se liquidan)
-  const { data: pyAll } = await sb.from("channel_settlements").select("*").eq("channel", "pedidosya").order("period_from", { ascending: false });
-  const py = pyAll || [], monthStart = S.month + "-01", monthEnd = new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10);
+  const { data: chAll } = await sb.from("channel_settlements").select("*").in("channel", ["pedidosya", "payphone"]).order("period_from", { ascending: false });
+  const py = (chAll || []).filter((w) => w.channel === "pedidosya"), pp = (chAll || []).filter((w) => w.channel === "payphone"), monthStart = S.month + "-01", monthEnd = new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10);
   const pyMonth = py.filter((w) => (w.settled_on || w.period_to) >= monthStart && (w.settled_on || w.period_to) < monthEnd);
   const pyNet = pyMonth.reduce((s, w) => s + Number(w.net), 0), pyOrders = pyMonth.reduce((s, w) => s + Number(w.orders || 0), 0);
+  const ppLast = pp.filter((w) => w.balance_at).sort((a, b) => b.balance_at.localeCompare(a.balance_at))[0];
   const pyPending = py.filter((w) => w.status !== "pagado").reduce((s, w) => s + Number(w.net), 0);
   const sum = (f) => orders.reduce((s, o) => s + Number(f(o)), 0);
   const products = sum((o) => o.subtotal - o.discount), fees = sum((o) => o.delivery_fee), total = sum((o) => o.total);
@@ -78,11 +79,13 @@ async function ventas() {
         <div><b>${money(cardFee)}</b>comisión Payphone aprox.</div>
         <div><b>${money(pyNet)}</b>liquidado por PedidosYa${pyOrders ? ` · ${pyOrders} pedidos` : ""}</div>
         ${pyPending > 0.004 ? `<div><b>${money(pyPending)}</b>PedidosYa por depositarte</div>` : ""}
+        ${ppLast && Number(ppLast.balance_end) > 0.004 ? `<div><b>${money(Number(ppLast.balance_end))}</b>en Payphone sin retirar</div>` : ""}
         <div><b>${money(products + pyNet)}</b>web (productos) + PedidosYa</div>
       </div>
       <p class="muted small" style="margin:0">${card.length} con tarjeta · ${orders.length - card.length} por transferencia. La comisión es un estimado del 5,75% sobre lo cobrado con tarjeta.</p>
     </div>
     ${pyPanel(py, monthStart, monthEnd)}
+    ${ppPanel(pp, ppLast)}
     <div class="cards" style="margin-top:14px">
       <div class="panel"><h3 class="group-title" style="margin-top:0">Pago a motorizados</h3>
         <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Motorizado</th><th>Entregas</th><th>Envíos a pagar</th></tr></thead><tbody>
@@ -100,6 +103,28 @@ async function ventas() {
 // PedidosYa: tabla de semanas liquidadas (de lunes a domingo; el estado de cuenta llega el jueves)
 const dShort = (d) => d ? new Date(d + "T12:00:00Z").toLocaleDateString("es-EC", { day: "numeric", month: "short", timeZone: "UTC" }).replace(".", "") : "—";
 const m2 = (v) => v == null ? "—" : money(Number(v));
+// Payphone: cobros con tarjeta de la web. El dinero queda en la billetera de Payphone hasta que Boris lo retira al banco.
+function ppPanel(pp, last) {
+  const when = last?.balance_at ? new Date(last.balance_at).toLocaleString("es-EC", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "America/Guayaquil" }) : "";
+  return `<div class="panel" style="margin-top:14px">
+    <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;justify-content:space-between">
+      <h3 class="group-title" style="margin:0">Payphone · cobros con tarjeta por semana</h3>
+      ${last ? `<span class="muted small">Saldo en Payphone sin retirar: <b>${money(Number(last.balance_end))}</b>${when ? ` · consultado ${esc(when)}` : ""}</span>` : ""}
+    </div>
+    <p class="muted small" style="margin:6px 0 10px">Lo cobrado con tarjeta queda en tu billetera de Payphone hasta que lo retiras a Pichincha (Payphone Business → Saldo → Retiro; hoy sin comisión). Claude lo revisa cada viernes y lo cuadra con los pedidos con tarjeta de la web.</p>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Semana</th><th>Cobros</th><th>Cobrado</th><th>Tarifa</th><th>Anulaciones</th><th>Acreditado</th><th>Retirado</th><th>Saldo al cierre</th></tr></thead><tbody>
+    ${pp.map((w) => `<tr title="${esc([w.notes, w.web_check != null ? `Pedidos con tarjeta en la web: ${money(Number(w.web_check))}` : "", w.source].filter(Boolean).join(" · "))}">
+      <td>${dShort(w.period_from)} – ${dShort(w.period_to)}${w.web_check != null && w.gross != null && Math.abs(Number(w.web_check) - Number(w.gross)) > 0.05 ? ` <span class="st st-pendiente_pago">No cuadra con la web</span>` : ""}</td>
+      <td class="tabnum">${w.orders ?? "—"}</td>
+      <td class="tabnum">${m2(w.gross)}</td>
+      <td class="tabnum">${w.commission == null ? "—" : "−" + money(Number(w.commission))}</td>
+      <td class="tabnum">${Number(w.other_charges) ? "−" + money(Number(w.other_charges)) : "—"}</td>
+      <td class="tabnum"><b>${money(Number(w.net))}</b></td>
+      <td class="tabnum">${Number(w.withdrawn) ? money(Number(w.withdrawn)) : "—"}</td>
+      <td class="tabnum">${m2(w.balance_end)}</td></tr>`).join("") || `<tr><td colspan="8" class="muted">Aún no hay semanas registradas.</td></tr>`}
+    </tbody></table></div>
+  </div>`;
+}
 function pyPanel(py, monthStart, monthEnd) {
   const total = py.reduce((s, w) => s + Number(w.net), 0);
   const inMonth = (w) => (w.settled_on || w.period_to) >= monthStart && (w.settled_on || w.period_to) < monthEnd;
