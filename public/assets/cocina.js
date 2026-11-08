@@ -4,7 +4,7 @@ import { renderManual } from "./manual.js";
 
 $("#loginSlot").innerHTML = loginHTML("Panel de cocina");
 
-const S = { tab: "pedidos", orders: [], riders: [], products: [], cats: [], settings: null, sound: false, seen: new Set(), pins: new Map(), uberAlerted: new Set() };
+const S = { tab: "pedidos", orders: [], riders: [], products: [], cats: [], settings: null, sound: false, seen: new Set(), pins: new Map(), uberAlerted: new Map() };
 const ACTIVE = ["por_confirmar", "confirmado", "preparando", "listo", "en_camino"];
 const AGENDA_HOURS = 3; // los agendados aparecen en "Pedidos" desde 3 horas antes
 
@@ -64,7 +64,7 @@ try { S.sound = localStorage.getItem(sndKey) !== "off"; } catch { S.sound = true
 function audioReady() { return ctx && ctx.state === "running"; }
 function unlockAudio() {
   if (!S.sound) return;
-  try { ctx ||= new AudioContext(); if (ctx.state === "suspended") ctx.resume().then(soundLabel, () => {}); } catch {}
+  try { ctx ||= new AudioContext(); if (ctx.state === "suspended") ctx.resume().then(() => { soundLabel(); uberAlerts(); }, () => {}); } catch {}
   soundLabel();
 }
 function soundLabel() {
@@ -93,13 +93,14 @@ function flashTitle(msg) {
 }
 // Aviso de Uber: distinto al de pedido nuevo (bocina grave de dos tonos, tres veces)
 function beepUber() {
-  if (!S.sound) return;
-  if (!audioReady()) { unlockAudio(); if (!audioReady()) return; }
+  if (!S.sound) return false;
+  if (!audioReady()) { unlockAudio(); if (!audioReady()) return false; }
   [[0, 523], [0.22, 392], [0.6, 523], [0.82, 392], [1.2, 523], [1.42, 392]].forEach(([t, f]) => {
     const o = ctx.createOscillator(), g = ctx.createGain();
     o.type = "square"; o.frequency.value = f; g.gain.value = 0.07;
     o.connect(g).connect(ctx.destination); o.start(ctx.currentTime + t); o.stop(ctx.currentTime + t + 0.18);
   });
+  return true;
 }
 function beep() {
   if (!S.sound) return;
@@ -244,12 +245,16 @@ function uberText(o) {
   const name = o.recipient_name || o.customer_name, phone = (o.recipient_name && o.recipient_phone) || o.customer_phone;
   return `${name} · ${phone}${o.reference ? `\nRef: ${o.reference}` : ""}`;
 }
-// Aviso con sonido una sola vez por pedido cuando llega la hora de pedir el Uber
+// Aviso cuando llega la hora de pedir el Uber; se repite cada 3 min hasta marcar "Uber pedido".
+// Si el navegador aún no deja sonar (falta tocar la pantalla), queda pendiente y suena al primer toque.
 function uberAlerts() {
-  for (const o of S.orders) {
-    if (!needsUber(o) || o.uber_requested_at || S.uberAlerted.has(o.id)) continue;
-    if (uberMinLeft(o) <= 1) { S.uberAlerted.add(o.id); beepUber(); flashTitle(`🛵 Pide el Uber · ${o.code}`); toast(`${o.code}: es hora de pedir el Uber`, 6000); }
-  }
+  const due = S.orders.filter((o) => needsUber(o) && !o.uber_requested_at && uberMinLeft(o) <= 1);
+  const now = Date.now();
+  const pending = due.filter((o) => now - (S.uberAlerted.get(o.id) || 0) >= 3 * 60000);
+  if (!pending.length) return;
+  const codes = pending.map((o) => o.code).join(", ");
+  if (!S.uberToasted?.has(codes)) { toast(`${codes}: es hora de pedir el Uber`, 6000); flashTitle(`🛵 Pide el Uber · ${codes}`); (S.uberToasted ||= new Set()).add(codes); }
+  if (beepUber() || !S.sound) pending.forEach((o) => S.uberAlerted.set(o.id, now));
 }
 // La hora de entrega (eta) es la que pidió el cliente al hacer el pedido: cocina nunca la cambia.
 function card(o) {
