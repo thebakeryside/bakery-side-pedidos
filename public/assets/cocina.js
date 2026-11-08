@@ -22,7 +22,7 @@ requireLogin(async (user) => {
     const o = p.new;
     const fresh = o && ["por_confirmar", "confirmado"].includes(o.status) && !S.seen.has(o.id + o.status); // antes de recargar la lista
     await loadOrders();
-    if (fresh) { startRing(o.code); flashTitle(`🔔 Pedido ${o.code}`); toast(`Pedido ${o.code}: ${STATUS[o.status]}`); }
+    if (fresh) { startRing(o); flashTitle(`🔔 Pedido ${o.code}`); toast(`Pedido ${o.code}: ${STATUS[o.status]}`); }
     render();
   }).subscribe();
   uberAlerts();
@@ -103,9 +103,9 @@ function beepUber() {
   });
   return true;
 }
-// Timbre de pedido nuevo: suena seguido (como en las apps de delivery) hasta que alguien toque la pantalla.
-// Se apaga solo a los 10 min. Muestra un aviso arriba con los pedidos que llegaron.
-const RING_EVERY = 2500, RING_MAX = 10 * 60000;
+// Timbre de pedido nuevo: como en PedidosYa, suena seguido hasta que alguien lo acepta.
+// Se acepta tocando la barra roja de arriba, o al atender el pedido (confirmar el pago / empezar a preparar).
+const RING_EVERY = 2500;
 function chime() {
   if (!S.sound) return false;
   if (!audioReady()) { unlockAudio(); if (!audioReady()) return false; }
@@ -117,24 +117,32 @@ function chime() {
   });
   return true;
 }
-function startRing(code) {
-  S.ring ||= { codes: new Set(), timer: 0, since: 0 };
-  S.ring.codes.add(code);
+function startRing(o) {
+  S.ring ||= { orders: new Map(), timer: 0 };
+  S.ring.orders.set(o.id, { code: o.code, status: o.status });
+  ringBar();
+  if (S.ring.timer) return;
+  chime();
+  S.ring.timer = setInterval(() => { ringCheck(); if (S.ring.timer) chime(); }, RING_EVERY);
+}
+function ringBar() {
   let bar = $("#ringBar");
   if (!bar) { bar = document.createElement("button"); bar.id = "ringBar"; bar.type = "button"; bar.className = "ring-bar"; bar.onclick = stopRing; document.body.append(bar); }
-  bar.textContent = `🔔 Pedido nuevo: ${[...S.ring.codes].join(", ")} · toca para silenciar`;
+  const codes = [...S.ring.orders.values()].map((r) => r.code).join(", ");
+  bar.textContent = `🔔 Pedido nuevo: ${codes} · toca aquí para aceptar`;
   bar.hidden = false;
-  if (S.ring.timer) return;
-  S.ring.since = Date.now(); chime();
-  S.ring.timer = setInterval(() => { if (Date.now() - S.ring.since > RING_MAX) return stopRing(); chime(); }, RING_EVERY);
+}
+// Deja de sonar por los pedidos que ya se atendieron (cambiaron de estado)
+function ringCheck() {
+  if (!S.ring?.timer) return;
+  for (const [id, r] of S.ring.orders) { const o = S.orders.find((x) => x.id === id); if (!o || o.status !== r.status) S.ring.orders.delete(id); }
+  if (!S.ring.orders.size) stopRing(); else ringBar();
 }
 function stopRing() {
-  if (!S.ring?.timer) return;
-  clearInterval(S.ring.timer); S.ring.timer = 0; S.ring.codes.clear();
+  if (!S.ring) return;
+  clearInterval(S.ring.timer); S.ring.timer = 0; S.ring.orders.clear();
   const bar = $("#ringBar"); if (bar) bar.hidden = true;
 }
-// Cualquier toque o tecla en la pantalla silencia el timbre (alguien ya lo vio)
-["pointerdown", "keydown"].forEach((ev) => document.addEventListener(ev, () => { if (S.ring?.timer && audioReady()) stopRing(); }, { passive: true }));
 function beep() {
   if (!S.sound) return;
   if (!audioReady()) { unlockAudio(); if (!audioReady()) return; }
