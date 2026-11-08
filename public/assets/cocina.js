@@ -19,9 +19,10 @@ requireLogin(async (user) => {
   await Promise.all([loadOrders(), loadRiders(), loadMenu(), loadSettings()]);
   render();
   sb.channel("cocina").on("postgres_changes", { event: "*", schema: "public", table: "orders" }, async (p) => {
-    await loadOrders();
     const o = p.new;
-    if (o && ["por_confirmar", "confirmado"].includes(o.status) && !S.seen.has(o.id + o.status)) { beep(); flashTitle(`🔔 Pedido ${o.code}`); toast(`Pedido ${o.code}: ${STATUS[o.status]}`); }
+    const fresh = o && ["por_confirmar", "confirmado"].includes(o.status) && !S.seen.has(o.id + o.status); // antes de recargar la lista
+    await loadOrders();
+    if (fresh) { startRing(o.code); flashTitle(`🔔 Pedido ${o.code}`); toast(`Pedido ${o.code}: ${STATUS[o.status]}`); }
     render();
   }).subscribe();
   uberAlerts();
@@ -102,6 +103,38 @@ function beepUber() {
   });
   return true;
 }
+// Timbre de pedido nuevo: suena seguido (como en las apps de delivery) hasta que alguien toque la pantalla.
+// Se apaga solo a los 10 min. Muestra un aviso arriba con los pedidos que llegaron.
+const RING_EVERY = 2500, RING_MAX = 10 * 60000;
+function chime() {
+  if (!S.sound) return false;
+  if (!audioReady()) { unlockAudio(); if (!audioReady()) return false; }
+  [[0, 784], [0.18, 988], [0.36, 1175], [0.7, 784], [0.88, 988], [1.06, 1175]].forEach(([t, f]) => {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = "triangle"; o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, ctx.currentTime + t); g.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime + t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + t + 0.17);
+    o.connect(g).connect(ctx.destination); o.start(ctx.currentTime + t); o.stop(ctx.currentTime + t + 0.18);
+  });
+  return true;
+}
+function startRing(code) {
+  S.ring ||= { codes: new Set(), timer: 0, since: 0 };
+  S.ring.codes.add(code);
+  let bar = $("#ringBar");
+  if (!bar) { bar = document.createElement("button"); bar.id = "ringBar"; bar.type = "button"; bar.className = "ring-bar"; bar.onclick = stopRing; document.body.append(bar); }
+  bar.textContent = `🔔 Pedido nuevo: ${[...S.ring.codes].join(", ")} · toca para silenciar`;
+  bar.hidden = false;
+  if (S.ring.timer) return;
+  S.ring.since = Date.now(); chime();
+  S.ring.timer = setInterval(() => { if (Date.now() - S.ring.since > RING_MAX) return stopRing(); chime(); }, RING_EVERY);
+}
+function stopRing() {
+  if (!S.ring?.timer) return;
+  clearInterval(S.ring.timer); S.ring.timer = 0; S.ring.codes.clear();
+  const bar = $("#ringBar"); if (bar) bar.hidden = true;
+}
+// Cualquier toque o tecla en la pantalla silencia el timbre (alguien ya lo vio)
+["pointerdown", "keydown"].forEach((ev) => document.addEventListener(ev, () => { if (S.ring?.timer && audioReady()) stopRing(); }, { passive: true }));
 function beep() {
   if (!S.sound) return;
   if (!audioReady()) { unlockAudio(); if (!audioReady()) return; }
