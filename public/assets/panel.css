@@ -349,3 +349,8 @@ body.panel header.panel-top .brand { white-space: nowrap; }
 .mbuild { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; padding: 8px 10px; border: 1px dashed var(--tostado); border-radius: 10px; background: var(--crema); }
 .mbuild select.in { width: auto; flex: 1 1 140px; min-height: 38px; padding: 6px 10px; }
 .kitems em small { font-size: 12px; font-weight: 600; color: var(--cacao); text-transform: uppercase; letter-spacing: .04em; }
+
+/* Nombre del cliente a la vista (se escribe en la funda) */
+.oname { margin: 8px 0 2px; font-size: 20px; line-height: 1.2; color: inherit; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.oname b { font-weight: 700; }
+.oname span { font-size: 13px; color: var(--text-2); }

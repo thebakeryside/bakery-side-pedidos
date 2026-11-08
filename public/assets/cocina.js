@@ -218,6 +218,7 @@ function card(o) {
   return `<article class="ocard" data-s="${o.status}">
     <div class="ohead"><span class="oid">${esc(o.code)}${o.channel === "whatsapp" || /WhatsApp/.test(o.payment_ref || "") ? ` <span class="wa-tag">WhatsApp</span>` : ""}</span><span class="st st-${o.status}">${STATUS[o.status]}</span></div>
     <div class="owhen tabnum">${esc(t)} ${relTime(o)}</div>
+    <div class="oname">${o.recipient_name ? `Para: <b>${esc(o.recipient_name)}</b><span>regalo de ${esc(o.gift_from || o.customer_name)}</span>` : `<b>${esc(o.customer_name)}</b>`}</div>
     <ul class="kitems">${o.order_items.map(itemLine).join("")}</ul>
     ${o.gift_message || o.recipient_name ? `<div class="gift">${ICON.gift}<div><b>Regalo${o.recipient_name ? ` para ${esc(o.recipient_name)}` : ""}</b><span class="from">De parte de: <b>${esc(o.gift_from || o.customer_name)}</b></span>${o.gift_message ? `<span>Tarjeta: “${esc(o.gift_message)}”</span>` : `<span>Sin mensaje: solo la firma.</span>`}</div></div>` : ""}
     ${o.payment_status === "pagado" && balancePending(o) ? `<div class="balnote"><div>🎉 <b>Evento:</b> cobrar el saldo de <b>${money(o.balance_due)}</b> antes de entregar.</div><button class="btn small" data-act="balanceAsk" data-id="${o.id}">Saldo cobrado</button></div>
