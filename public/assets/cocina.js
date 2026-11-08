@@ -229,10 +229,10 @@ function uberLink(o) {
   });
   return "https://m.uber.com/ul/?" + q.toString();
 }
-// Texto para pegar en las instrucciones del envío
+// Texto para pegar en las instrucciones del envío: solo nombre, teléfono y referencia (la ubicación ya va en el Uber)
 function uberText(o) {
   const name = o.recipient_name || o.customer_name, phone = (o.recipient_name && o.recipient_phone) || o.customer_phone;
-  return [`Pedido ${o.code} · The Bakery Side`, `Entregar a: ${name}`, `Teléfono: ${phone}`, `Dirección: ${o.address || ""}`, o.reference ? `Referencia: ${o.reference}` : "", `Ubicación: https://maps.google.com/?q=${o.lat},${o.lng}`].filter(Boolean).join("\n");
+  return `${name} · ${phone}${o.reference ? `\nRef: ${o.reference}` : ""}`;
 }
 // Aviso con sonido una sola vez por pedido cuando llega la hora de pedir el Uber
 function uberAlerts() {
@@ -325,7 +325,7 @@ document.addEventListener("click", async (e) => {
     case "receipt": {
       const { data, error } = await sb.storage.from("comprobantes").createSignedUrl(o.transfer_receipt_path, 600);
       if (error) return toast("No pudimos abrir el comprobante.");
-      window.open(data.signedUrl, "_blank", "noopener"); break;
+      return showReceipt(o, data.signedUrl);
     }
     case "confirmPay": {
       // la hora de llegada se cuenta desde que se confirma el pago; si son dos entregas, se confirman ambas
@@ -524,4 +524,22 @@ async function saveSettings(patch, msg) {
   const { error } = await sb.from("settings").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", true);
   if (error) return toast(/busy_/.test(error.message) ? "Falta actualizar la base de datos (008). Avísale al master." : "No se pudo guardar: " + error.message);
   toast(msg); await loadSettings(); renderSettings();
+}
+
+// ---------- comprobante en ventana emergente ----------
+// Se cierra con la ×, tocando fuera o con Esc; si el pago está por confirmar, se puede confirmar ahí mismo
+function showReceipt(o, url) {
+  let d = $("#receiptDlg");
+  if (!d) {
+    d = document.createElement("dialog"); d.id = "receiptDlg"; d.className = "rcpt";
+    d.addEventListener("click", (e) => { if (e.target === d || e.target.closest("[data-rclose]") || e.target.closest("[data-act]")) d.close(); });
+    document.body.append(d);
+  }
+  const pdf = /\.pdf($|\?)/i.test(o.transfer_receipt_path || "");
+  d.innerHTML = `<div class="rcpt-box">
+    <div class="rcpt-head"><b>Comprobante · ${esc(o.code)}</b><span>${money(o.total)}</span><button type="button" class="rcpt-x" data-rclose aria-label="Cerrar">×</button></div>
+    <div class="rcpt-body">${pdf ? `<iframe src="${esc(url)}" title="Comprobante"></iframe>` : `<img src="${esc(url)}" alt="Comprobante de ${esc(o.code)}">`}</div>
+    <div class="rcpt-foot">${o.status === "por_confirmar" ? `<button class="btn primary" data-act="confirmPay" data-id="${o.id}">Confirmar pago</button>` : ""}<button type="button" class="btn ghost" data-rclose>Cerrar</button></div>
+  </div>`;
+  if (!d.open) d.showModal();
 }
