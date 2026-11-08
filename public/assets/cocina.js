@@ -91,6 +91,16 @@ function flashTitle(msg) {
   titleTimer = setInterval(() => { document.title = (on = !on) ? msg : base; }, 1000);
   document.addEventListener("visibilitychange", () => { clearInterval(titleTimer); document.title = base; }, { once: true });
 }
+// Aviso de Uber: distinto al de pedido nuevo (bocina grave de dos tonos, tres veces)
+function beepUber() {
+  if (!S.sound) return;
+  if (!audioReady()) { unlockAudio(); if (!audioReady()) return; }
+  [[0, 523], [0.22, 392], [0.6, 523], [0.82, 392], [1.2, 523], [1.42, 392]].forEach(([t, f]) => {
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = "square"; o.frequency.value = f; g.gain.value = 0.07;
+    o.connect(g).connect(ctx.destination); o.start(ctx.currentTime + t); o.stop(ctx.currentTime + t + 0.18);
+  });
+}
 function beep() {
   if (!S.sound) return;
   if (!audioReady()) { unlockAudio(); if (!audioReady()) return; }
@@ -238,7 +248,7 @@ function uberText(o) {
 function uberAlerts() {
   for (const o of S.orders) {
     if (!needsUber(o) || o.uber_requested_at || S.uberAlerted.has(o.id)) continue;
-    if (uberMinLeft(o) <= 1) { S.uberAlerted.add(o.id); beep(); flashTitle(`🛵 Pide el Uber · ${o.code}`); toast(`${o.code}: es hora de pedir el Uber`, 6000); }
+    if (uberMinLeft(o) <= 1) { S.uberAlerted.add(o.id); beepUber(); flashTitle(`🛵 Pide el Uber · ${o.code}`); toast(`${o.code}: es hora de pedir el Uber`, 6000); }
   }
 }
 // La hora de entrega (eta) es la que pidió el cliente al hacer el pedido: cocina nunca la cambia.
