@@ -354,3 +354,10 @@ body.panel header.panel-top .brand { white-space: nowrap; }
 .oname { margin: 8px 0 2px; font-size: 20px; line-height: 1.2; color: inherit; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
 .oname b { font-weight: 700; }
 .oname span { font-size: 13px; color: var(--text-2); }
+
+/* Uber: hora para pedirlo y botones */
+.uber-acts { margin-top: 8px; }
+.chip .chip-x { margin-left: 4px; border: 0; background: none; color: inherit; font: inherit; font-size: 15px; line-height: 1; cursor: pointer; padding: 0 2px; opacity: .7; }
+.chip.uber-now { animation: uberPulse 1.2s ease-in-out infinite; }
+@keyframes uberPulse { 50% { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .chip.uber-now { animation: none; } }

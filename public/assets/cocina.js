@@ -4,7 +4,7 @@ import { renderManual } from "./manual.js";
 
 $("#loginSlot").innerHTML = loginHTML("Panel de cocina");
 
-const S = { tab: "pedidos", orders: [], riders: [], products: [], cats: [], settings: null, sound: false, seen: new Set(), pins: new Map() };
+const S = { tab: "pedidos", orders: [], riders: [], products: [], cats: [], settings: null, sound: false, seen: new Set(), pins: new Map(), uberAlerted: new Set() };
 const ACTIVE = ["por_confirmar", "confirmado", "preparando", "listo", "en_camino"];
 const AGENDA_HOURS = 3; // los agendados aparecen en "Pedidos" desde 3 horas antes
 
@@ -24,7 +24,8 @@ requireLogin(async (user) => {
     if (o && ["por_confirmar", "confirmado"].includes(o.status) && !S.seen.has(o.id + o.status)) { beep(); flashTitle(`🔔 Pedido ${o.code}`); toast(`Pedido ${o.code}: ${STATUS[o.status]}`); }
     render();
   }).subscribe();
-  setInterval(() => { if (S.tab === "pedidos") render(); }, 60000); // refresca tiempos
+  uberAlerts();
+  setInterval(() => { uberAlerts(); if (S.tab === "pedidos") render(); }, 30000); // refresca tiempos y avisa cuándo pedir el Uber
 });
 
 $$(".tabs [data-tab]").forEach((b) => b.addEventListener("click", () => { S.tab = b.dataset.tab; render(); }));
@@ -196,6 +197,50 @@ function itemLine(i) {
 }
 const win = () => Number(S.settings?.eta_window_minutes || 30);
 const travelMin = (km) => Math.max(8, Math.round(Number(km) / 25 * 60 + 5)); // igual que el servidor
+// ---------- Uber ----------
+// Cuándo pedir el Uber: inicio de la franja de entrega − trayecto hasta el cliente − lo que tarda el Uber en llegar a la cocina
+const uberWait = () => Number(S.settings?.uber_wait_minutes ?? 15);
+const needsUber = (o) => o.fulfillment !== "pickup" && ["confirmado", "preparando", "listo"].includes(o.status) && o.lat != null && !o.rider_id;
+function arriveAt(o) {
+  if (o.scheduled_for) return new Date(o.scheduled_for).getTime();
+  return Math.ceil(new Date(o.eta).getTime() / 900000) * 900000; // mismo inicio de franja que ve el cliente
+}
+const uberAt = (o) => arriveAt(o) - (travelMin(o.distance_km) + uberWait()) * 60000;
+const uberMinLeft = (o) => Math.round((uberAt(o) - Date.now()) / 60000);
+function uberChip(o) {
+  if (!needsUber(o)) return "";
+  if (o.uber_requested_at) {
+    const llega = new Date(o.uber_requested_at).getTime() + uberWait() * 60000;
+    return `<span class="chip ok">${ICON.moto}Uber pedido ${hhmm(o.uber_requested_at)} · llega ~${hhmm(llega)}<button type="button" class="chip-x" data-act="uberUndo" data-id="${o.id}" aria-label="Desmarcar Uber pedido">×</button></span>`;
+  }
+  const m = uberMinLeft(o);
+  if (m <= 0) return `<span class="chip bad uber-now">${ICON.moto}¡Pide el Uber ya!${m < -2 ? ` · ${-m} min tarde` : ""}</span>`;
+  if (m <= 10) return `<span class="chip warn">${ICON.moto}Pide el Uber a las ${hhmm(uberAt(o))} · en ${m} min</span>`;
+  return `<span class="chip">${ICON.moto}Pide el Uber a las ${hhmm(uberAt(o))}${m < 120 ? ` · en ${m} min` : ""}</span>`;
+}
+// Abre la app de Uber con la cocina como recogida y el pin exacto del cliente como entrega
+function uberLink(o) {
+  const st = S.settings || {}, who = o.recipient_name || o.customer_name;
+  const q = new URLSearchParams({
+    action: "setPickup",
+    "pickup[latitude]": st.kitchen_lat, "pickup[longitude]": st.kitchen_lng, "pickup[nickname]": "The Bakery Side",
+    "dropoff[latitude]": o.lat, "dropoff[longitude]": o.lng, "dropoff[nickname]": `${who} · ${o.code}`,
+    "dropoff[formatted_address]": o.address || "",
+  });
+  return "https://m.uber.com/ul/?" + q.toString();
+}
+// Texto para pegar en las instrucciones del envío
+function uberText(o) {
+  const name = o.recipient_name || o.customer_name, phone = (o.recipient_name && o.recipient_phone) || o.customer_phone;
+  return [`Pedido ${o.code} · The Bakery Side`, `Entregar a: ${name}`, `Teléfono: ${phone}`, `Dirección: ${o.address || ""}`, o.reference ? `Referencia: ${o.reference}` : "", `Ubicación: https://maps.google.com/?q=${o.lat},${o.lng}`].filter(Boolean).join("\n");
+}
+// Aviso con sonido una sola vez por pedido cuando llega la hora de pedir el Uber
+function uberAlerts() {
+  for (const o of S.orders) {
+    if (!needsUber(o) || o.uber_requested_at || S.uberAlerted.has(o.id)) continue;
+    if (uberMinLeft(o) <= 1) { S.uberAlerted.add(o.id); beep(); flashTitle(`🛵 Pide el Uber · ${o.code}`); toast(`${o.code}: es hora de pedir el Uber`, 6000); }
+  }
+}
 // La hora de entrega (eta) es la que pidió el cliente al hacer el pedido: cocina nunca la cambia.
 function card(o) {
   const pick = o.fulfillment === "pickup";
@@ -225,7 +270,8 @@ function card(o) {
     <div class="confirm-row" data-bal="${o.id}" hidden><p class="small" style="margin:0;flex:1">¿Confirmas que el cliente ya pagó los ${money(o.balance_due)}?</p><button class="btn small primary" data-act="balancePaid" data-id="${o.id}">Sí, ya pagó</button></div>` : ""}
     ${o.group_id ? `<div class="linknote">🔗 Pago junto con ${linkedCodes(o)} (dos entregas)</div>` : ""}
     ${o.order_items.some((i) => /^Postre sorpresa/.test(i.name)) ? `<div class="linknote">🎁 Incluye postre sorpresa de regalo: elige uno de hasta ${money(S.settings?.reward_max_value ?? 4)}</div>` : ""}
-    <div class="chips">${payChip(o)}${pick ? `<span class="chip ok">🛍️ Retira en la cocina</span>` : `${S.riders.some((r) => r.active) ? riderChip(o) : ""}<span class="chip">${ICON.pin}${Number(o.distance_km).toFixed(1)} km</span>`}</div>
+    <div class="chips">${payChip(o)}${pick ? `<span class="chip ok">🛍️ Retira en la cocina</span>` : `${S.riders.some((r) => r.active) ? riderChip(o) : ""}<span class="chip">${ICON.pin}${Number(o.distance_km).toFixed(1)} km</span>${uberChip(o)}`}</div>
+    ${needsUber(o) ? `<div class="acts uber-acts"><button class="btn small${!o.uber_requested_at && uberMinLeft(o) <= 10 ? " primary" : ""}" data-act="uber" data-id="${o.id}">${ICON.moto}Pedir Uber</button><button class="btn small ghost" data-act="uberCopy" data-id="${o.id}">Copiar datos para el Uber</button></div>` : ""}
     ${main || assign ? `<div class="acts main">${main}${assign}</div>` : ""}
     <details class="more">
       <summary>Datos del cliente y entrega</summary>
@@ -304,6 +350,17 @@ document.addEventListener("click", async (e) => {
         if (error) return toast("No se pudo guardar: " + error.message);
       }
       toast(`${o.code}: marcado como pagado${group.length > 1 ? " (las dos entregas)" : ""}`); await loadOrders(); render(); return;
+    }
+    case "uber": {
+      window.open(uberLink(o), "_blank", "noopener"); // primero abrir (el navegador lo permite solo dentro del clic)
+      if (!o.uber_requested_at) return upd(id, { uber_requested_at: now }, `${o.code}: Uber pedido. Elige Envíos/Flash en la app.`);
+      return;
+    }
+    case "uberUndo": return upd(id, { uber_requested_at: null }, `${o.code}: Uber sin pedir`);
+    case "uberCopy": {
+      try { await navigator.clipboard.writeText(uberText(o)); toast("Datos copiados. Pégalos en las instrucciones del Uber."); }
+      catch { window.prompt("Copia estos datos:", uberText(o)); }
+      return;
     }
     case "prep": return upd(id, { status: "preparando", prep_started_at: now }, `${o.code} en preparación`);
     case "ready": return upd(id, { status: "listo", ready_at: now }, `${o.code} listo`);

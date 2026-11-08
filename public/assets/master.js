@@ -598,6 +598,11 @@ async function ajustes() {
         ${f("sTrx", "Minutos extra en transferencias", s.transfer_extra_minutes ?? 5, "number", 'min="0" max="60"')}
         ${f("sOpenLead", "Si piden con la tienda cerrada, entregar desde (min después de abrir)", s.open_lead_minutes ?? 60, "number", 'min="0" max="240" step="15"')}
       </div>
+      <h3 class="group-title">Uber</h3>
+      <div class="form-grid">
+        ${f("sUberWait", "Minutos que tarda el Uber en llegar a la cocina", s.uber_wait_minutes ?? 15, "number", 'min="0" max="90" step="1"')}
+      </div>
+      <p class="muted small">Cocina avisa a qué hora pedir el Uber: inicio de la hora de entrega − trayecto hasta el cliente − estos minutos.</p>
       <p class="muted small">Ejemplo: si el cálculo da 10h07, el cliente ve <b id="winEx"></b>.</p>
       <h3 class="group-title">Tarjeta de sellos</h3>
       <div class="form-grid">
@@ -681,7 +686,7 @@ async function ajustes() {
         welcome_ship_min: Number($("#sWelcome").value) || 0,
       } : {}),
       eta_window_minutes: Number($("#sWin").value) || 30, transfer_extra_minutes: Number($("#sTrx").value) || 0,
-      open_lead_minutes: Number($("#sOpenLead").value) || 0, reward_max_value: Number($("#sReward").value) || 0, next_day_only: $("#sNextDay").checked,
+      open_lead_minutes: Number($("#sOpenLead").value) || 0, ...("uber_wait_minutes" in s ? { uber_wait_minutes: Math.min(90, Math.max(0, Math.round(Number($("#sUberWait").value) || 0))) } : {}), reward_max_value: Number($("#sReward").value) || 0, next_day_only: $("#sNextDay").checked,
       ...("review_stamp" in s ? { review_stamp: $("#sRevStamp").checked } : {}),
       whatsapp_number: $("#sWa").value.trim() || null, bank_info: bankJSON(), updated_at: new Date().toISOString(),
     };
