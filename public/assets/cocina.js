@@ -103,8 +103,7 @@ function beepUber() {
   });
   return true;
 }
-// Timbre de pedido nuevo: suena 5 segundos. La barra roja de arriba queda hasta aceptarla
-// (tocándola) o hasta atender el pedido (confirmar el pago / empezar a preparar).
+// Timbre de pedido nuevo: suena 5 segundos por pedido (si llegan varios, en fila) y se calla solo.
 const RING_SECONDS = 5;
 function chime() {
   if (!S.sound) return false;
@@ -117,35 +116,11 @@ function chime() {
   });
   return true;
 }
-function startRing(o) {
-  S.ring ||= { orders: new Map(), timer: 0, sound: [], until: 0 };
-  S.ring.orders.set(o.id, { code: o.code, status: o.status });
-  ringBar();
-  // sonido: 5 segundos por pedido; si ya está sonando otro, este suena después, en fila
-  const now = Date.now(), from = Math.max(now, S.ring.until);
-  S.ring.until = from + RING_SECONDS * 1000;
-  for (let t = 0; t < RING_SECONDS * 1000; t += 1250) S.ring.sound.push(setTimeout(chime, from - now + t));
-  // la barra se revisa sola para desaparecer cuando el pedido ya se atendió
-  if (!S.ring.timer) S.ring.timer = setInterval(ringCheck, 2500);
-}
-function ringBar() {
-  let bar = $("#ringBar");
-  if (!bar) { bar = document.createElement("button"); bar.id = "ringBar"; bar.type = "button"; bar.className = "ring-bar"; bar.onclick = stopRing; document.body.append(bar); }
-  const codes = [...S.ring.orders.values()].map((r) => r.code).join(", ");
-  bar.textContent = `🔔 Pedido nuevo: ${codes} · toca aquí para aceptar`;
-  bar.hidden = false;
-}
-// Deja de sonar por los pedidos que ya se atendieron (cambiaron de estado)
-function ringCheck() {
-  if (!S.ring?.timer) return;
-  for (const [id, r] of S.ring.orders) { const o = S.orders.find((x) => x.id === id); if (!o || o.status !== r.status) S.ring.orders.delete(id); }
-  if (!S.ring.orders.size) stopRing(); else ringBar();
-}
-function stopRing() {
-  if (!S.ring) return;
-  clearInterval(S.ring.timer); S.ring.timer = 0; S.ring.orders.clear();
-  S.ring.sound.forEach(clearTimeout); S.ring.sound = []; S.ring.until = 0;
-  const bar = $("#ringBar"); if (bar) bar.hidden = true;
+const ring = { until: 0 };
+function startRing() {
+  const now = Date.now(), from = Math.max(now, ring.until);
+  ring.until = from + RING_SECONDS * 1000;
+  for (let t = 0; t < RING_SECONDS * 1000; t += 1250) setTimeout(chime, from - now + t);
 }
 function beep() {
   if (!S.sound) return;

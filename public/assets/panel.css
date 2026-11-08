@@ -374,7 +374,3 @@ dialog.rcpt::backdrop { background: rgb(28 23 20 / .6); }
 .rcpt-body iframe { width: 100%; height: 70dvh; border: 0; }
 .rcpt-foot { display: flex; gap: 8px; justify-content: flex-end; padding: 10px; border-top: 1px solid var(--line); }
 
-/* Timbre de pedido nuevo: barra fija arriba hasta que alguien la toque */
-.ring-bar { position: fixed; top: 0; left: 0; right: 0; z-index: 1000; border: 0; padding: 14px 16px; font: inherit; font-size: 18px; font-weight: 700; color: #fff; background: #B03A28; cursor: pointer; animation: ringPulse 1s ease-in-out infinite; }
-@keyframes ringPulse { 50% { background: #D9542F; } }
-@media (prefers-reduced-motion: reduce) { .ring-bar { animation: none; } }
