@@ -118,13 +118,13 @@ function chime() {
   return true;
 }
 function startRing(o) {
-  S.ring ||= { orders: new Map(), timer: 0, sound: [] };
+  S.ring ||= { orders: new Map(), timer: 0, sound: [], until: 0 };
   S.ring.orders.set(o.id, { code: o.code, status: o.status });
   ringBar();
-  // sonido: el timbre se repite durante 5 segundos y se calla
-  S.ring.sound.forEach(clearTimeout);
-  S.ring.sound = [];
-  for (let t = 0; t < RING_SECONDS * 1000; t += 1250) S.ring.sound.push(setTimeout(chime, t));
+  // sonido: 5 segundos por pedido; si ya está sonando otro, este suena después, en fila
+  const now = Date.now(), from = Math.max(now, S.ring.until);
+  S.ring.until = from + RING_SECONDS * 1000;
+  for (let t = 0; t < RING_SECONDS * 1000; t += 1250) S.ring.sound.push(setTimeout(chime, from - now + t));
   // la barra se revisa sola para desaparecer cuando el pedido ya se atendió
   if (!S.ring.timer) S.ring.timer = setInterval(ringCheck, 2500);
 }
@@ -144,7 +144,7 @@ function ringCheck() {
 function stopRing() {
   if (!S.ring) return;
   clearInterval(S.ring.timer); S.ring.timer = 0; S.ring.orders.clear();
-  S.ring.sound.forEach(clearTimeout); S.ring.sound = [];
+  S.ring.sound.forEach(clearTimeout); S.ring.sound = []; S.ring.until = 0;
   const bar = $("#ringBar"); if (bar) bar.hidden = true;
 }
 function beep() {
