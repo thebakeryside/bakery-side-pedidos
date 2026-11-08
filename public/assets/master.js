@@ -316,6 +316,8 @@ async function shrinkAllPhotos(prods, btn) {
 }
 
 // ---------- menú ----------
+// Promos por día: el producto solo se vende los días marcados (hora de Guayaquil)
+const PROMO_DAYS = [[1, "Lun"], [2, "Mar"], [3, "Mié"], [4, "Jue"], [5, "Vie"], [6, "Sáb"], [0, "Dom"]];
 // Preparación: congelado (listo en 50 min) o al momento (2 h); más el trayecto del motorizado
 const PREP = [[50, "Congelado · 50 min"], [120, "Al momento · 2 h"]];
 const prepOpts = (v) => (PREP.some(([m]) => m === v) ? "" : `<option value="${v}" selected>Otro · ${v} min</option>`)
@@ -327,12 +329,12 @@ async function menu() {
   const catOpts = (sel) => (cats || []).map((c) => `<option value="${c.id}" ${c.id === sel ? "selected" : ""}>${esc(c.name)}</option>`).join("");
   $("#view").innerHTML = `<div class="panel">
     <h2 class="display" style="font-size:30px">Menú</h2>
-    <p class="muted small">Los cambios se ven en la tienda al instante. <b>Preparación</b> = congelado (listo en 50 min) o al momento (2 h); a eso se suma el trayecto del envío. <b>Anticipación</b> = horas antes que hay que agendar ese producto (0 = se puede pedir para hoy). <b>Visible</b> lo oculta o muestra en la tienda. Eliminar es definitivo; los pedidos anteriores conservan nombre y precio.</p>
+    <p class="muted small">Los cambios se ven en la tienda al instante. <b>Preparación</b> = congelado (listo en 50 min) o al momento (2 h); a eso se suma el trayecto del envío. <b>Anticipación</b> = horas antes que hay que agendar ese producto (0 = se puede pedir para hoy). <b>Visible</b> lo oculta o muestra en la tienda. <b>Días que se vende</b> = promos por día: el producto solo aparece esos días (sin marcar = todos los días). Eliminar es definitivo; los pedidos anteriores conservan nombre y precio.</p>
     ${heavyPhotos(prods).length ? `<div class="reflink" style="margin:0 0 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button class="btn small" type="button" id="shrinkAll">Aligerar ${heavyPhotos(prods).length} fotos</button><span class="muted small">Las pasa a un formato más liviano (se ven igual). Así la tienda carga más rápido.</span></div>` : ""}
     <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Foto</th><th>Producto</th><th>Categoría</th><th>Precio $</th><th>Preparación</th><th>Anticip. h</th><th>Visible</th><th></th></tr></thead><tbody>
     ${(prods || []).map((p) => `<tr data-pid="${p.id}">
       <td>${p.image_url ? `<img src="${esc(media(p.image_url))}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:8px;margin-bottom:4px">` : ""}<label class="btn small ghost" style="cursor:pointer">${p.image_url ? "Cambiar" : "Subir"}<input type="file" accept="image/*" data-photo="${p.id}" hidden></label></td>
-      <td><input class="in" data-f="name" value="${esc(p.name)}" style="min-width:170px" aria-label="Nombre"><input class="in" data-f="description" value="${esc(p.description)}" placeholder="Descripción" style="margin-top:4px;min-width:170px" aria-label="Descripción"><input class="in" data-f="servings" value="${esc(p.servings ?? "")}" placeholder="Porciones (ej.: 8 a 12)" style="margin-top:4px;min-width:170px" aria-label="Porciones"><fieldset class="alg-pick"><legend>Contiene</legend>${ALLERGENS.map(([k, i, n]) => `<label><input type="checkbox" data-alg="${k}" ${(p.allergens || []).includes(k) ? "checked" : ""}> ${i} ${n}</label>`).join("")}</fieldset></td>
+      <td><input class="in" data-f="name" value="${esc(p.name)}" style="min-width:170px" aria-label="Nombre"><input class="in" data-f="description" value="${esc(p.description)}" placeholder="Descripción" style="margin-top:4px;min-width:170px" aria-label="Descripción"><input class="in" data-f="servings" value="${esc(p.servings ?? "")}" placeholder="Porciones (ej.: 8 a 12)" style="margin-top:4px;min-width:170px" aria-label="Porciones"><fieldset class="alg-pick"><legend>Contiene</legend>${ALLERGENS.map(([k, i, n]) => `<label><input type="checkbox" data-alg="${k}" ${(p.allergens || []).includes(k) ? "checked" : ""}> ${i} ${n}</label>`).join("")}</fieldset><fieldset class="alg-pick"><legend>Días que se vende (ninguno = todos)</legend>${PROMO_DAYS.map(([d, n]) => `<label><input type="checkbox" data-day="${d}" ${(p.promo_days || []).map(Number).includes(d) ? "checked" : ""}> ${n}</label>`).join("")}</fieldset></td>
       <td><select class="in" data-f="category_id" aria-label="Categoría">${catOpts(p.category_id)}</select></td>
       <td><input class="in" data-f="price" type="number" step="0.01" min="0" value="${p.price}" style="width:90px" aria-label="Precio"></td>
       <td><select class="in" data-f="prep_minutes" aria-label="Preparación" style="min-width:150px">${prepOpts(p.prep_minutes)}</select></td>
@@ -361,7 +363,7 @@ async function menu() {
   optionsAdmin(prods || []);
   $$("[data-save]").forEach((b) => (b.onclick = async () => {
     const tr = b.closest("tr"), v = (f) => tr.querySelector(`[data-f="${f}"]`);
-    const patch = { name: v("name").value.trim(), description: v("description").value.trim(), servings: v("servings").value.trim() || null, category_id: Number(v("category_id").value), price: Number(v("price").value), prep_minutes: Number(v("prep_minutes").value), lead_hours: Number(v("lead_hours").value), active: v("active").checked, allergens: [...tr.querySelectorAll("[data-alg]:checked")].map((c) => c.dataset.alg) };
+    const patch = { name: v("name").value.trim(), description: v("description").value.trim(), servings: v("servings").value.trim() || null, category_id: Number(v("category_id").value), price: Number(v("price").value), prep_minutes: Number(v("prep_minutes").value), lead_hours: Number(v("lead_hours").value), active: v("active").checked, allergens: [...tr.querySelectorAll("[data-alg]:checked")].map((c) => c.dataset.alg), promo_days: ((ds) => (ds.length && ds.length < 7 ? ds : null))([...tr.querySelectorAll("[data-day]:checked")].map((c) => Number(c.dataset.day))) };
     if (!patch.name || !(patch.price >= 0)) return toast("Revisa nombre y precio.");
     const { error } = await sb.from("products").update(patch).eq("id", Number(b.dataset.save));
     if (error) return rpcErr(error); toast("Producto guardado");

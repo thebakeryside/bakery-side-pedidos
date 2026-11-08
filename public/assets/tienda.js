@@ -68,9 +68,10 @@ async function init() {
     for (const gs of Object.values(state.opts)) gs.sort((a, b) => (a.only_if ? 1 : 0) - (b.only_if ? 1 : 0) || (a.sort || 0) - (b.sort || 0));
     if (cats.error) throw cats.error;
     if (prods.error) throw prods.error;
-    state.cfg = cfg; state.products = prods.data;
+    // Promos por día: un producto con días marcados solo aparece esos días (hora de Guayaquil)
+    state.cfg = cfg; state.products = prods.data.filter(forToday);
     // Las categorías sin productos activos no se muestran (vuelven solas al cargarles productos)
-    state.cats = cats.data.filter((c) => prods.data.some((p) => p.category_id === c.id));
+    state.cats = cats.data.filter((c) => state.products.some((p) => p.category_id === c.id));
   } catch (e) {
     $("#menu").innerHTML = `<p class="err">No pudimos cargar el menú. ${esc(e.message)}</p>`;
     return;
@@ -238,6 +239,16 @@ addEventListener("scroll", () => {
 
 // Porciones recomendadas (dulces enteros): van como etiqueta aparte, no en la descripción
 const servChip = (p) => (p.servings ? `<span class="serv"><svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="17" cy="9" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 19c.8-3 3.2-4.6 6-4.6s5.2 1.6 6 4.6M15 14.6c2.6-.3 4.9 1 5.8 3.9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>${esc(p.servings)}</span>` : "");
+// Promos por día de la semana (0 = domingo … 6 = sábado). Vacío = todos los días
+const DAY_PLURAL = ["domingos", "lunes", "martes", "miércoles", "jueves", "viernes", "sábados"];
+const dowToday = () => new Date(todayLocal() + "T12:00:00Z").getUTCDay();
+const promoDays = (p) => (Array.isArray(p.promo_days) ? [...new Set(p.promo_days.map(Number))] : []);
+function forToday(p) { const d = promoDays(p); return !d.length || d.includes(dowToday()); }
+function daysText(p) {
+  const n = promoDays(p).sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map((d) => DAY_PLURAL[d]);
+  return n.length > 1 ? n.slice(0, -1).join(", ") + " y " + n.at(-1) : n[0];
+}
+const promoTag = (p) => (promoDays(p).length && promoDays(p).length < 7 ? `<span class="tag">Solo los ${daysText(p)}</span>` : "");
 // Stock del día: null = sin límite, 0 = agotado hoy, N = quedan N hoy
 function leftToday(p) {
   const today = todayLocal();
@@ -279,7 +290,7 @@ function itemCard(p) {
   const lead = p.lead_hours ? `<span class="tag">Pedir con ${p.lead_hours} h de anticipación</span>` : "";
   const stock = left === 0 ? `<span class="tag">Agotado por hoy · vuelve mañana</span>` : left != null ? `<span class="tag">Quedan ${left} hoy</span>` : "";
   const hint = opts ? `<span class="optnote">Eliges ${groupsOf(p.id).map((g) => g.name.toLowerCase()).join(" y ")} al agregar</span>` : "";
-  return `<article class="item${left === 0 ? " soldout" : ""}${q ? " incart-on" : ""}" data-pid="${p.id}"><div class="ph">${img}${photoCtrl(p, q, left, opts)}</div><div class="body"><h3>${esc(p.name)}</h3>${servChip(p)}<p>${esc(p.description)}</p>${rateRow(p)}${hint}${lead}${stock}<div class="foot"><span class="price">${money(p.price)}</span>${algRow(p)}</div></div></article>`;
+  return `<article class="item${left === 0 ? " soldout" : ""}${q ? " incart-on" : ""}" data-pid="${p.id}"><div class="ph">${img}${photoCtrl(p, q, left, opts)}</div><div class="body"><h3>${esc(p.name)}</h3>${servChip(p)}<p>${esc(p.description)}</p>${rateRow(p)}${hint}${lead}${promoTag(p)}${stock}<div class="foot"><span class="price">${money(p.price)}</span>${algRow(p)}</div></div></article>`;
 }
 // Orden del menú: dulces enteros de mayor a menor precio; el resto en orden alfabético (x2, x6, x12 en orden)
 const byName = (a, b) => a.name.localeCompare(b.name, "es", { numeric: true, sensitivity: "base" });
