@@ -103,9 +103,9 @@ function beepUber() {
   });
   return true;
 }
-// Timbre de pedido nuevo: como en PedidosYa, suena seguido hasta que alguien lo acepta.
-// Se acepta tocando la barra roja de arriba, o al atender el pedido (confirmar el pago / empezar a preparar).
-const RING_EVERY = 2500;
+// Timbre de pedido nuevo: suena 5 segundos. La barra roja de arriba queda hasta aceptarla
+// (tocándola) o hasta atender el pedido (confirmar el pago / empezar a preparar).
+const RING_SECONDS = 5;
 function chime() {
   if (!S.sound) return false;
   if (!audioReady()) { unlockAudio(); if (!audioReady()) return false; }
@@ -118,12 +118,15 @@ function chime() {
   return true;
 }
 function startRing(o) {
-  S.ring ||= { orders: new Map(), timer: 0 };
+  S.ring ||= { orders: new Map(), timer: 0, sound: [] };
   S.ring.orders.set(o.id, { code: o.code, status: o.status });
   ringBar();
-  if (S.ring.timer) return;
-  chime();
-  S.ring.timer = setInterval(() => { ringCheck(); if (S.ring.timer) chime(); }, RING_EVERY);
+  // sonido: el timbre se repite durante 5 segundos y se calla
+  S.ring.sound.forEach(clearTimeout);
+  S.ring.sound = [];
+  for (let t = 0; t < RING_SECONDS * 1000; t += 1250) S.ring.sound.push(setTimeout(chime, t));
+  // la barra se revisa sola para desaparecer cuando el pedido ya se atendió
+  if (!S.ring.timer) S.ring.timer = setInterval(ringCheck, 2500);
 }
 function ringBar() {
   let bar = $("#ringBar");
@@ -141,6 +144,7 @@ function ringCheck() {
 function stopRing() {
   if (!S.ring) return;
   clearInterval(S.ring.timer); S.ring.timer = 0; S.ring.orders.clear();
+  S.ring.sound.forEach(clearTimeout); S.ring.sound = [];
   const bar = $("#ringBar"); if (bar) bar.hidden = true;
 }
 function beep() {
