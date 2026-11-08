@@ -538,8 +538,11 @@ function showReceipt(o, url) {
   const pdf = /\.pdf($|\?)/i.test(o.transfer_receipt_path || "");
   d.innerHTML = `<div class="rcpt-box">
     <div class="rcpt-head"><b>Comprobante · ${esc(o.code)}</b><span>${money(o.total)}</span><button type="button" class="rcpt-x" data-rclose aria-label="Cerrar">×</button></div>
-    <div class="rcpt-body">${pdf ? `<iframe src="${esc(url)}" title="Comprobante"></iframe>` : `<img src="${esc(url)}" alt="Comprobante de ${esc(o.code)}">`}</div>
+    <div class="rcpt-body">${pdf ? `<iframe src="${esc(url)}" title="Comprobante"></iframe>` : `<img src="${esc(url)}" alt="Comprobante de ${esc(o.code)}" data-rimg>`}</div>
     <div class="rcpt-foot">${o.status === "por_confirmar" ? `<button class="btn primary" data-act="confirmPay" data-id="${o.id}">Confirmar pago</button>` : ""}<button type="button" class="btn ghost" data-rclose>Cerrar</button></div>
   </div>`;
+  // sin extensión no se sabe si es foto o PDF: si la imagen no carga, se muestra como documento
+  const img = d.querySelector("[data-rimg]");
+  if (img) img.onerror = () => { img.outerHTML = `<iframe src="${esc(url)}" title="Comprobante"></iframe>`; };
   if (!d.open) d.showModal();
 }
