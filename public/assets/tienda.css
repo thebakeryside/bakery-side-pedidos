@@ -385,7 +385,7 @@ body.in-checkout .demand-bar { display: none !important; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .item.seasonal { --season: #E5484D; } }
 :root[data-theme="dark"] .item.seasonal { --season: #E5484D; }
 /* celular: en vez del recuadro rojo, un fondo cálido suave con esquinas redondeadas,
-   el nombre en frambuesa y una etiqueta discreta "Edición navideña" */
+   el nombre en frambuesa y una franja fina a rayas (bastón de caramelo) a la izquierda */
 @media (max-width: 640px) {
   .item.seasonal, .item.seasonal:hover { --season: #B3262E; --season-bg: #FBF1EA;
     background: var(--season-bg); border: 0; border-radius: 16px; box-shadow: none;
@@ -394,5 +394,7 @@ body.in-checkout .demand-bar { display: none !important; }
   .item.seasonal + .item:not(.seasonal) { border-top: 0; }
   .item.seasonal .ph { border-bottom: 0; border-image: none; }
   .item.seasonal h3 { color: var(--season); }
-  .item.seasonal .body::before { content: "★ Edición navideña"; align-self: flex-start; font-size: 11px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; color: var(--season); margin-bottom: 1px; }
+  .item.seasonal { position: relative; padding-left: 20px; overflow: hidden; }
+  .item.seasonal::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 6px;
+    background: repeating-linear-gradient(-45deg, var(--season) 0 5px, #fff 5px 10px); }
 }
