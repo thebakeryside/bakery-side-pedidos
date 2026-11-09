@@ -287,7 +287,7 @@ function rateRow(p) {
 function itemCard(p) {
   const q = qtyOf(p.id), left = leftToday(p), opts = groupsOf(p.id).length > 0;
   const img = p.image_url ? `<img src="${esc(media(p.image_url))}" alt="${esc(p.name)}" loading="lazy">` : `<span class="can" aria-hidden="true">${esc(p.name.split(" ").map((w) => w[0]).join("").slice(0, 2))}</span>`;
-  const lead = p.lead_hours ? `<span class="tag">Pedir con ${p.lead_hours} h de anticipación</span>` : "";
+  const lead = p.lead_hours ? `<span class="tag">${p.lead_hours < 24 ? "¡Agenda para mañana!" : `Pedir con ${p.lead_hours} h de anticipación`}</span>` : "";
   const stock = left === 0 ? `<span class="tag">Agotado por hoy · vuelve mañana</span>` : left != null ? `<span class="tag">Quedan ${left} hoy</span>` : "";
   const hint = opts ? `<span class="optnote">Eliges ${groupsOf(p.id).map((g) => g.name.toLowerCase()).join(" y ")} al agregar</span>` : "";
   return `<article class="item${left === 0 ? " soldout" : ""}${q ? " incart-on" : ""}" data-pid="${p.id}"><div class="ph">${img}${photoCtrl(p, q, left, opts)}</div><div class="body"><h3>${esc(p.name)}</h3>${servChip(p)}<p>${esc(p.description)}</p>${rateRow(p)}${hint}${lead}${promoTag(p)}${stock}<div class="foot"><span class="price">${money(p.price)}</span>${algRow(p)}</div></div></article>`;
@@ -527,13 +527,19 @@ function openCheckout() {
   $("#whenNow").disabled = !c.open_now;
   $("#nowHint").textContent = c.open_now ? "Te mostramos la hora estimada" : (c.next_open ? `Ahora no: abrimos ${whenLabel(c.next_open)} a las ${c.next_open.time}` : "Ahora no estamos atendiendo");
   const leadNames = [...new Set([...state.cart.keys()].filter((k) => product(keyId(k)).lead_hours > 0).map((k) => product(keyId(k)).name))];
+  // Lanzamientos (menos de 24 h): «se agenda desde mañana»; dulces enteros: «24 h de anticipación»
+  const leadPhrase = () => {
+    const ps = [...new Set([...state.cart.keys()].map((k) => product(keyId(k))).filter((p) => p.lead_hours > 0))];
+    const day = ps.filter((p) => p.lead_hours >= 24).map((p) => p.name), soon = ps.filter((p) => p.lead_hours < 24).map((p) => p.name);
+    return [day.length ? `${listNames(day)} se pide con 24 h de anticipación` : "", soon.length ? `${listNames(soon)} se agenda desde mañana` : ""].filter(Boolean).join(" y ");
+  };
   const hasQuick = [...state.cart.keys()].some((k) => !product(keyId(k)).lead_hours);
   // Dulce entero (24 h) junto a cosas para ahora: se puede pedir en dos entregas
   const canSplit = leadNames.length > 0 && hasQuick && c.open_now && !c.next_day_only;
   $("#splitChoice").hidden = !canSplit;
   if (leadNames.length) {
     $("#whenNow").disabled = true;
-    $("#nowHint").textContent = `${listNames(leadNames)} se pide con 24 h de anticipación`;
+    $("#nowHint").textContent = leadPhrase();
     $("#laterHint").textContent = "Todo junto, el día y hora que elijas";
     $("#splitHint").textContent = `Lo demás ahora y ${listNames(leadNames)} el día que elijas · 2 envíos`;
   } else { $("#laterHint").textContent = "Elige día y hora de entrega"; }
@@ -564,7 +570,7 @@ function openCheckout() {
   $("#whenTitle").textContent = onlyLater ? "Agenda tu entrega" : "¿Cuándo lo quieres?";
   $("#schedLead").hidden = !onlyLater;
   $("#schedLead").textContent = c.next_day_only ? "Elige el día y la hora en que quieres recibirlo. Entregamos desde mañana."
-    : leadNames.length ? `${listNames(leadNames)} se pide con 24 h de anticipación. Elige el día y la hora.` : "Elige el día y la hora en que quieres recibirlo.";
+    : leadNames.length ? `${leadPhrase()}. Elige el día y la hora.` : "Elige el día y la hora en que quieres recibirlo.";
   syncWhen(); fillDates();
   // pago
   $("#payCard").disabled = !c.card_enabled;

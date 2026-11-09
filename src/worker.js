@@ -147,7 +147,7 @@ function menuCards(groups) {
   return groups.map((g) => `<h2 class="lp-cat">${esc(g.name)}</h2><div class="lp-grid">${g.items.map((p) => `<a class="lp-card" href="/#cat-${g.id}">
     ${p.image_url ? `<img src="${esc(mediaURL(p.image_url))}" alt="${esc(p.name)} de The Bakery Side" loading="lazy" width="400" height="400">` : ""}
     <span class="lp-body"><b>${esc(p.name)}</b>${p.servings ? `<small>Porciones: ${esc(p.servings)}</small>` : ""}${p.description ? `<small>${esc(p.description)}</small>` : ""}
-    <span class="lp-price">${money(p.price)}${p.lead_hours ? ` · pedir con ${p.lead_hours} h` : ""}</span></span></a>`).join("")}</div>`).join("");
+    <span class="lp-price">${money(p.price)}${p.lead_hours ? (p.lead_hours < 24 ? " · ¡Agenda para mañana!" : ` · pedir con ${p.lead_hours} h`) : ""}</span></span></a>`).join("")}</div>`).join("");
 }
 
 function hoursText(cfg) {
@@ -159,7 +159,7 @@ function hoursText(cfg) {
 async function llms(asset) {
   const base = await asset.text();
   const { groups, cfg } = await loadData();
-  const menu = groups.map((g) => `## ${g.name}\n${g.items.map((p) => `- ${p.name} (${money(p.price)})${p.servings ? `, porciones: ${p.servings}` : ""}${p.lead_hours ? `, pedir con ${p.lead_hours} h de anticipación` : ""}${p.description ? `: ${p.description}` : ""}`).join("\n")}`).join("\n\n");
+  const menu = groups.map((g) => `## ${g.name}\n${g.items.map((p) => `- ${p.name} (${money(p.price)})${p.servings ? `, porciones: ${p.servings}` : ""}${p.lead_hours ? (p.lead_hours < 24 ? ", se agenda desde mañana" : `, pedir con ${p.lead_hours} h de anticipación`) : ""}${p.description ? `: ${p.description}` : ""}`).join("\n")}`).join("\n\n");
   const hrs = hoursText(cfg);
   return new Response(`${base.trim()}\n\n# Horario de esta semana\n${hrs || "Consulta en la tienda"}\n\n# Menú actual (precios en USD)\n\n${menu}\n`, {
     headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=300" },
