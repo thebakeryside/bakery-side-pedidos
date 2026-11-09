@@ -140,13 +140,13 @@
   if (!st.on) return check(); // fuera de temporada: solo revisa si Boris la cambió desde Master
 
   // ---------- decoración ----------
-  var SPRIG = '<svg viewBox="0 0 44 34" aria-hidden="true"><g fill="none" stroke-linecap="round">' +
-    '<path d="M5 29C15 23 25 15 40 5" stroke="#2F4A3A" stroke-width="2.2"/>' +
-    '<path d="M11 26l-3-6M11 26l7 1M17 22l-2-7M17 22l8 0M23 18l-1-7M23 18l8-2M29 14l0-7M29 14l7-3M35 9l2-5M35 9l5 1" stroke="#2F4A3A" stroke-width="1.8"/>' +
-    '<path d="M9 31C18 30 27 27 37 19" stroke="#4E7A5E" stroke-width="2"/>' +
-    '<path d="M15 30l-1 5M15 30l6-5M22 28l1 5M22 28l5-6M29 24l3 4M29 24l3-7" stroke="#4E7A5E" stroke-width="1.6"/></g>' +
-    '<circle cx="13" cy="24" r="3.6" fill="#B3262E"/><circle cx="18.5" cy="27.5" r="3.6" fill="#C9333B"/><circle cx="19" cy="20.6" r="3.2" fill="#B3262E"/>' +
-    '<circle cx="12" cy="22.8" r="1" fill="#fff" opacity=".75"/><circle cx="17.6" cy="26.3" r="1" fill="#fff" opacity=".75"/><circle cx="18.2" cy="19.5" r=".9" fill="#fff" opacity=".75"/></svg>';
+  // gorro de Santa sobre la S del logo
+  var HAT = '<svg viewBox="0 0 40 34" aria-hidden="true">' +
+    '<path d="M5 25 C7 14 13 6 21 4.5 C28 3.5 33.5 7.5 35.5 14.5 C32.8 12.2 29 12 26.8 14.2 C29 17.5 30.8 21.2 31.5 25 Z" fill="#C0272D"/>' +
+    '<path d="M21 4.5 C16 7 12 13 10.5 22" stroke="#E2474C" stroke-width="1.6" fill="none" stroke-linecap="round" opacity=".7"/>' +
+    '<path d="M26.8 14.2 C29 17.5 30.8 21.2 31.5 25 L28 25 C27.5 21 26.5 17.5 24.8 15 Z" fill="#9E1D24" opacity=".55"/>' +
+    '<rect x="2" y="23" width="32" height="8.5" rx="4.25" fill="#fff" stroke="#E4DED3" stroke-width="1"/>' +
+    '<circle cx="35.5" cy="15.5" r="4" fill="#fff" stroke="#E4DED3" stroke-width="1"/></svg>';
   var BOW = '<svg viewBox="0 0 64 44" aria-hidden="true"><g stroke="#8E1D24" stroke-width="1.2" stroke-linejoin="round">' +
     '<path d="M32 20C22 4 6 4 6 15c0 9 14 9 26 5z" fill="#B3262E"/><path d="M32 20C42 4 58 4 58 15c0 9-14 9-26 5z" fill="#B3262E"/>' +
     '<path d="M30 22L18 42l7-2 3 4 5-20zM34 22l12 20-7-2-3 4-5-20z" fill="#9E2129"/><rect x="27" y="15" width="10" height="10" rx="3" fill="#C9333B"/></g>' +
@@ -161,10 +161,10 @@
 
   function decorate() {
     root.classList.add("xmas-ready");
-    // logo: ramita de pino con bayas
+    // logo: gorro de Santa sobre la S
     document.querySelectorAll(".brand.logo").forEach(function (a) {
       if (a.querySelector(".xmas-sprig")) return;
-      var s = document.createElement("span"); s.className = "xmas-sprig"; s.innerHTML = SPRIG; a.appendChild(s);
+      var s = document.createElement("span"); s.className = "xmas-sprig xmas-hat"; s.innerHTML = HAT; a.appendChild(s);
     });
     // guirnalda de luces bajo la barra de arriba
     var tb = $(".topbar");

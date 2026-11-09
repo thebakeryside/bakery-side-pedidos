@@ -290,11 +290,13 @@ function itemCard(p) {
   const lead = p.lead_hours ? `<span class="tag">${p.lead_hours < 24 ? "¡Agenda para mañana!" : `Pedir con ${p.lead_hours} h de anticipación`}</span>` : "";
   const stock = left === 0 ? `<span class="tag">Agotado por hoy · vuelve mañana</span>` : left != null ? `<span class="tag">Quedan ${left} hoy</span>` : "";
   const hint = opts ? `<span class="optnote">Eliges ${groupsOf(p.id).map((g) => g.name.toLowerCase()).join(" y ")} al agregar</span>` : "";
-  return `<article class="item${left === 0 ? " soldout" : ""}${q ? " incart-on" : ""}" data-pid="${p.id}"><div class="ph">${img}${photoCtrl(p, q, left, opts)}</div><div class="body"><h3>${esc(p.name)}</h3>${servChip(p)}<p>${esc(p.description)}</p>${rateRow(p)}${hint}${lead}${promoTag(p)}${stock}<div class="foot"><span class="price">${money(p.price)}</span>${algRow(p)}</div></div></article>`;
+  return `<article class="item${p.seasonal ? " seasonal" : ""}${left === 0 ? " soldout" : ""}${q ? " incart-on" : ""}" data-pid="${p.id}"><div class="ph">${p.seasonal ? `<span class="season-badge">Navideño</span>` : ""}${img}${photoCtrl(p, q, left, opts)}</div><div class="body"><h3>${esc(p.name)}</h3>${servChip(p)}<p>${esc(p.description)}</p>${rateRow(p)}${hint}${lead}${promoTag(p)}${stock}<div class="foot"><span class="price">${money(p.price)}</span>${algRow(p)}</div></div></article>`;
 }
 // Orden del menú: dulces enteros de mayor a menor precio; el resto en orden alfabético (x2, x6, x12 en orden)
 const byName = (a, b) => a.name.localeCompare(b.name, "es", { numeric: true, sensitivity: "base" });
-const menuOrder = (c) => (/dulces enteros/i.test(c.name) ? (a, b) => Number(b.price) - Number(a.price) || byName(a, b) : byName);
+const baseOrder = (c) => (/dulces enteros/i.test(c.name) ? (a, b) => Number(b.price) - Number(a.price) || byName(a, b) : byName);
+// Los de temporada (navideños) van primero, en el orden de Master → Menú
+const menuOrder = (c) => (a, b) => (b.seasonal ? 1 : 0) - (a.seasonal ? 1 : 0) || (a.seasonal && b.seasonal ? (a.sort ?? 0) - (b.sort ?? 0) : baseOrder(c)(a, b));
 // Al agregar o quitar solo se actualizan los botones de ese producto (las fotos no se recargan)
 function updateCard(id) {
   const el = document.querySelector(`#menu [data-pid="${id}"]`); if (!el) return;
