@@ -35,7 +35,8 @@ html.xmas .demand-bar { background: var(--frambuesa); color: #fff; }
 /* ---------- portada ---------- */
 html.xmas .shop { position: relative; }
 .xmas-snow { position: absolute; left: 0; top: 0; width: 100%; height: 0; pointer-events: none; z-index: 0; }
-html.xmas .shop > section, html.xmas .shop > div, html.xmas .shop > p { position: relative; z-index: 1; }
+/* solo la portada: .layout NO, porque ahí vive el carrito fijo del celular y quedaría debajo del fondo oscuro */
+html.xmas .shop > .intro, html.xmas .shop > .steps, html.xmas .shop > .ship-strip, html.xmas .shop > .xmas-deadline { position: relative; z-index: 1; }
 html.xmas .hero-b .eyebrow { color: var(--frambuesa); }
 html.xmas .hero-b .eyebrow::before { content: "★ "; color: var(--tostado); }
 .xmas-frame { position: relative; display: block; }
