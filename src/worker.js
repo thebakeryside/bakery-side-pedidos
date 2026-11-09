@@ -17,6 +17,14 @@ const PAGES = {
 
 let cache = { at: 0, data: null };
 
+// Arreglo del carrito en temporada navideña, insertado en cada página HTML desde el Worker
+// (por si Cloudflare tarda en servir la versión nueva de temporada.css). Inofensivo si ya está.
+const HOTFIX_CSS = '<style id="tbs-hotfix">html.xmas .shop > .layout{position:static;z-index:auto}</style>';
+const withHotfix = (res) => {
+  if (!(res.headers.get("content-type") || "").includes("text/html")) return res;
+  return new HTMLRewriter().on("head", { element: (e) => e.append(HOTFIX_CSS, { html: true }) }).transform(res);
+};
+
 // ---------- fotos y video: /media/* ----------
 // Sirve el bucket público «productos» de Supabase a través de la caché de Cloudflare.
 // Supabase entrega cada archivo una sola vez; las siguientes visitas salen de Cloudflare,
@@ -169,11 +177,11 @@ export default {
     if (request.method !== "GET" || !asset.ok) return asset;
     try {
       if (path === "/llms.txt") return await llms(asset);
-      if (!(path in PAGES) || !(asset.headers.get("content-type") || "").includes("text/html")) return asset;
+      if (!(path in PAGES) || !(asset.headers.get("content-type") || "").includes("text/html")) return withHotfix(asset);
       const { groups: all, cfg } = await loadData();
       const re = PAGES[path];
       const groups = re ? all.filter((g) => re.test(g.name)) : all;
-      const rw = new HTMLRewriter().on("head", { element: (e) => e.append(jsonLd(all, cfg), { html: true }) });
+      const rw = new HTMLRewriter().on("head", { element: (e) => e.append(jsonLd(all, cfg) + HOTFIX_CSS, { html: true }) });
       if (path === "/") rw.on("#menu", { element: (e) => e.setInnerContent(menuList(groups), { html: true }) });
       else rw.on("#ssr-products", { element: (e) => e.setInnerContent(menuCards(groups), { html: true }) });
       rw.on("[data-hours]", { element: (e) => { const t = hoursText(cfg); if (t) e.setInnerContent(esc(`Nuestro horario esta semana: ${t}.`)); } });
@@ -182,7 +190,7 @@ export default {
       out.headers.set("cache-control", "public, max-age=0, must-revalidate");
       return out;
     } catch {
-      return asset;
+      try { return withHotfix(asset); } catch { return asset; }
     }
   },
 };
