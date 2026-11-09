@@ -122,7 +122,7 @@ export function mountSocial(whatsapp) {
 // Alérgenos: mismos códigos que la columna products.allergens
 export const ALLERGENS = [
   ["gluten", "🌾", "Gluten"], ["lacteos", "🥛", "Lácteos"], ["huevo", "🥚", "Huevo"],
-  ["frutos_secos", "🌰", "Frutos secos"], ["mani", "🥜", "Maní"], ["soya", "🫘", "Soya"],
+  ["frutos_secos", "🌰", "Frutos secos"], ["mani", "🥜", "Maní"], ["soya", "🫘", "Soya"], ["alcohol", "🍷", "Alcohol"],
 ];
 export const allergenNames = (codes) => ALLERGENS.filter(([k]) => (codes || []).includes(k)).map(([, , n]) => n);
 
