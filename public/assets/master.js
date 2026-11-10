@@ -625,6 +625,7 @@ async function ajustes() {
         ${f("sFreeMin", "Envío gratis desde $ en productos (0 = apagado)", s.free_ship_min ?? 0, "number", 'step="1" min="0"')}
         ${f("sFreeKm", "Gratis hasta (km)", s.free_ship_max_km ?? 10, "number", 'step="0.5" min="0"')}
         ${f("sWelcome", "Primer pedido con cuenta: gratis desde $ (0 = apagado)", s.welcome_ship_min ?? 0, "number", 'step="0.01" min="0"')}
+        ${f("sWelcomeKm", "Primer pedido: gratis hasta (km) (vacío = igual que arriba)", s.welcome_ship_max_km ?? "", "number", 'step="0.5" min="0"')}
       </div>
       <p class="muted small">Más lejos de los km gratis, el cliente paga solo la diferencia. Con envío gratis, el motorizado igual recibe el envío completo y la diferencia sale del negocio (la ves en Ventas).</p>
       <h3 class="group-title">Pagos y contacto</h3>
@@ -684,6 +685,7 @@ async function ajustes() {
         fee_per_km_far: $("#sPerKmFar").value === "" ? null : Number($("#sPerKmFar").value),
         free_ship_min: Number($("#sFreeMin").value) || 0, free_ship_max_km: Number($("#sFreeKm").value) || 0,
         welcome_ship_min: Number($("#sWelcome").value) || 0,
+        welcome_ship_max_km: $("#sWelcomeKm").value === "" ? null : Number($("#sWelcomeKm").value),
       } : {}),
       eta_window_minutes: Number($("#sWin").value) || 30, transfer_extra_minutes: Number($("#sTrx").value) || 0,
       open_lead_minutes: Number($("#sOpenLead").value) || 0, ...("uber_wait_minutes" in s ? { uber_wait_minutes: Math.min(90, Math.max(0, Math.round(Number($("#sUberWait").value) || 0))) } : {}), reward_max_value: Number($("#sReward").value) || 0, next_day_only: $("#sNextDay").checked,

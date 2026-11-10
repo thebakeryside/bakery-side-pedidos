@@ -33,7 +33,7 @@ type Settings = {
   kitchen_lat: number; kitchen_lng: number; kitchen_address: string;
   fee_base: number; fee_included_km: number; fee_per_km: number; fee_round_to: number;
   fee_break_km: number | null; fee_per_km_far: number | null;
-  free_ship_min: number; free_ship_max_km: number; welcome_ship_min: number;
+  free_ship_min: number; free_ship_max_km: number; welcome_ship_min: number; welcome_ship_max_km?: number | null;
   max_km: number; slot_minutes: number; slot_capacity: number;
   whatsapp_number: string | null; bank_info: string | null;
   map_provider: "osm" | "google"; route_factor: number;
@@ -48,7 +48,7 @@ async function getSettings(): Promise<Settings> {
     (data as Record<string, unknown>)[k] = Number((data as Record<string, unknown>)[k]);
   }
   // campos del envío en dos tramos y envío gratis (pueden venir vacíos)
-  for (const k of ["fee_break_km", "fee_per_km_far", "free_ship_min", "free_ship_max_km", "welcome_ship_min"]) {
+  for (const k of ["fee_break_km", "fee_per_km_far", "free_ship_min", "free_ship_max_km", "welcome_ship_min", "welcome_ship_max_km"]) {
     const v = (data as Record<string, unknown>)[k];
     (data as Record<string, unknown>)[k] = v == null ? null : Number(v);
   }
@@ -130,9 +130,10 @@ function feeFor(km: number, s: Settings) {
   const raw = s.fee_base + s.fee_per_km * near + (s.fee_per_km_far ?? s.fee_per_km) * far;
   return Math.round(Math.ceil(raw / s.fee_round_to - 1e-9) * s.fee_round_to * 100) / 100;
 }
-// Lo que paga el cliente cuando su envío es gratis: nada hasta free_ship_max_km; más lejos, solo la diferencia
-function promoFee(km: number, s: Settings) {
-  const cap = Number(s.free_ship_max_km ?? 0);
+// Lo que paga el cliente cuando su envío es gratis: nada hasta el tope de km; más lejos, solo la diferencia.
+// El primer envío gratis puede tener su propio tope (welcome_ship_max_km); vacío = el mismo del envío gratis por monto.
+const welcomeCap = (s: Settings) => Number(s.welcome_ship_max_km ?? s.free_ship_max_km ?? 0);
+function promoFee(km: number, s: Settings, cap = Number(s.free_ship_max_km ?? 0)) {
   if (!(cap > 0)) return 0;
   return Math.max(0, Math.round((feeFor(km, s) - feeFor(Math.min(km, cap), s)) * 100) / 100);
 }
@@ -160,7 +161,7 @@ async function quote(s: Settings, lat: number, lng: number) {
   if (km > s.max_km) {
     fail(`Tu ubicación está a ${km.toFixed(1)} km. Para entregas de más de ${s.max_km} km escríbenos por WhatsApp.`);
   }
-  return { km: Math.round(km * 100) / 100, fee: feeFor(km, s), promo_fee: promoFee(km, s), travel_min: travelMinutes(km), source };
+  return { km: Math.round(km * 100) / 100, fee: feeFor(km, s), promo_fee: promoFee(km, s), welcome_promo_fee: promoFee(km, s, welcomeCap(s)), travel_min: travelMinutes(km), source };
 }
 
 // ---------- pedido ----------
@@ -458,11 +459,11 @@ async function makeOrder(b: any, cust: Record<string, any> | null, staff: { paid
     }
     // Retiro en local (solo pedidos que registra cocina por WhatsApp): sin envío ni mapa
     const pickup = Boolean(staff && b.pickup);
-    const q = pickup ? { km: 0, fee: 0, promo_fee: 0, travel_min: 0 } : await quote(s, Number(b.lat), Number(b.lng));
+    const q = pickup ? { km: 0, fee: 0, promo_fee: 0, welcome_promo_fee: 0, travel_min: 0 } : await quote(s, Number(b.lat), Number(b.lng));
     // Envío gratis desde un monto (tienda y WhatsApp) o primer pedido con cuenta (solo tienda; en dos entregas, solo la primera)
     const welcome = !staff && !b._no_welcome && await welcomeEligible(cust?.user_id, s);
     const promo = pickup ? null : shippingPromo(cart.subtotal - discount, s, welcome);
-    const fee = promo ? q.promo_fee : q.fee;
+    const fee = promo === "primer_pedido" ? q.welcome_promo_fee : promo ? q.promo_fee : q.fee;
     const payExtra = !staff && b.payment_method === "transferencia" ? Number(s.transfer_extra_minutes ?? 5) : 0;
     const sched = await validateSchedule(s, b.scheduled_for || null, cart.prep, cart.lead, q.travel_min, payExtra, Boolean(staff));
     const limited = checkStock(cart, localDay(sched.scheduled_for ? new Date(sched.scheduled_for) : new Date()));
@@ -595,7 +596,7 @@ const actions: Record<string, (b: any, user: User) => Promise<unknown>> = {
       ...todayHours(s), store_open: s.store_open,
       slot_minutes: s.slot_minutes, kitchen: { lat: s.kitchen_lat, lng: s.kitchen_lng },
       fee: { base: s.fee_base, included_km: s.fee_included_km, per_km: s.fee_per_km },
-      free_ship: { min: Number(s.free_ship_min ?? 0), max_km: Number(s.free_ship_max_km ?? 0), welcome_min: Number(s.welcome_ship_min ?? 0) },
+      free_ship: { min: Number(s.free_ship_min ?? 0), max_km: Number(s.free_ship_max_km ?? 0), welcome_min: Number(s.welcome_ship_min ?? 0), welcome_max_km: welcomeCap(s) },
       max_km: s.max_km, whatsapp: s.whatsapp_number,
       card_enabled: Boolean(PAYPHONE_TOKEN && PAYPHONE_STORE_ID), map_provider: s.map_provider,
       open_now: s.store_open && isOpenAt(new Date(), s),
@@ -619,7 +620,7 @@ const actions: Record<string, (b: any, user: User) => Promise<unknown>> = {
       eta = new Date(Date.now() + (5 + c.prep + q.travel_min + busyExtra(s)) * 60000).toISOString();
     }
     // promo_fee: lo que pagaría con envío gratis; welcome: tiene derecho al primer envío gratis
-    return { distance_km: q.km, delivery_fee: q.fee, promo_fee: q.promo_fee, welcome: await welcomeEligible(user?.id, s), travel_min: q.travel_min, eta_if_now: eta };
+    return { distance_km: q.km, delivery_fee: q.fee, promo_fee: q.promo_fee, welcome_promo_fee: q.welcome_promo_fee, welcome: await welcomeEligible(user?.id, s), travel_min: q.travel_min, eta_if_now: eta };
   },
 
   async crear(b, user) {

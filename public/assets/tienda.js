@@ -185,7 +185,8 @@ function welcomeToast() {
 function openWelcome() {
   const box = $("#welcomeModal"), fs = state.cfg?.free_ship || {};
   $("#wmMin").textContent = wMin();
-  $("#wmNote").textContent = fs.max_km > 0 ? `Envío gratis hasta ${String(fs.max_km).replace(".", ",")} km; más lejos pagas solo la diferencia.` : "";
+  const wkm = fs.welcome_max_km ?? fs.max_km;
+  $("#wmNote").textContent = wkm > 0 ? `Envío gratis hasta ${String(wkm).replace(".", ",")} km; más lejos pagas solo la diferencia.` : "";
   $("#wmGo").innerHTML = googleButton("filled_black");
   box.hidden = false;
   try { localStorage.setItem(CART_KEY, JSON.stringify([...state.cart])); sessionStorage.setItem(WBAR_KEY, "1"); } catch {}
@@ -381,15 +382,17 @@ function shipFee(q, net, firstOrder) {
   const fs = state.cfg?.free_ship || {}, full = Number(q.delivery_fee);
   const promo = fs.min > 0 && net >= fs.min - 1e-9 ? "monto"
     : firstOrder && q.welcome && fs.welcome_min > 0 && net >= fs.welcome_min - 1e-9 ? "bienvenida" : null;
-  return { fee: promo ? Number(q.promo_fee ?? 0) : full, full, promo };
+  const pf = promo === "bienvenida" ? (q.welcome_promo_fee ?? q.promo_fee) : q.promo_fee;
+  return { fee: promo ? Number(pf ?? 0) : full, full, promo };
 }
 // Texto corto del avance hacia el envío gratis
 function freeShipHint(net) {
   const fs = state.cfg?.free_ship || {}, wmin = Number(fs.welcome_min) || 0;
   const km = fs.max_km > 0 ? String(fs.max_km).replace(".", ",") : "";
+  const wkmN = fs.welcome_max_km ?? fs.max_km, wkm = wkmN > 0 ? String(wkmN).replace(".", ",") : "";
   if (fs.min > 0 && net >= fs.min - 1e-9) return `<p class="ship-hint ok">${S("hint_ok", `🎉 Tu envío es gratis${km ? ` hasta ${km} km` : ""}.`, { km })}</p>`;
   if (wmin > 0 && state.firstOrder) return net >= wmin - 1e-9
-    ? `<p class="ship-hint ok">${S("hint_first_ok", `🎁 Tu primer envío es gratis${km ? ` hasta ${km} km` : ""}.`, { km })}</p>`
+    ? `<p class="ship-hint ok">${S("hint_first_ok", `🎁 Tu primer envío es gratis${wkm ? ` hasta ${wkm} km` : ""}.`, { km: wkm })}</p>`
     : `<p class="ship-hint">${S("hint_first_left", `Te faltan <b>${moneyEs(wmin - net)}</b> para tu envío gratis.`, { left: moneyEs(wmin - net) })}</p>`;
   if (!(fs.min > 0)) return "";
   return `<p class="ship-hint">${S("hint_left", `Te faltan <b>${moneyEs(fs.min - net)}</b> para envío gratis.`, { left: moneyEs(fs.min - net) })}</p>`;
@@ -891,7 +894,7 @@ function renderSummary() {
       `<div class="line"><span>Envío</span><span class="tabnum">${feeCell(sh1)}</span></div>`;
   }
   const fs = state.cfg.free_ship || {};
-  const far = (sh) => sh?.promo && sh.fee > 0 ? ` Como estás a más de ${String(fs.max_km).replace(".", ",")} km, pagas solo la diferencia.` : "";
+  const far = (sh) => sh?.promo && sh.fee > 0 ? ` Como estás a más de ${String(sh.promo === "bienvenida" ? (fs.welcome_max_km ?? fs.max_km) : fs.max_km).replace(".", ",")} km, pagas solo la diferencia.` : "";
   const shipNote = sh1.promo === "bienvenida" ? `<p class="ship-hint ok">🎁 Tu primer envío es gratis por pedir con tu cuenta.${far(sh1)}</p>`
     : sh1.promo ? `<p class="ship-hint ok">🎉 Envío gratis por compras desde ${moneyEs(fs.min)}.${far(sh1)}</p>`
     : state.quote ? freeShipHint(netNow()) : "";
