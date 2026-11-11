@@ -148,6 +148,7 @@ async function refreshAccount() {
   if (chip) { chip.hidden = !state.acct; if (state.acct) chip.textContent = `${state.acct.rewards_available ? "🎁 " : ""}${Math.min(8, state.acct.stamps)}/8`; }
   // ¿Le toca el primer envío gratis? (cuenta sin pedidos pagados, misma regla que el servidor)
   state.signedIn = Boolean(state.acct); state.firstOrder = false;
+  state.club = Boolean(state.acct?.customer?.marketing_opt_in); // Club Bakers: aceptó recibir sabores nuevos y promos
   if (state.acct && Number(state.cfg?.free_ship?.welcome_min) > 0) {
     try {
       const u = await currentUser();
@@ -160,8 +161,9 @@ async function refreshAccount() {
   // Volvió de crear la cuenta desde la barra (ingreso por redirección)
   let fromBar = false;
   try { fromBar = sessionStorage.getItem(WBAR_KEY) === "1"; if (state.acct) sessionStorage.removeItem(WBAR_KEY); } catch {}
+  if (!$("#checkout").hidden) { renderAcctBox(); renderPerks(); renderClubBox(); renderSummary(); }
+  if (fromBar && state.acct && !state.club) { try { await markClub(); } catch {} }
   if (fromBar && state.acct) welcomeToast();
-  if (!$("#checkout").hidden) { renderAcctBox(); renderPerks(); renderSummary(); }
   if (state.loc && !$("#checkout").hidden) requestQuote(); // con cuenta puede tocarle el primer envío gratis
 }
 
@@ -171,31 +173,56 @@ const wMin = () => { const n = Number(state.cfg?.free_ship?.welcome_min || 0); r
 function renderWelcomeBar() {
   const bar = $("#welcomeBar"); if (!bar) return;
   const on = Number(state.cfg?.free_ship?.welcome_min) > 0;
-  const guest = on && !state.signedIn, member = on && state.signedIn && state.firstOrder;
-  bar.hidden = !(guest || member);
+  const guest = on && !state.signedIn, first = on && state.signedIn && state.firstOrder;
+  const member = first && state.club, invite = first && !state.club;
+  bar.hidden = !(guest || first);
   bar.classList.toggle("member", member);
   $("#welcomeTxt").textContent = member ? S("welcome_member", "Tu primer envío es GRATIS") : S("welcome_guest", "Primer envío GRATIS");
-  $("#welcomeBtn").hidden = !guest;
+  $("#welcomeBtn").textContent = "Unirme al Club";
+  $("#welcomeBtn").hidden = !(guest || invite);
 }
 function welcomeToast() {
   const n = Number(state.acct?.claimed_stamps || 0);
-  const msg = state.firstOrder ? S("welcome_toast_first", `¡Listo, baker! Tu primer envío es gratis en pedidos desde ${wMin()} 🎁`, { min: wMin() }) : S("welcome_toast", "¡Listo, baker! Ya entraste a tu cuenta.");
+  const msg = state.firstOrder && state.club ? S("welcome_toast_first", `¡Listo, baker! Tu primer envío es gratis en pedidos desde ${wMin()} 🎁`, { min: wMin() }) : S("welcome_toast", "¡Listo, baker! Ya entraste a tu cuenta.");
   setTimeout(() => toast(msg, 6000), n > 0 ? 5600 : 300);
 }
 function openWelcome() {
   const box = $("#welcomeModal"), fs = state.cfg?.free_ship || {};
   $("#wmMin").textContent = wMin();
   const wkm = fs.welcome_max_km ?? fs.max_km;
-  $("#wmNote").textContent = wkm > 0 ? `Envío gratis hasta ${String(wkm).replace(".", ",")} km; más lejos pagas solo la diferencia.` : "";
-  $("#wmGo").innerHTML = googleButton("filled_black");
+  $("#wmNote").textContent = (wkm > 0 ? `El envío gratis cubre hasta ${String(wkm).replace(".", ",")} km; más lejos pagas solo la diferencia. ` : "") + "Puedes salir del club cuando quieras desde Mi cuenta.";
   box.hidden = false;
+  if (state.signedIn) { // ya tiene cuenta: solo falta unirse
+    $("#wmGo").innerHTML = `<button class="btn primary" type="button" id="wmJoin">Unirme al Club Bakers</button>`;
+    $("#wmJoin").onclick = async () => { if (await joinClub()) box.hidden = true; };
+    return;
+  }
+  $("#wmGo").innerHTML = googleButton("filled_black");
   try { localStorage.setItem(CART_KEY, JSON.stringify([...state.cart])); sessionStorage.setItem(WBAR_KEY, "1"); } catch {}
   mountGoogle(box, async () => {
     box.hidden = true;
     try { sessionStorage.removeItem(WBAR_KEY); } catch {}
-    await refreshAccount();
+    await refreshAccount(); // crea la cuenta (si es nueva) antes de guardar el permiso
+    await markClub(); // entró desde la invitación al club
     welcomeToast();
   }, (e) => toast(e.message));
+}
+// Guarda el permiso del Club Bakers (la cuenta ya debe existir) y recalcula barra, carrito y envío
+async function markClub() {
+  if (!state.acct) return false;
+  const { error } = await sb.rpc("set_marketing", { p_opt: true });
+  if (error) return false;
+  state.club = true;
+  if (state.acct.customer) { state.acct.customer.marketing_opt_in = true; state.acct.customer.marketing_opt_in_at = new Date().toISOString(); }
+  renderWelcomeBar(); renderCart();
+  if (!$("#checkout").hidden) { renderClubBox(); renderSummary(); if (state.loc) requestQuote(); }
+  return true;
+}
+// Unirse al Club Bakers (cuenta ya creada)
+async function joinClub() {
+  if (!(await markClub())) { toast("No se pudo completar. Intenta otra vez."); return false; }
+  toast(state.firstOrder ? "¡Bienvenido al Club Bakers! Tu primer envío es GRATIS 🎁" : "¡Bienvenido al Club Bakers! 🤍", 6000);
+  return true;
 }
 function closeWelcome() { $("#welcomeModal").hidden = true; try { sessionStorage.removeItem(WBAR_KEY); } catch {} }
 $("#welcomeBtn").onclick = openWelcome;
@@ -391,6 +418,7 @@ function freeShipHint(net) {
   const km = fs.max_km > 0 ? String(fs.max_km).replace(".", ",") : "";
   const wkmN = fs.welcome_max_km ?? fs.max_km, wkm = wkmN > 0 ? String(wkmN).replace(".", ",") : "";
   if (fs.min > 0 && net >= fs.min - 1e-9) return `<p class="ship-hint ok">${S("hint_ok", `🎉 Tu envío es gratis${km ? ` hasta ${km} km` : ""}.`, { km })}</p>`;
+  if (wmin > 0 && state.firstOrder && !state.club) return `<p class="ship-hint">🎁 <a href="#" class="club-link">Únete al Club Bakers</a> y tu primer envío es gratis desde ${moneyEs(wmin)}.</p>`;
   if (wmin > 0 && state.firstOrder) return net >= wmin - 1e-9
     ? `<p class="ship-hint ok">${S("hint_first_ok", `🎁 Tu primer envío es gratis${wkm ? ` hasta ${wkm} km` : ""}.`, { km: wkm })}</p>`
     : `<p class="ship-hint">${S("hint_first_left", `Te faltan <b>${moneyEs(wmin - net)}</b> para tu envío gratis.`, { left: moneyEs(wmin - net) })}</p>`;
@@ -586,9 +614,21 @@ function openCheckout() {
   try { const p = JSON.parse(localStorage.getItem(PROFILE_KEY) || "{}"); for (const k of ["cName", "cPhone", "cEmail", "address", "reference"]) if (p[k] && !$("#" + k).value) $("#" + k).value = k === "address" ? splitAddr(p[k]) : p[k]; if (p.locLabel && !state.locLabel) setLocLabel(p.locLabel); if (p.lat && !state.loc) state.loc = { lat: p.lat, lng: p.lng }; } catch {}
   setupMap();
   renderAcctBox(); renderPerks(); loadSaved();
-  $("#promoBox").hidden = !state.acct || Boolean(state.acct.customer?.marketing_opt_in);
+  renderClubBox();
   renderSummary();
 }
+
+// Invitación al Club Bakers en el checkout (con cuenta y sin unirse todavía)
+function renderClubBox() {
+  const box = $("#clubBox"); if (!box) return;
+  const show = Boolean(state.acct) && !state.club;
+  box.hidden = !show; if (!show) { box.innerHTML = ""; return; }
+  const wmin = Number(state.cfg?.free_ship?.welcome_min) || 0, gift = state.firstOrder && wmin > 0;
+  box.innerHTML = `<p class="jm-t"><b>${gift ? "Tu primer envío puede ser GRATIS 🎁" : "Únete al Club Bakers 🤍"}</b> <span>${gift ? `Únete al Club Bakers y tu envío va por nuestra cuenta en pedidos desde ${moneyEs(wmin)}. ` : ""}Además te contamos antes que nadie de sabores nuevos y promos solo para bakers, por WhatsApp y correo. Sales cuando quieras.</span></p>
+    <button class="btn small" type="button" id="clubJoin">Unirme al Club Bakers</button>`;
+  $("#clubJoin").onclick = async (e) => { e.target.disabled = true; if (!(await joinClub())) e.target.disabled = false; };
+}
+document.addEventListener("click", (e) => { if (e.target.closest?.(".club-link")) { e.preventDefault(); state.signedIn ? joinClub() : openWelcome(); } });
 
 function renderAcctBox() {
   const box = $("#acctBox"), a = state.acct;
@@ -613,7 +653,7 @@ function renderAcctBox() {
   const dots = Array.from({ length: 8 }, (_, i) => i < 2 ? `<span class="on"><img src="/assets/brand/s-tinta.svg" alt=""></span>` : i === 7 ? `<span class="goal" aria-label="Postre sorpresa">🎁</span>` : `<span>${i + 1}</span>`).join("");
   box.innerHTML = `<div class="join-mini">
       <div class="join-dots" aria-hidden="true">${dots}</div>
-      <p class="jm-t"><b>Gana un postre sorpresa.</b> <span>Entra con Google y te regalamos los 2 primeros sellos${state.cfg?.free_ship?.welcome_min > 0 ? ` y tu primer envío desde ${moneyEs(state.cfg.free_ship.welcome_min)}` : ""}.</span></p>
+      <p class="jm-t"><b>Gana un postre sorpresa.</b> <span>Entra con Google y te regalamos los 2 primeros sellos${state.cfg?.free_ship?.welcome_min > 0 ? `; en el Club Bakers, tu primer envío es gratis desde ${moneyEs(state.cfg.free_ship.welcome_min)}` : ""}.</span></p>
       <div class="jm-go">${googleButton("outline")}</div>
     </div>
     <p class="muted small jm-or">O pide sin cuenta, solo con estos datos:</p>`;
@@ -961,7 +1001,6 @@ $("#orderForm").addEventListener("submit", async (e) => {
   try {
     const res = await api("crear", body);
     await saveNewOnes(body);
-    if ($("#wantPromo").checked && !$("#promoBox").hidden) { try { await sb.rpc("set_marketing", { p_opt: true }); } catch {} }
     try { localStorage.setItem("tbs_ultimo_pedido", res.tracking_token); localStorage.removeItem(CART_KEY); } catch {}
     if (pay === "tarjeta") {
       btn.textContent = `Pagar ${money(res.total)}`; btn.disabled = false;

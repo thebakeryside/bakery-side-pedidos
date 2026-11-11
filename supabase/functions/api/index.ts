@@ -144,9 +144,12 @@ function shippingPromo(net: number, s: Settings, welcome: boolean): string | nul
   if (welcome && wmin > 0 && net >= wmin - 1e-9) return "primer_pedido";
   return null;
 }
-// Primer envío gratis: cliente con cuenta que todavía no tiene pedidos pagados
+// Primer envío gratis: cliente con cuenta, dentro del Club Bakers (aceptó recibir promociones)
+// y que todavía no tiene pedidos pagados
 async function welcomeEligible(uid: string | null | undefined, s: Settings) {
   if (!uid || !(Number(s.welcome_ship_min ?? 0) > 0)) return false;
+  const { data: c } = await db.from("customers").select("marketing_opt_in").eq("user_id", uid).maybeSingle();
+  if (!c?.marketing_opt_in) return false;
   const { count, error } = await db.from("orders").select("id", { count: "exact", head: true })
     .eq("user_id", uid).in("payment_status", ["pagado", "en_revision"]);
   if (error) return false;
