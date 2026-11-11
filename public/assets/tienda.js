@@ -418,7 +418,7 @@ function freeShipHint(net) {
   const km = fs.max_km > 0 ? String(fs.max_km).replace(".", ",") : "";
   const wkmN = fs.welcome_max_km ?? fs.max_km, wkm = wkmN > 0 ? String(wkmN).replace(".", ",") : "";
   if (fs.min > 0 && net >= fs.min - 1e-9) return `<p class="ship-hint ok">${S("hint_ok", `🎉 Tu envío es gratis${km ? ` hasta ${km} km` : ""}.`, { km })}</p>`;
-  if (wmin > 0 && state.firstOrder && !state.club) return `<p class="ship-hint">🎁 <a href="#" class="club-link">Únete al Club Bakers</a> y tu primer envío es gratis desde ${moneyEs(wmin)}.</p>`;
+  if (wmin > 0 && state.firstOrder && !state.club) return `<p class="ship-hint">🎁 <a href="#" class="club-link">Únete al Club Bakers</a> y tu primer envío es gratis desde ${wMin()}.</p>`;
   if (wmin > 0 && state.firstOrder) return net >= wmin - 1e-9
     ? `<p class="ship-hint ok">${S("hint_first_ok", `🎁 Tu primer envío es gratis${wkm ? ` hasta ${wkm} km` : ""}.`, { km: wkm })}</p>`
     : `<p class="ship-hint">${S("hint_first_left", `Te faltan <b>${moneyEs(wmin - net)}</b> para tu envío gratis.`, { left: moneyEs(wmin - net) })}</p>`;
@@ -624,7 +624,7 @@ function renderClubBox() {
   const show = Boolean(state.acct) && !state.club;
   box.hidden = !show; if (!show) { box.innerHTML = ""; return; }
   const wmin = Number(state.cfg?.free_ship?.welcome_min) || 0, gift = state.firstOrder && wmin > 0;
-  box.innerHTML = `<p class="jm-t"><b>${gift ? "Tu primer envío puede ser GRATIS 🎁" : "Únete al Club Bakers 🤍"}</b> <span>${gift ? `Únete al Club Bakers y tu envío va por nuestra cuenta en pedidos desde ${moneyEs(wmin)}. ` : ""}Además te contamos antes que nadie de sabores nuevos y promos solo para bakers, por WhatsApp y correo. Sales cuando quieras.</span></p>
+  box.innerHTML = `<p class="jm-t"><b>${gift ? "Tu primer envío puede ser GRATIS 🎁" : "Únete al Club Bakers 🤍"}</b> <span>${gift ? `Únete al Club Bakers y tu envío va por nuestra cuenta en pedidos desde ${wMin()}. Además te contamos` : "Te contamos"} antes que nadie de sabores nuevos y promos solo para bakers, por WhatsApp y correo. Sales cuando quieras.</span></p>
     <button class="btn small" type="button" id="clubJoin">Unirme al Club Bakers</button>`;
   $("#clubJoin").onclick = async (e) => { e.target.disabled = true; if (!(await joinClub())) e.target.disabled = false; };
 }
@@ -935,7 +935,7 @@ function renderSummary() {
   }
   const fs = state.cfg.free_ship || {};
   const far = (sh) => sh?.promo && sh.fee > 0 ? ` Como estás a más de ${String(sh.promo === "bienvenida" ? (fs.welcome_max_km ?? fs.max_km) : fs.max_km).replace(".", ",")} km, pagas solo la diferencia.` : "";
-  const shipNote = sh1.promo === "bienvenida" ? `<p class="ship-hint ok">🎁 Tu primer envío es gratis por pedir con tu cuenta.${far(sh1)}</p>`
+  const shipNote = sh1.promo === "bienvenida" ? `<p class="ship-hint ok">🎁 Tu primer envío es gratis por ser del Club Bakers.${far(sh1)}</p>`
     : sh1.promo ? `<p class="ship-hint ok">🎉 Envío gratis por compras desde ${moneyEs(fs.min)}.${far(sh1)}</p>`
     : state.quote ? freeShipHint(netNow()) : "";
   const whenTxt = split ? "" : $("#whenLater").checked ? (laterRange() ? `Entrega ${laterRange()}` : "") : now;
