@@ -296,7 +296,7 @@ function card(o) {
   else if (o.status === "confirmado") main = `<button class="btn primary" data-act="prep" data-id="${o.id}">Empezar a preparar</button>`;
   else if (o.status === "preparando") main = `<button class="btn primary" data-act="ready" data-id="${o.id}">${pick ? "Listo · para que lo retire" : "Listo · pedir el Uber"}</button>`;
   else if (o.status === "listo" && pick) main = `<button class="btn primary" data-act="pickedUp" data-id="${o.id}">Entregado · ya lo retiró</button>`;
-  else if (o.status === "listo") main = `<button class="btn primary" data-act="sent" data-id="${o.id}">${ICON.moto}Salió con el Uber · en camino</button>`;
+  else if (o.status === "listo") main = `<button class="btn primary" data-act="${o.uber_requested_at ? "sent" : "sentAsk"}" data-id="${o.id}">${ICON.moto}Salió con el Uber · en camino</button>`;
   else if (o.status === "en_camino") main = `<button class="btn primary" data-act="delivered" data-id="${o.id}">Entregado</button>`;
   const assign = !pick && S.riders.some((r) => r.active) && ["confirmado", "preparando", "listo"].includes(o.status) ? `<select class="in" data-act="assign" data-id="${o.id}" aria-label="Motorizado">${riderOpts}</select>` : "";
   const canCancel = !["entregado", "cancelado"].includes(o.status);
@@ -315,6 +315,7 @@ function card(o) {
     <div class="chips">${payChip(o)}${pick ? `<span class="chip ok">🛍️ Retira en la cocina</span>` : `${S.riders.some((r) => r.active) ? riderChip(o) : ""}<span class="chip">${ICON.pin}${Number(o.distance_km).toFixed(1)} km</span>${uberChip(o)}`}</div>
     ${needsUber(o) ? `<div class="acts uber-acts"><button class="btn small${o.uber_requested_at || uberMinLeft(o) <= 10 ? " primary" : ""}" data-act="uber" data-id="${o.id}">${ICON.moto}Pedir Uber</button>${o.uber_requested_at ? "" : `<button class="btn small" data-act="uberMark" data-id="${o.id}">✓ Ya lo pedí</button>`}<button class="btn small ghost" data-act="uberCopy" data-id="${o.id}">Copiar datos para el Uber</button></div>` : ""}
     ${main || assign ? `<div class="acts main">${main}${assign}</div>` : ""}
+    ${o.status === "listo" && !pick && !o.uber_requested_at ? `<div class="confirm-row" data-sent="${o.id}" hidden><p class="small" style="margin:0;flex:1">Todavía no marcas el Uber como pedido. ¿Ya salió el pedido?</p><button class="btn small primary" data-act="sent" data-id="${o.id}">Sí, ya salió</button></div>` : ""}
     <details class="more">
       <summary>Datos del cliente y entrega</summary>
       <div class="meta">
@@ -412,6 +413,7 @@ document.addEventListener("click", async (e) => {
       return upd(id, { status: "entregado", delivered_at: now, picked_at: o.picked_at || now, delivered_by: "cocina", delivery_note: reason.slice(0, 200) || null }, `${o.code} entregado`);
     }
     // Entregas con Uber Courier: cocina marca la salida y la entrega
+    case "sentAsk": $(`[data-sent="${id}"]`).hidden = false; break;
     case "sent": return upd(id, { status: "en_camino", picked_at: now }, `${o.code} en camino`);
     case "delivered": return upd(id, { status: "entregado", delivered_at: now, picked_at: o.picked_at || now, delivered_by: "cocina", delivery_note: "Uber" }, `${o.code} entregado`);
     case "cancelAsk": $(`[data-cancel="${id}"]`).hidden = false; $(`[data-reason="${id}"]`).focus(); break;
