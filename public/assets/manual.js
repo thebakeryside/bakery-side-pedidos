@@ -171,6 +171,10 @@ function copy(text) {
   navigator.clipboard?.writeText(text).then(() => toast("Copiado. Pégalo en WhatsApp."), () => toast("No se pudo copiar. Selecciónalo a mano."));
 }
 
+// Agotado hoy (lo marcó cocina o se acabaron las porciones del día)
+const todayStr = () => todayLocal();
+const isOutToday = (p) => p && (p.sold_out_day === todayStr() || (p.stock_day === todayStr() && p.stock_left !== null && p.stock_left <= 0));
+const outTag = (p) => (isOutToday(p) ? ` <span class="err small">· agotado hoy</span>` : "");
 function drawProds() {
   const f = st.filter;
   const html = st.cats.map((c) => {
@@ -178,7 +182,8 @@ function drawProds() {
     if (!items.length) return "";
     const row = (k, label, price) => {
       const q = st.cart.get(k) || 0;
-      return `<div class="mprod ${q ? "on" : ""}"><span>${esc(label)} <span class="muted small">${money(price)}</span></span>
+      const p = st.prods.find((x) => x.id === kId(k));
+      return `<div class="mprod ${q ? "on" : ""}"><span>${esc(label)} <span class="muted small">${money(price)}</span>${label.startsWith("↳") ? "" : outTag(p)}</span>
         <span class="qty"><button type="button" data-q="-1" data-id="${k}" aria-label="Quitar uno">−</button><b>${q}</b><button type="button" data-q="1" data-id="${k}" aria-label="Agregar uno">+</button></span></div>`;
     };
     return `<h3 class="mcat">${esc(c.name)}</h3>${items.map((p) => {
@@ -187,11 +192,11 @@ function drawProds() {
       // varias elecciones (combo: postre, bebida y endulzante si la bebida lo lleva): se arma con listas
       if (gs.length > 1 || g.only_if) {
         const added = [...st.cart.keys()].filter((k) => kId(k) === p.id);
-        return `<div class="mopt"><b>${esc(p.name)}</b> <span class="muted small">· elige ${gs.filter((x) => !x.only_if).map((x) => x.name.toLowerCase()).join(" y ")} y toca Agregar</span></div>` +
+        return `<div class="mopt"><b>${esc(p.name)}</b>${outTag(p)} <span class="muted small">· elige ${gs.filter((x) => !x.only_if).map((x) => x.name.toLowerCase()).join(" y ")} y toca Agregar</span></div>` +
           added.map((k) => row(k, `↳ ${kOpts(k).map((c) => choice(c)?.name).filter(Boolean).join(" · ")}`, lPrice(k))).join("") +
           `<div class="mbuild" data-pid="${p.id}">${gs.map((x) => `<select class="in" data-g="${x.id}"${x.only_if ? " hidden" : ""} aria-label="${esc(x.name)}"><option value="">${esc(x.name)}…</option>${x.option_choices.map((c) => `<option value="${c.id}">${esc(c.name)}${Number(c.price_delta) > 0 ? ` +${money(c.price_delta)}` : ""}</option>`).join("")}</select>`).join("")}<button type="button" class="btn small primary" data-build="${p.id}" disabled>Agregar</button></div>`;
       }
-      return `<div class="mopt"><b>${esc(p.name)}</b> <span class="muted small">· ${esc(g.name.toLowerCase())}</span></div>` +
+      return `<div class="mopt"><b>${esc(p.name)}</b>${outTag(p)} <span class="muted small">· ${esc(g.name.toLowerCase())}</span></div>` +
         g.option_choices.map((ch) => row(`${p.id}:${ch.id}`, `↳ ${ch.name}`, Number(p.price) + Number(ch.price_delta || 0))).join("");
     }).join("")}`;
   }).join("");
@@ -329,6 +334,16 @@ async function submit(e) {
   if (!pickup && !$("#mAddr").value.trim()) return bad("Escribe la dirección.", $("#mAddr"));
   const later = $('input[name="mWhen"][value="later"]').checked;
   if (later && !$("#mTime").value) return bad("Elige día y hora.", $("#mDate"));
+  // Productos agotados hoy: se puede registrar igual, pero hay que confirmarlo con un segundo toque
+  if (!later || $("#mDate").value === todayStr()) {
+    const outs = [...new Set([...st.cart.keys()].map(kId))].map((id) => st.prods.find((p) => p.id === id)).filter(isOutToday).map((p) => p.name);
+    const sig = outs.join("|") + "#" + [...st.cart].join(",");
+    if (outs.length && st.outOk !== sig) {
+      st.outOk = sig;
+      err.innerHTML = `<b>${esc(outs.join(", "))}</b> ${outs.length > 1 ? "están agotados" : "está agotado"} hoy. ¿Seguro que lo tienen? Toca <b>Registrar</b> otra vez para confirmar.`;
+      return;
+    }
+  }
   const paid = $('input[name="mPay"][value="paid"]').checked;
   const deposit = isDeposit() ? depNow() : null;
   if (deposit != null && !(deposit > 0 && deposit < subtotal() + (feeNow() || 0))) return bad("El anticipo debe ser mayor a $0 y menor al total.", $("#mDep"));

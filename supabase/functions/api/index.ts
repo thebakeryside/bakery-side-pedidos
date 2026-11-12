@@ -316,8 +316,9 @@ async function userFrom(req: Request): Promise<User> {
 const SURPRISE = "Postre sorpresa";
 const nowLocal = () => toLocal(new Date());
 
-// Agotados y porciones del día: solo aplican a pedidos que se entregan hoy
-function checkStock(cart: Awaited<ReturnType<typeof priceCart>>, deliveryDay: string) {
+// Agotados y porciones del día: solo aplican a pedidos que se entregan hoy.
+// Cocina/master (pedidos por WhatsApp) pueden registrar igual: su pantalla les pide confirmar antes.
+function checkStock(cart: Awaited<ReturnType<typeof priceCart>>, deliveryDay: string, staff = false) {
   const today = localDay(new Date());
   if (deliveryDay !== today) return [];
   const qty: Record<number, number> = {};
@@ -326,9 +327,9 @@ function checkStock(cart: Awaited<ReturnType<typeof priceCart>>, deliveryDay: st
   for (const p of cart.prods) {
     const q = qty[p.id] ?? 0;
     if (!q) continue;
-    if (p.sold_out_day === today) fail(`${p.name} está agotado por hoy. Quítalo del carrito o agenda para otro día.`);
+    if (p.sold_out_day === today) { if (staff) continue; fail(`${p.name} está agotado por hoy. Quítalo del carrito o agenda para otro día.`); }
     if (p.stock_day === today && p.stock_left !== null) {
-      if (q > p.stock_left) fail(p.stock_left === 0 ? `${p.name} está agotado por hoy.` : `Solo quedan ${p.stock_left} de ${p.name} por hoy.`);
+      if (q > p.stock_left && !staff) fail(p.stock_left === 0 ? `${p.name} está agotado por hoy.` : `Solo quedan ${p.stock_left} de ${p.name} por hoy.`);
       limited.push({ id: p.id, q });
     }
   }
@@ -469,7 +470,7 @@ async function makeOrder(b: any, cust: Record<string, any> | null, staff: { paid
     const fee = promo === "primer_pedido" ? q.welcome_promo_fee : promo ? q.promo_fee : q.fee;
     const payExtra = !staff && b.payment_method === "transferencia" ? Number(s.transfer_extra_minutes ?? 5) : 0;
     const sched = await validateSchedule(s, b.scheduled_for || null, cart.prep, cart.lead, q.travel_min, payExtra, Boolean(staff));
-    const limited = checkStock(cart, localDay(sched.scheduled_for ? new Date(sched.scheduled_for) : new Date()));
+    const limited = checkStock(cart, localDay(sched.scheduled_for ? new Date(sched.scheduled_for) : new Date()), Boolean(staff));
     const method = staff ? "transferencia" : b.payment_method === "tarjeta" ? "tarjeta" : b.payment_method === "transferencia" ? "transferencia" : fail("Elige cómo pagar.");
     const name = clean(b.customer_name, 80) || fail("Escribe tu nombre.");
     const address = pickup ? "Retiro en cocina (pick up)" : clean(b.address, 200) || fail("Escribe la dirección de entrega.");
