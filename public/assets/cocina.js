@@ -258,14 +258,21 @@ function uberLink(o) {
     "dropoff[latitude]": o.lat, "dropoff[longitude]": o.lng, "dropoff[nickname]": `${who} · ${o.code}`,
     "dropoff[formatted_address]": o.address || "",
   });
-  return "https://m.uber.com/ul/?" + q.toString();
+  return q.toString();
+}
+// Android: abre la app de Uber directo (intent) sin pasar por una pestaña en blanco; iPhone: esquema uber://; computadora: enlace web
+function openUber(o) {
+  const q = uberLink(o), web = "https://m.uber.com/ul/?" + q, ua = navigator.userAgent;
+  if (/Android/i.test(ua)) { location.href = `intent://?${q}#Intent;scheme=uber;package=com.ubercab;S.browser_fallback_url=${encodeURIComponent(web)};end`; return; }
+  if (/iPhone|iPad|iPod/i.test(ua)) { location.href = "uber://?" + q; return; }
+  window.open(web, "_blank", "noopener");
 }
 // Texto para pegar en las instrucciones del envío: solo nombre, teléfono y referencia (la ubicación ya va en el Uber)
 function uberText(o) {
   const name = o.recipient_name || o.customer_name, phone = (o.recipient_name && o.recipient_phone) || o.customer_phone;
   return `${name} · ${phone}${o.reference ? `\nRef: ${o.reference}` : ""}`;
 }
-// Aviso cuando llega la hora de pedir el Uber; se repite cada 3 min hasta marcar "Uber pedido".
+// Aviso cuando llega la hora de pedir el Uber; se repite cada 3 min hasta tocar "Ya lo pedí".
 // Si el navegador aún no deja sonar (falta tocar la pantalla), queda pendiente y suena al primer toque.
 function uberAlerts() {
   const due = S.orders.filter((o) => needsUber(o) && !o.uber_requested_at && uberMinLeft(o) <= 1);
@@ -306,7 +313,7 @@ function card(o) {
     ${o.group_id ? `<div class="linknote">🔗 Pago junto con ${linkedCodes(o)} (dos entregas)</div>` : ""}
     ${o.order_items.some((i) => /^Postre sorpresa/.test(i.name)) ? `<div class="linknote">🎁 Incluye postre sorpresa de regalo: elige uno de hasta ${money(S.settings?.reward_max_value ?? 4)}</div>` : ""}
     <div class="chips">${payChip(o)}${pick ? `<span class="chip ok">🛍️ Retira en la cocina</span>` : `${S.riders.some((r) => r.active) ? riderChip(o) : ""}<span class="chip">${ICON.pin}${Number(o.distance_km).toFixed(1)} km</span>${uberChip(o)}`}</div>
-    ${needsUber(o) ? `<div class="acts uber-acts"><button class="btn small${!o.uber_requested_at && uberMinLeft(o) <= 10 ? " primary" : ""}" data-act="uber" data-id="${o.id}">${ICON.moto}Pedir Uber</button><button class="btn small ghost" data-act="uberCopy" data-id="${o.id}">Copiar datos para el Uber</button></div>` : ""}
+    ${needsUber(o) ? `<div class="acts uber-acts"><button class="btn small${o.uber_requested_at || uberMinLeft(o) <= 10 ? " primary" : ""}" data-act="uber" data-id="${o.id}">${ICON.moto}Pedir Uber</button>${o.uber_requested_at ? "" : `<button class="btn small" data-act="uberMark" data-id="${o.id}">✓ Ya lo pedí</button>`}<button class="btn small ghost" data-act="uberCopy" data-id="${o.id}">Copiar datos para el Uber</button></div>` : ""}
     ${main || assign ? `<div class="acts main">${main}${assign}</div>` : ""}
     <details class="more">
       <summary>Datos del cliente y entrega</summary>
@@ -386,11 +393,8 @@ document.addEventListener("click", async (e) => {
       }
       toast(`${o.code}: marcado como pagado${group.length > 1 ? " (las dos entregas)" : ""}`); await loadOrders(); render(); return;
     }
-    case "uber": {
-      window.open(uberLink(o), "_blank", "noopener"); // primero abrir (el navegador lo permite solo dentro del clic)
-      if (!o.uber_requested_at) return upd(id, { uber_requested_at: now }, `${o.code}: Uber pedido. Elige Envíos/Flash en la app.`);
-      return;
-    }
+    case "uber": openUber(o); return; // solo abre Uber; el pedido no se marca hasta tocar "Ya lo pedí"
+    case "uberMark": return upd(id, { uber_requested_at: now }, `${o.code}: Uber pedido`);
     case "uberUndo": return upd(id, { uber_requested_at: null }, `${o.code}: Uber sin pedir`);
     case "uberCopy": {
       try { await navigator.clipboard.writeText(uberText(o)); toast("Datos copiados. Pégalos en las instrucciones del Uber."); }
