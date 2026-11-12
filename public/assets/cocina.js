@@ -146,7 +146,7 @@ function render() {
     const today = new Date().toLocaleDateString("es-EC", { timeZone: "America/Guayaquil" });
     const isToday = (d) => d && new Date(d).toLocaleDateString("es-EC", { timeZone: "America/Guayaquil" }) === today;
     const done = S.orders.filter((o) => o.status === "entregado" && isToday(o.delivered_at));
-    const sales = S.orders.filter((o) => o.payment_status === "pagado" && isToday(o.paid_at)).reduce((s, o) => s + Number(o.subtotal), 0);
+    const sales = S.orders.filter((o) => o.payment_status === "pagado" && o.status !== "cancelado" && isToday(o.created_at)).reduce((s, o) => s + Number(o.subtotal), 0);
     const unpaid = S.orders.filter((o) => o.status === "pendiente_pago" && !o.scheduled_for && Date.now() - new Date(o.created_at) < 2 * 3600000);
     const by = (st) => active.filter((o) => st.includes(o.status)).sort((a, b) => new Date(a.eta) - new Date(b.eta));
     v.innerHTML = `
