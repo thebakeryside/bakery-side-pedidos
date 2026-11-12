@@ -1,0 +1,18 @@
+name: fotos-pdf
+on: push
+permissions:
+  contents: write
+jobs:
+  get:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          B=https://btwuncihlkecnkjrgfhz.supabase.co/storage/v1/object/public/productos
+          mkdir -p fotos
+          curl -fsS -o fotos/caramel.webp $B/1-1793058705974.webp
+          curl -fsS -o fotos/volteado-lata.webp $B/3-1793058708262.webp
+          curl -fsS -o fotos/browncheese.webp $B/8-1793058711394.webp
+          curl -fsS -o fotos/brookie.webp $B/9-1793058710690.webp
+          git config user.name bot; git config user.email bot@users.noreply.github.com
+          git add fotos; git commit -m "fotos [skip ci]"; git push
