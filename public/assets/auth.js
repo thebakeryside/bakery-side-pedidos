@@ -1,6 +1,6 @@
 import { sb, $, toast } from "./common.js";
 
-// Muestra el ingreso (contraseña o enlace por correo) hasta que haya sesión; luego llama a onReady(user)
+// Muestra el ingreso (contraseña o código por correo) hasta que haya sesión; luego llama a onReady(user)
 // Reloj en vivo (hora de Guayaquil) en la barra superior de los paneles
 export function mountClock() {
   const who = document.querySelector(".who");
@@ -35,23 +35,50 @@ export async function requireLogin(onReady) {
     e.preventDefault();
     const email = $("#loginEmail").value.trim(), password = $("#loginPass").value;
     if (!/^\S+@\S+\.\S+$/.test(email)) return msg("Escribe un correo válido.");
-    if (!password) return msg("Escribe tu contraseña, o usa «Enviarme un enlace» si aún no la creas.");
+    if (!password) return msg("Escribe tu contraseña, o usa «Olvidé mi contraseña» para recibir un código.");
     $("#loginBtn").disabled = true;
     const { error } = await sb.auth.signInWithPassword({ email, password });
     $("#loginBtn").disabled = false;
-    if (error) msg(/invalid/i.test(error.message) ? "Correo o contraseña incorrectos. Si aún no creaste tu contraseña, usa «Enviarme un enlace»." : error.message);
+    if (error) msg(/invalid/i.test(error.message) ? "Correo o contraseña incorrectos. Si la olvidaste, usa «Olvidé mi contraseña»." : error.message);
   });
-  $("#magicBtn").addEventListener("click", async () => {
+  // Primera vez u olvidé mi contraseña: código de 6 dígitos por correo (se escribe aquí mismo,
+  // sirve también dentro de la app instalada). El enlace del correo sigue funcionando.
+  const NEED = "tbs_need_pass";
+  const sendCode = async () => {
     const email = $("#loginEmail").value.trim();
-    if (!/^\S+@\S+\.\S+$/.test(email)) return msg("Escribe un correo válido.");
-    $("#magicBtn").disabled = true;
+    if (!/^\S+@\S+\.\S+$/.test(email)) return msg("Escribe tu correo arriba y vuelve a tocar el botón.");
+    $("#magicBtn").disabled = true; $("#resendCode").disabled = true;
     const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + location.pathname } });
-    $("#magicBtn").disabled = false;
-    if (!error) return msg(`Te enviamos un enlace a ${email}. Ábrelo en este mismo navegador. Una vez dentro, crea tu contraseña con el botón «Contraseña».`);
-    msg(/rate limit/i.test(error.message)
-      ? "Se enviaron demasiados enlaces en poco tiempo. Espera unos minutos y vuelve a intentar, o entra con tu contraseña."
-      : `No pudimos enviar el enlace: ${error.message}`);
+    $("#magicBtn").disabled = false; $("#resendCode").disabled = false;
+    if (error) return msg(/rate limit|seconds/i.test(error.message)
+      ? "Se enviaron demasiados códigos en poco tiempo. Espera un minuto y vuelve a intentar."
+      : `No pudimos enviar el código: ${error.message}`);
+    try { localStorage.setItem(NEED, "1"); } catch {}
+    $("#codeBox").hidden = false; $("#loginCode").value = ""; $("#loginCode").focus();
+    msg(`Te enviamos un código a ${email}. Escríbelo aquí (revisa también Spam).`);
+  };
+  $("#magicBtn").addEventListener("click", sendCode);
+  $("#resendCode").addEventListener("click", sendCode);
+  $("#loginCode").addEventListener("input", (e) => { e.target.value = e.target.value.replace(/\D/g, "").slice(0, 10); });
+  $("#codeBtn").addEventListener("click", async () => {
+    const email = $("#loginEmail").value.trim(), token = $("#loginCode").value.trim();
+    if (!/^\d{6,10}$/.test(token)) return msg("Escribe el código de 6 dígitos que llegó a tu correo.");
+    $("#codeBtn").disabled = true;
+    const { error } = await sb.auth.verifyOtp({ email, token, type: "email" });
+    $("#codeBtn").disabled = false;
+    if (error) msg(/expired|invalid/i.test(error.message) ? "Código incorrecto o vencido. Revisa el último correo o pide uno nuevo." : error.message);
   });
+  // Si entró con código o enlace, abrir de una vez «Crear o cambiar contraseña»
+  const askPass = () => {
+    let need = false; try { need = localStorage.getItem(NEED) === "1"; } catch {}
+    if (!need) return;
+    try { localStorage.removeItem(NEED); } catch {}
+    $("#passBox").hidden = false; $("#passBox").scrollIntoView({ block: "start" }); $("#newPass").focus();
+    toast("¡Listo! Ahora crea tu nueva contraseña.");
+  };
+  sb.auth.onAuthStateChange((e) => { if (e === "SIGNED_IN" || e === "PASSWORD_RECOVERY") setTimeout(askPass, 300); });
+  if (data.session) setTimeout(askPass, 300);
+
   $("#logout").onclick = async () => { await sb.auth.signOut(); location.reload(); };
 
   // Mostrar u ocultar lo que se escribe en los campos de contraseña
@@ -90,7 +117,13 @@ export const loginHTML = (title) => `
       <label class="f" for="loginPass">Contraseña</label>
       <div class="pwd"><input class="in" id="loginPass" type="password" autocomplete="current-password"><button class="pwd-toggle" type="button" data-toggle="loginPass" aria-label="Mostrar contraseña" aria-pressed="false">Mostrar</button></div>
       <button class="btn primary" id="loginBtn" style="margin-top:12px">Entrar</button>
-      <button class="btn ghost" id="magicBtn" type="button">Primera vez u olvidé mi contraseña: enviarme un enlace</button>
+      <button class="btn ghost" id="magicBtn" type="button">Primera vez u olvidé mi contraseña: enviarme un código</button>
+      <div id="codeBox" hidden style="display:grid;gap:6px;margin-top:8px">
+        <label class="f" for="loginCode">Código del correo</label>
+        <input class="in tabnum" id="loginCode" inputmode="numeric" autocomplete="one-time-code" maxlength="10" placeholder="123456" style="font-size:24px;letter-spacing:6px;text-align:center">
+        <button class="btn primary" id="codeBtn" type="button">Entrar con el código</button>
+        <button class="btn ghost small" id="resendCode" type="button">Enviar otro código</button>
+      </div>
       <p class="muted small" id="loginMsg" role="status"></p>
     </form>
   </section>

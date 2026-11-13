@@ -4,12 +4,14 @@ Copia cada asunto y cada cuerpo en la plantilla correspondiente. En cada plantil
 
 ---
 
-## 1. Magic Link (enlace de acceso)
+## 1. Magic Link (código y enlace de acceso)
+
+Se usa para «Primera vez u olvidé mi contraseña» en Cocina, Master y Moto. El panel pide el código de 6 dígitos (`{{ .Token }}`), que funciona también dentro de la app instalada; el botón queda como respaldo.
 
 **Asunto:**
 
 ```
-Tu enlace para entrar a The Bakery Side
+Su código para entrar a The Bakery Side: {{ .Token }}
 ```
 
 **Cuerpo:**
@@ -18,10 +20,12 @@ Tu enlace para entrar a The Bakery Side
 <div style="background:#1C1714;padding:32px 16px;font-family:Arial,Helvetica,sans-serif">
   <div style="max-width:480px;margin:0 auto;background:#F6F7DE;border-radius:16px;padding:28px">
     <p style="margin:0 0 4px;font-size:13px;letter-spacing:2px;color:#C68A4E;font-weight:bold">THE BAKERY SIDE</p>
-    <h1 style="margin:0 0 12px;font-size:24px;color:#1C1714">Tu enlace de acceso</h1>
-    <p style="margin:0 0 20px;font-size:15px;line-height:1.5;color:#554741">Toca el botón para entrar. El enlace funciona una sola vez y vence en pocos minutos.</p>
+    <h1 style="margin:0 0 12px;font-size:24px;color:#1C1714">Su código de acceso</h1>
+    <p style="margin:0 0 12px;font-size:15px;line-height:1.5;color:#554741">Escriba este código en la pantalla de ingreso. Funciona una sola vez y vence en una hora.</p>
+    <p style="margin:0 0 20px;font-size:36px;letter-spacing:8px;font-weight:bold;color:#1C1714;font-family:'Courier New',monospace">{{ .Token }}</p>
+    <p style="margin:0 0 12px;font-size:13px;color:#554741">O toque el botón si abre este correo en el mismo equipo:</p>
     <a href="{{ .ConfirmationURL }}" style="display:inline-block;background:#C68A4E;color:#1C1714;text-decoration:none;font-weight:bold;padding:12px 22px;border-radius:10px">Entrar</a>
-    <p style="margin:24px 0 0;font-size:12px;color:#8a7f76">Si no pediste este enlace, ignora este correo.</p>
+    <p style="margin:24px 0 0;font-size:12px;color:#8a7f76">Si no pidió este código, ignore este correo.</p>
   </div>
 </div>
 ```
