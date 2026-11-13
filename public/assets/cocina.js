@@ -34,10 +34,13 @@ $$(".tabs [data-tab]").forEach((b) => b.addEventListener("click", () => { S.tab 
 // ---------- datos ----------
 async function loadOrders() {
   const since = new Date(Date.now() - 3 * 86400000).toISOString();
-  const { data, error } = await sb.from("orders")
-    .select("*, order_items(name,quantity,line_total,options), riders(full_name,phone)")
+  // added_at marca lo agregado después (Editar pedido); si la columna aún no existe, se carga sin ella
+  const q = (items) => sb.from("orders")
+    .select(`*, order_items(${items}), riders(full_name,phone)`)
     .or(`status.in.(${ACTIVE.join(",")}),created_at.gte."${since}",scheduled_for.gte."${new Date().toISOString()}"`)
     .order("created_at", { ascending: false }).limit(300);
+  let { data, error } = await q("id,name,quantity,line_total,options,added_at");
+  if (error && /added_at/.test(error.message)) ({ data, error } = await q("id,name,quantity,line_total,options"));
   if (error) return toast("No pudimos cargar los pedidos: " + error.message);
   S.orders = data;
   data.forEach((o) => S.seen.add(o.id + o.status));
@@ -230,6 +233,11 @@ function riderChip(o) {
   return `<span class="chip">${ICON.moto}${esc(o.riders.full_name.split(" ")[0])}${o.rider_accepted_at || o.status === "entregado" ? "" : " · sin aceptar"}</span>`;
 }
 function itemLine(i) {
+  // lo agregado después (Editar pedido) va con un fondo apenas distinto
+  if (i.added_at) return itemLineBase(i).replace("<li>", `<li class="added" title="Agregado después · ${hhmm(i.added_at)}">`);
+  return itemLineBase(i);
+}
+function itemLineBase(i) {
   const m = String(i.name).match(/^(.*?) \(([^()]*)\)$/); // "Cold Brew (11oz) (Stevia)" → opción aparte
   // con las elecciones guardadas: una línea por cada una (Postre, Bebida, Endulzante…)
   if (m && Array.isArray(i.options) && i.options.length)
@@ -316,7 +324,7 @@ function card(o) {
     <div class="ohead"><span class="oid">${esc(o.code)}${o.channel === "whatsapp" || /WhatsApp/.test(o.payment_ref || "") ? ` <span class="wa-tag">WhatsApp</span>` : ""}</span><span class="st st-${o.status}">${STATUS[o.status]}</span></div>
     <div class="owhen tabnum">${esc(t)} ${relTime(o)}</div>
     <div class="oname">${o.recipient_name ? `Para: <b>${esc(o.recipient_name)}</b><span>regalo de ${esc(o.gift_from || o.customer_name)}</span>` : `<b>${esc(o.customer_name)}</b>`}</div>
-    <ul class="kitems">${o.order_items.map(itemLine).join("")}</ul>
+    <ul class="kitems">${[...o.order_items].sort((a, b) => (a.added_at ? 1 : 0) - (b.added_at ? 1 : 0) || (a.id || 0) - (b.id || 0)).map(itemLine).join("")}</ul>
     ${o.gift_message || o.recipient_name ? `<div class="gift">${ICON.gift}<div><b>Regalo${o.recipient_name ? ` para ${esc(o.recipient_name)}` : ""}</b><span class="from">De parte de: <b>${esc(o.gift_from || o.customer_name)}</b></span>${o.gift_message ? `<span>Tarjeta: “${esc(o.gift_message)}”</span>` : `<span>Sin mensaje: solo la firma.</span>`}</div></div>` : ""}
     ${o.payment_status === "pagado" && balancePending(o) ? `<div class="balnote"><div>🎉 <b>Evento:</b> cobrar el saldo de <b>${money(o.balance_due)}</b> antes de entregar.</div><button class="btn small" data-act="balanceAsk" data-id="${o.id}">Saldo cobrado</button></div>
     <div class="confirm-row" data-bal="${o.id}" hidden><p class="small" style="margin:0;flex:1">¿Confirmas que el cliente ya pagó los ${money(o.balance_due)}?</p><button class="btn small primary" data-act="balancePaid" data-id="${o.id}">Sí, ya pagó</button></div>` : ""}

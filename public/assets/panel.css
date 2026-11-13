@@ -389,3 +389,6 @@ dialog.rcpt::backdrop { background: rgb(28 23 20 / .6); }
 .mbar span { margin-right: auto; font-size: 15px; }
 .mcopy-more { margin-top: 8px; }
 .mcopy-more summary { cursor: pointer; }
+
+/* Productos agregados después a un pedido (Editar pedido): fondo apenas distinto */
+.kitems li.added { background: rgba(198, 138, 78, .16); border-radius: 8px; margin-left: -6px; margin-right: -6px; padding-left: 6px; padding-right: 6px; }

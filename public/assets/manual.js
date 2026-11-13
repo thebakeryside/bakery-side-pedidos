@@ -85,6 +85,7 @@ export async function renderManual(view) {
         <div class="chips" style="margin-top:12px" role="radiogroup" aria-label="Cuándo">
           <label class="chip"><input type="radio" name="mWhen" value="now" ${cfg.open_now ? "checked" : "disabled"}> Lo antes posible</label>
           <label class="chip"><input type="radio" name="mWhen" value="later" ${cfg.open_now ? "" : "checked"}> Agendar</label>
+          <label class="chip"><input type="radio" name="mWhen" value="done"> Ya se entregó (solo registrar)</label>
         </div>
         <div class="form-grid" id="mSched" ${cfg.open_now ? "hidden" : ""}>
           <div><label class="f" for="mDate">Día</label><select class="in" id="mDate"></select></div>
@@ -161,7 +162,11 @@ export async function renderManual(view) {
     if (q <= 0) st.cart.delete(k); else st.cart.set(k, Math.min(q, 50));
     drawProds(); quote();
   };
-  $$('input[name="mWhen"]').forEach((r) => (r.onchange = () => { $("#mSched").hidden = !$('input[name="mWhen"][value="later"]').checked; drawSum(); }));
+  $$('input[name="mWhen"]').forEach((r) => (r.onchange = () => {
+    $("#mSched").hidden = !$('input[name="mWhen"][value="later"]').checked;
+    if (isDone()) { $('input[name="mPay"][value="paid"]').checked = true; $("#mDepBox").hidden = true; }
+    drawSum();
+  }));
   $("#mGift").onchange = () => ($("#mGiftBox").hidden = !$("#mGift").checked);
   $$('input[name="mMode"]').forEach((r) => (r.onchange = () => { const p = isPickup(); $("#mDeliv").hidden = p; $("#mPickNote").hidden = !p; if (!p) quote(); drawSum(); }));
   $$('input[name="mPay"]').forEach((r) => (r.onchange = () => {
@@ -237,6 +242,8 @@ function drawProds() {
   drawSum();
 }
 
+// Pedido que ya se entregó y solo se registra: queda pagado y entregado, sin revisar horarios
+const isDone = () => Boolean($('input[name="mWhen"][value="done"]')?.checked);
 const isDeposit = () => Boolean($('input[name="mPay"][value="deposit"]')?.checked);
 const totalNow = () => subtotal() + (feeNow() || 0);
 const setDep75 = () => { const t = totalNow(); $("#mDep").value = t ? (Math.round(t * 75) / 100).toFixed(2) : ""; };
@@ -277,7 +284,7 @@ function drawSum() {
   }
   drawCopy();
   if ($("#mBar")) { $("#mBar").hidden = !lines.length; $("#mBarTot").innerHTML = `Total <b>${money(t)}</b>${isDeposit() ? ` · anticipo ${money(depNow())}` : ""}`; }
-  $("#mGo").textContent = lines.length && fee != null ? (isDeposit() ? `Registrar evento · anticipo ${money(depNow())}` : paid ? `Registrar pedido pagado · ${money(t)}` : `Registrar y crear enlace · ${money(t)}`) : "Registrar pedido";
+  $("#mGo").textContent = lines.length && fee != null ? (isDone() ? `Registrar como entregado · ${money(t)}` : isDeposit() ? `Registrar evento · anticipo ${money(depNow())}` : paid ? `Registrar pedido pagado · ${money(t)}` : `Registrar y crear enlace · ${money(t)}`) : "Registrar pedido";
 }
 
 // Textos para mandarle al cliente por WhatsApp (siempre de "usted")
@@ -384,7 +391,7 @@ async function submit(e) {
   const later = $('input[name="mWhen"][value="later"]').checked;
   if (later && !$("#mTime").value) return bad("Elige día y hora.", $("#mDate"));
   // Productos agotados hoy: se puede registrar igual, pero hay que confirmarlo con un segundo toque
-  if (!later || $("#mDate").value === todayStr()) {
+  if (!isDone() && (!later || $("#mDate").value === todayStr())) {
     const outs = [...new Set([...st.cart.keys()].map(kId))].map((id) => st.prods.find((p) => p.id === id)).filter(isOutToday).map((p) => p.name);
     const sig = outs.join("|") + "#" + [...st.cart].join(",");
     if (outs.length && st.outOk !== sig) {
@@ -393,8 +400,9 @@ async function submit(e) {
       return;
     }
   }
-  const paid = $('input[name="mPay"][value="paid"]').checked;
-  const deposit = isDeposit() ? depNow() : null;
+  const delivered = isDone();
+  const paid = delivered || $('input[name="mPay"][value="paid"]').checked;
+  const deposit = !delivered && isDeposit() ? depNow() : null;
   if (deposit != null && !(deposit > 0 && deposit < subtotal() + (feeNow() || 0))) return bad("El anticipo debe ser mayor a $0 y menor al total.", $("#mDep"));
   const gift = $("#mGift").checked;
   const addr = $("#mAddr").value.trim().slice(0, 130);
@@ -403,7 +411,8 @@ async function submit(e) {
     ...(pickup ? {} : { lat: st.loc.lat, lng: st.loc.lng }),
     address: pickup ? "" : st.locLabel ? `${addr} · Ubicación del mapa: ${st.locLabel}`.slice(0, 200) : addr,
     reference: $("#mRef").value,
-    scheduled_for: later ? localToISO($("#mDate").value, $("#mTime").value) : null,
+    scheduled_for: later && !delivered ? localToISO($("#mDate").value, $("#mTime").value) : null,
+    ...(delivered ? { already_delivered: true } : {}),
     customer_name: $("#mName").value.trim(), customer_phone: $("#mPhone").value,
     customer_email: $("#mEmail").value.trim() || null,
     recipient_name: gift ? $("#mRName").value : null, recipient_phone: gift && $("#mRPhone").value ? $("#mRPhone").value : null,
@@ -415,11 +424,11 @@ async function submit(e) {
   const btn = $("#mGo"); btn.disabled = true; btn.textContent = "Registrando…";
   try {
     const res = await api("crear_manual", body);
-    done(res, body, paid || deposit != null);
+    done(res, body, paid || deposit != null, delivered);
   } catch (ex) { err.textContent = ex.message; btn.disabled = false; drawSum(); }
 }
 
-function done(res, body, paid) {
+function done(res, body, paid, delivered = false) {
   const link = `${SITE}/pedido?t=${res.tracking_token}`;
   const first = body.customer_name.split(" ")[0];
   const lines = [...st.cart].map(([k, q]) => `${q}× ${lName(k)}`).join("\n");
@@ -436,7 +445,7 @@ function done(res, body, paid) {
     <div class="panel mdone">
       <p class="eyebrow">Pedido registrado</p>
       <h2 class="display" style="font-size:44px">${esc(res.code)} · ${money(res.total)}</h2>
-      <p class="muted">${res.deposit != null ? `Anticipo ${money(res.deposit)} registrado; ya está en Pedidos de cocina. Saldo por cobrar el día del evento: <b>${money(res.balance_due)}</b>.` : paid ? "Quedó pagado y ya está en Pedidos de cocina." : "Queda «Esperando pago». Pasa a cocina apenas el cliente pague con el enlace."}</p>
+      <p class="muted">${res.deposit != null ? `Anticipo ${money(res.deposit)} registrado; ya está en Pedidos de cocina. Saldo por cobrar el día del evento: <b>${money(res.balance_due)}</b>.` : delivered ? "Quedó guardado como pagado y entregado. Lo ves en Historial." : paid ? "Quedó pagado y ya está en Pedidos de cocina." : "Queda «Esperando pago». Pasa a cocina apenas el cliente pague con el enlace."}</p>
       <pre class="msg">${esc(msg)}</pre>
       <div class="row-btns">
         <a class="btn primary" ${waAttrs(body.customer_phone, msg)}>Enviar por WhatsApp</a>

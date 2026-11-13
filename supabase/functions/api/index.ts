@@ -482,7 +482,9 @@ async function makeOrder(b: any, cust: Record<string, any> | null, staff: { paid
       feeEdited = true;
     }
     const payExtra = !staff && b.payment_method === "transferencia" ? Number(s.transfer_extra_minutes ?? 5) : 0;
-    const sched = await validateSchedule(s, b.scheduled_for || null, cart.prep, cart.lead, q.travel_min, payExtra, Boolean(staff));
+    // Cocina registra un pedido que ya entregó: sin revisar horarios, queda pagado y entregado
+    const delivered = Boolean(staff && b.already_delivered);
+    const sched = delivered ? { scheduled_for: null, eta: new Date() } : await validateSchedule(s, b.scheduled_for || null, cart.prep, cart.lead, q.travel_min, payExtra, Boolean(staff));
     const limited = checkStock(cart, localDay(sched.scheduled_for ? new Date(sched.scheduled_for) : new Date()), Boolean(staff));
     const method = staff ? "transferencia" : b.payment_method === "tarjeta" ? "tarjeta" : b.payment_method === "transferencia" ? "transferencia" : fail("Elige cómo pagar.");
     const name = clean(b.customer_name, 80) || fail("Escribe tu nombre.");
@@ -533,7 +535,14 @@ async function makeOrder(b: any, cust: Record<string, any> | null, staff: { paid
     const { error: e2 } = await db.from("order_items").insert(cart.lines.map((l) => ({ ...l, order_id: o.id })));
     if (e2) { await db.from("orders").delete().eq("id", o.id); throw e2; }
     // Evento con anticipo: el pedido entra a cocina con el anticipo y queda un saldo por cobrar el día del evento
-    if (staff?.paid || deposit != null) {
+    if (delivered) {
+      const at = new Date().toISOString();
+      await db.from("orders").update({
+        payment_status: "pagado", status: "entregado", paid_at: at, picked_at: at, delivered_at: at,
+        delivered_by: "cocina", delivery_note: "Registrado después de entregar",
+        payment_ref: `Pagado por WhatsApp · registrado por ${staff!.by} después de entregar`,
+      }).eq("id", o.id);
+    } else if (staff?.paid || deposit != null) {
       // se marca pagado como un paso aparte, para que sumen los sellos y lleguen los avisos igual que en la tienda
       const patch: Record<string, unknown> = { payment_status: "pagado", status: "confirmado", paid_at: new Date().toISOString(), payment_ref: `Pagado por WhatsApp · registrado por ${staff!.by}` };
       if (deposit != null) {
