@@ -284,8 +284,13 @@ function uberWebLink(o) {
   const st = S.settings || {}, who = o.recipient_name || o.customer_name;
   const pickup = { latitude: Number(st.kitchen_lat), longitude: Number(st.kitchen_lng), addressLine1: "The Bakery Side" };
   const drop = { latitude: Number(o.lat), longitude: Number(o.lng), addressLine1: `${who} · ${o.code}`, addressLine2: String(o.address || "").split(" · Ubicación del mapa: ")[0].slice(0, 120) };
-  return `https://m.uber.com/go/product-selection?pickup=${encodeURIComponent(JSON.stringify(pickup))}&drop%5B0%5D=${encodeURIComponent(JSON.stringify(drop))}`;
+  const v = uberVehicle();
+  return `https://m.uber.com/go/product-selection?pickup=${encodeURIComponent(JSON.stringify(pickup))}&drop%5B0%5D=${encodeURIComponent(JSON.stringify(drop))}${v ? `&vehicle=${v}` : ""}`;
 }
+// Tipo de Uber que queda elegido en la web (códigos de Uber en Guayaquil, nov 2026). Se cambia en Cocina → Tienda.
+const UBER_TYPES = { courier: ["20006119", "Courier (auto)"], bikes: ["20036101", "Courier Bikes"], none: ["", "Elegir en Uber"] };
+const uberType = () => { try { return localStorage.getItem("tbs_uber_type") || "courier"; } catch { return "courier"; } };
+const uberVehicle = () => (UBER_TYPES[uberType()] || UBER_TYPES.courier)[0];
 function openUber(o) {
   const q = uberLink(o), web = uberWebLink(o), ua = navigator.userAgent;
   // nombre, teléfono y referencia quedan copiados para pegarlos en las instrucciones del envío
@@ -734,8 +739,11 @@ async function renderSettings() {
         <label class="chip"><input type="radio" name="waMode" value="app" ${waMode() === "app" ? "checked" : ""}> App de WhatsApp instalada</label>
         <label class="chip"><input type="radio" name="waMode" value="web" ${waMode() === "web" ? "checked" : ""}> WhatsApp Web (navegador)</label>
       </div>
+      <p class="muted small" style="margin:12px 0 6px">Al tocar <b>Pedir Uber</b> en la computadora, dejar elegido:</p>
+      <div class="chips" role="radiogroup" aria-label="Tipo de Uber">${Object.entries(UBER_TYPES).map(([k, [, n]]) => `<label class="chip"><input type="radio" name="uberType" value="${k}" ${uberType() === k ? "checked" : ""}> ${n}</label>`).join("")}</div>
       <label class="check" style="margin-top:10px"><input type="checkbox" id="waAuto" ${waAuto() ? "checked" : ""}> Al tocar <b>Confirmar pago</b>, <b>Empezar a preparar</b>, <b>Listo</b>, <b>Salió</b> o <b>Entregado</b>, abrir el chat del cliente con el mensaje ya escrito (solo falta Enviar)</label>
     </div>`;
+  $$('input[name="uberType"]').forEach((r) => (r.onchange = () => { try { localStorage.setItem("tbs_uber_type", r.value); } catch {} toast(`Pedir Uber abrirá con: ${UBER_TYPES[r.value][1]}`); }));
   $("#waAuto").onchange = (e) => { setWaAuto(e.target.checked); toast(e.target.checked ? "Se abrirá el chat del cliente en cada paso" : "Ya no se abrirá el chat en cada paso"); };
   $$('input[name="waMode"]').forEach((r) => (r.onchange = () => { setWaMode(r.value); toast(r.value === "app" ? "WhatsApp se abrirá en la app" : "WhatsApp se abrirá en WhatsApp Web"); }));
 
