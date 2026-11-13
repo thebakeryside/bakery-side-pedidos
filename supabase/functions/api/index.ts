@@ -157,11 +157,12 @@ async function welcomeEligible(uid: string | null | undefined, s: Settings) {
 }
 const travelMinutes = (km: number) => Math.max(8, Math.round(km / 25 * 60 + 5)); // 25 km/h en ciudad + 5 min de entrega
 
-async function quote(s: Settings, lat: number, lng: number) {
+// staff = cocina o master cotizando un pedido de WhatsApp: sin límite de distancia (siempre se puede cotizar)
+async function quote(s: Settings, lat: number, lng: number, staff = false) {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) fail("Marca tu ubicación en el mapa.");
   if (s.kitchen_lat == null) fail("La tienda aún no tiene configurada la ubicación de la cocina.");
   const { km, source } = await routeKm(s, lat, lng);
-  if (km > s.max_km) {
+  if (!staff && km > s.max_km) {
     fail(`Tu ubicación está a ${km.toFixed(1)} km. Para entregas de más de ${s.max_km} km escríbenos por WhatsApp.`);
   }
   return { km: Math.round(km * 100) / 100, fee: feeFor(km, s), promo_fee: promoFee(km, s), welcome_promo_fee: promoFee(km, s, welcomeCap(s)), travel_min: travelMinutes(km), source };
@@ -463,7 +464,7 @@ async function makeOrder(b: any, cust: Record<string, any> | null, staff: { paid
     }
     // Retiro en local (solo pedidos que registra cocina por WhatsApp): sin envío ni mapa
     const pickup = Boolean(staff && b.pickup);
-    const q = pickup ? { km: 0, fee: 0, promo_fee: 0, welcome_promo_fee: 0, travel_min: 0 } : await quote(s, Number(b.lat), Number(b.lng));
+    const q = pickup ? { km: 0, fee: 0, promo_fee: 0, welcome_promo_fee: 0, travel_min: 0 } : await quote(s, Number(b.lat), Number(b.lng), Boolean(staff));
     // Envío gratis desde un monto (tienda y WhatsApp) o primer pedido con cuenta (solo tienda; en dos entregas, solo la primera)
     const welcome = !staff && !b._no_welcome && await welcomeEligible(cust?.user_id, s);
     const promo = pickup ? null : shippingPromo(cart.subtotal - discount, s, welcome);
@@ -582,6 +583,12 @@ async function staffName(user: User) {
   if (!p || (p.role !== "admin" && !p.is_master)) fail("Solo cocina o master pueden registrar pedidos.");
   return String(p!.full_name || user!.email || "cocina");
 }
+// Igual que staffName, pero sin error: true si es cocina o master
+async function isStaff(user: User) {
+  if (!user) return false;
+  const { data: p } = await db.from("profiles").select("role,is_master").eq("user_id", user!.id).maybeSingle();
+  return Boolean(p && (p.role === "admin" || p.is_master));
+}
 // Busca "lat,lng" en un enlace o texto de Google Maps / WhatsApp
 function coordsIn(t: string) {
   const pats = [/@(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)/, /[?&](?:q|query|ll|destination|center)=(-?\d{1,2}\.\d+)(?:%2C|,)\s*(-?\d{1,3}\.\d+)/i, /!3d(-?\d{1,2}\.\d+)!4d(-?\d{1,3}\.\d+)/, /(-?\d{1,2}\.\d{3,})\s*,\s*(-?\d{1,3}\.\d{3,})/];
@@ -617,7 +624,7 @@ const actions: Record<string, (b: any, user: User) => Promise<unknown>> = {
 
   async cotizar(b, user) {
     const s = await getSettings();
-    const q = await quote(s, Number(b.lat), Number(b.lng));
+    const q = await quote(s, Number(b.lat), Number(b.lng), await isStaff(user));
     let eta = null;
     if (Array.isArray(b.items) && b.items.length) {
       const c = await priceCart(b.items);
