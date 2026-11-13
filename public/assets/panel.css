@@ -383,3 +383,9 @@ dialog.rcpt::backdrop { background: rgb(28 23 20 / .6); }
 .editbox .edlist { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 4px; font-size: 14px; }
 .editbox .edlist li { display: flex; justify-content: space-between; gap: 8px; align-items: center; background: #FCF4EA; border-radius: 8px; padding: 6px 8px; }
 .editbox .f { margin: 4px 0 0; }
+
+/* Pedido por WhatsApp: barra fija con el total y Registrar (sin bajar hasta el final) */
+.mbar { position: sticky; bottom: 0; z-index: 20; display: flex; align-items: center; gap: 8px; justify-content: flex-end; margin-top: 12px; padding: 10px 14px; background: #1C1714; color: #F6F7DE; border-radius: 14px 14px 0 0; box-shadow: 0 -4px 14px rgba(0,0,0,.15); }
+.mbar span { margin-right: auto; font-size: 15px; }
+.mcopy-more { margin-top: 8px; }
+.mcopy-more summary { cursor: pointer; }

@@ -117,7 +117,9 @@ export async function renderManual(view) {
         <p class="err" id="mErr" role="alert"></p>
       </section>
     </form>
+    <div class="mbar" id="mBar" hidden><span class="tabnum" id="mBarTot"></span><button class="btn small primary" type="button" id="mBarGo">Registrar</button></div>
     <div id="mDone"></div>`;
+  $("#mBarGo").onclick = () => $("#mGo").click();
 
   $$("[data-copy]", view).forEach((b) => (b.onclick = () => copy(QUICK[+b.dataset.copy][1])));
   // +593 99 123 4567 → 0991234567 apenas se pega o se escribe
@@ -274,6 +276,7 @@ function drawSum() {
     $("#mDepNote").innerHTML = t ? `${t <= 50 ? `<span class="err">Ojo: los eventos son pedidos de más de $50. </span>` : ""}Saldo por cobrar el día del evento: <b>${money(Math.max(t - d, 0))}</b>` : "";
   }
   drawCopy();
+  if ($("#mBar")) { $("#mBar").hidden = !lines.length; $("#mBarTot").innerHTML = `Total <b>${money(t)}</b>${isDeposit() ? ` · anticipo ${money(depNow())}` : ""}`; }
   $("#mGo").textContent = lines.length && fee != null ? (isDeposit() ? `Registrar evento · anticipo ${money(depNow())}` : paid ? `Registrar pedido pagado · ${money(t)}` : `Registrar y crear enlace · ${money(t)}`) : "Registrar pedido";
 }
 
@@ -299,11 +302,15 @@ function drawCopy() {
   const hasBank = st.bank && st.bank.accounts.length;
   box.innerHTML = `
     <p class="mcopy-t">Para mandarle al cliente <span class="muted small">— copie y pegue en WhatsApp</span></p>
-    <div class="mcopy-item"><div class="mcopy-h"><b>Resumen del pedido</b><button class="btn small" type="button" data-cp="res">Copiar resumen</button></div><pre class="msg">${esc(summaryText())}</pre></div>
-    ${hasBank ? `<div class="mcopy-item"><div class="mcopy-h"><b>Cuentas para transferir</b><button class="btn small" type="button" data-cp="banks">Copiar cuentas</button></div><pre class="msg">${esc(banksText())}</pre>
+    <div class="row-btns">
+      <button class="btn small" type="button" data-cp="res">Copiar resumen</button>
+      ${hasBank ? `<button class="btn small" type="button" data-cp="banks">Copiar cuentas</button>` : ""}
+    </div>
+    ${hasBank ? `<details class="mcopy-more"><summary class="muted small">Copiar solo un número de cuenta</summary>
       <div class="mcopy-nums">${st.bank.accounts.map((a, i) => `<button class="btn small ghost" type="button" data-cp="${i}">${esc(a.bank.replace(/^banco\s+(del?\s+)?/i, ""))} · ${esc(a.number)}</button>`).join("")}</div>
-      <p class="muted small" style="margin:6px 0 0">Toque un banco para copiar solo su número.</p></div>`
-      : `<p class="muted small">No hay cuentas guardadas. Agréguelas en Master → Ajustes → Transferencia directa.</p>`}`;
+    </details>` : `<p class="muted small">No hay cuentas guardadas. Agréguelas en Master → Ajustes → Transferencia directa.</p>`}`;
+  const more = box.querySelector(".mcopy-more");
+  if (more) { more.open = Boolean(st.copyOpen); more.ontoggle = () => { st.copyOpen = more.open; }; }
 }
 
 let qTimer;
@@ -424,6 +431,7 @@ function done(res, body, paid) {
     (res.deposit != null ? `Recibimos tu anticipo de ${money(res.deposit)}, ¡gracias! 🎉 El saldo de ${money(res.balance_due)} se paga el día del evento, antes de la entrega.\nSigue tu pedido aquí: ${link}`
       : paid ? `¡Pago recibido, gracias! Sigue tu pedido aquí: ${link}` : `Paga aquí con tarjeta, transferencia, PeiGo o DeUna y sigue tu pedido: ${link}`);
   $("#mForm").hidden = true;
+  if ($("#mBar")) $("#mBar").remove();
   $("#mDone").innerHTML = `
     <div class="panel mdone">
       <p class="eyebrow">Pedido registrado</p>
