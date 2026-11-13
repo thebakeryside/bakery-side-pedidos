@@ -359,6 +359,7 @@ function card(o) {
         <span>${esc(o.address)}${o.reference ? " · " + esc(o.reference) : ""}</span>
         ${Number(o.deposit) > 0 ? `<span>Evento · anticipo ${money(o.deposit)} · saldo ${money(o.balance_due)}${o.balance_paid_at ? ` cobrado ${hhmm(o.balance_paid_at)}` : " por cobrar"}</span>` : ""}
         <span>Total <b>${money(o.total)}</b> · envío ${money(o.delivery_fee)}${o.fee_edited ? " (editado)" : ""} · ${o.payment_method === "tarjeta" ? "tarjeta" : "transferencia"}</span>
+        ${o.uber_cost != null ? `<span>Uber pagado: <b>${money(o.uber_cost)}</b> · cobrado de envío ${money(o.delivery_fee)} · ${Number(o.delivery_fee) - Number(o.uber_cost) >= 0 ? "sobra" : "pone el negocio"} ${money(Math.abs(Number(o.delivery_fee) - Number(o.uber_cost)))}${o.uber_match_sure === false ? " (emparejado por hora)" : ""}</span>` : ""}
         ${Number(o.extra_paid) ? `<span>${Number(o.extra_paid) > 0 ? `Diferencia cobrada: ${money(o.extra_paid)}` : `Devuelto al cliente: ${money(-Number(o.extra_paid))}`}${o.extra_paid_at ? ` · ${hhmm(o.extra_paid_at)}` : ""}${o.extra_ref ? ` · ${esc(o.extra_ref)}` : ""}</span>` : ""}
         ${Number(o.discount) > 0 ? `<span>Regalo de cumpleaños: −${money(o.discount)}</span>` : ""}
         ${o.user_id ? `<span>Cliente con cuenta (suma sellos)</span>` : ""}
