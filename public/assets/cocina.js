@@ -279,8 +279,17 @@ function uberLink(o) {
   return q.toString();
 }
 // Android: abre la app de Uber directo (intent) sin pasar por una pestaña en blanco; iPhone: esquema uber://; computadora: enlace web
+// Computadora: la web de Uber ya no lee el enlace antiguo (/ul/); este formato abre el viaje con la recogida y la entrega puestas
+function uberWebLink(o) {
+  const st = S.settings || {}, who = o.recipient_name || o.customer_name;
+  const pickup = { latitude: Number(st.kitchen_lat), longitude: Number(st.kitchen_lng), addressLine1: "The Bakery Side" };
+  const drop = { latitude: Number(o.lat), longitude: Number(o.lng), addressLine1: `${who} · ${o.code}`, addressLine2: String(o.address || "").split(" · Ubicación del mapa: ")[0].slice(0, 120) };
+  return `https://m.uber.com/go/product-selection?pickup=${encodeURIComponent(JSON.stringify(pickup))}&drop%5B0%5D=${encodeURIComponent(JSON.stringify(drop))}`;
+}
 function openUber(o) {
-  const q = uberLink(o), web = "https://m.uber.com/ul/?" + q, ua = navigator.userAgent;
+  const q = uberLink(o), web = uberWebLink(o), ua = navigator.userAgent;
+  // nombre, teléfono y referencia quedan copiados para pegarlos en las instrucciones del envío
+  navigator.clipboard?.writeText(uberText(o)).then(() => toast("Datos del cliente copiados: péguelos en las instrucciones del Uber", 5000), () => {});
   if (/Android/i.test(ua)) { location.href = `intent://?${q}#Intent;scheme=uber;package=com.ubercab;S.browser_fallback_url=${encodeURIComponent(web)};end`; return; }
   if (/iPhone|iPad|iPod/i.test(ua)) { location.href = "uber://?" + q; return; }
   window.open(web, "_blank", "noopener");
