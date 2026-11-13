@@ -392,3 +392,9 @@ dialog.rcpt::backdrop { background: rgb(28 23 20 / .6); }
 
 /* Productos agregados después a un pedido (Editar pedido): fondo apenas distinto */
 .kitems li.added { background: rgba(198, 138, 78, .16); border-radius: 8px; margin-left: -6px; margin-right: -6px; padding-left: 6px; padding-right: 6px; }
+
+/* Borradores de cotización (pedido por WhatsApp) */
+.mdrafts { padding: 12px 14px; }
+.mdraft-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.mdraft { display: flex; align-items: center; gap: 6px; background: #FCF4EA; border: 1px solid rgba(198,138,78,.4); border-radius: 12px; padding: 4px 6px 4px 4px; }
+.mdraft .chip-x, .edlist .chip-x { border: 0; background: none; color: inherit; font-size: 17px; line-height: 1; cursor: pointer; padding: 0 4px; opacity: .65; }

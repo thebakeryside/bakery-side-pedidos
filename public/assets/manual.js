@@ -11,8 +11,66 @@ const QUICK = [
 
 let st = null;
 
-export async function renderManual(view) {
-  st = { cart: new Map(), loc: null, locLabel: "", quote: null, cfg: null, prods: [], cats: [], map: null, filter: "" };
+// ---------- borradores de cotización (se guardan en este equipo) ----------
+const DKEY = "tbs_borradores_whatsapp";
+const loadDrafts = () => { try { return JSON.parse(localStorage.getItem(DKEY) || "[]"); } catch { return []; } };
+const saveDrafts = (list) => { try { localStorage.setItem(DKEY, JSON.stringify(list.slice(0, 30))); return true; } catch { return false; } };
+const radio = (name) => $(`input[name="${name}"]:checked`)?.value;
+function collectDraft() {
+  return {
+    id: st.draftId || crypto.randomUUID?.() || String(Date.now()), at: Date.now(),
+    name: $("#mName").value, phone: $("#mPhone").value, email: $("#mEmail").value,
+    cart: [...st.cart], loc: st.loc, locLabel: st.locLabel, paste: $("#mPaste").value,
+    addr: $("#mAddr").value, ref: $("#mRef").value, fee: $("#mFee").value,
+    mode: radio("mMode"), when: radio("mWhen"), date: $("#mDate").value, time: $("#mTime").value,
+    gift: $("#mGift").checked, rname: $("#mRName").value, rphone: $("#mRPhone").value, from: $("#mFrom").value, msg: $("#mMsg").value,
+    pay: radio("mPay"), dep: $("#mDep").value, depManual: Boolean(st.depManual),
+    total: subtotal() + (feeNow() || 0),
+  };
+}
+function storeDraft() {
+  const d = collectDraft();
+  if (!d.name.trim() && !d.phone.trim() && !d.cart.length) { toast("No hay nada que guardar todavía."); return null; }
+  const list = loadDrafts().filter((x) => x.id !== d.id);
+  if (!saveDrafts([d, ...list])) { toast("No se pudo guardar el borrador en este equipo."); return null; }
+  st.draftId = d.id;
+  return d;
+}
+const dropDraft = (id) => saveDrafts(loadDrafts().filter((x) => x.id !== id));
+function drawDrafts() {
+  const box = $("#mDrafts"); if (!box) return;
+  const list = loadDrafts().filter((d) => d.id !== st.draftId);
+  const ago = (t) => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? "ahora" : m < 60 ? `hace ${m} min` : m < 1440 ? `hace ${Math.round(m / 60)} h` : `hace ${Math.round(m / 1440)} d`; };
+  box.innerHTML = list.length ? `<div class="panel mdrafts"><b>Borradores (${list.length})</b> <span class="muted small">— cotizaciones esperando respuesta del cliente</span>
+    <div class="mdraft-list">${list.map((d) => `<div class="mdraft"><button type="button" class="btn small" data-dopen="${esc(d.id)}">${esc(d.name.trim() || d.phone || "Sin nombre")} · ${money(d.total || 0)}</button><span class="muted small">${d.cart.reduce((t, [, q]) => t + q, 0)} prod. · ${ago(d.at)}</span><button type="button" class="chip-x" data-ddel="${esc(d.id)}" aria-label="Borrar borrador">×</button></div>`).join("")}</div></div>` : "";
+  box.onclick = (e) => {
+    const o = e.target.closest("[data-dopen]"), x = e.target.closest("[data-ddel]");
+    if (x) { dropDraft(x.dataset.ddel); drawDrafts(); toast("Borrador eliminado"); return; }
+    if (!o) return;
+    const d = loadDrafts().find((y) => y.id === o.dataset.dopen); if (!d) return drawDrafts();
+    // lo que se estaba armando no se pierde: se guarda como borrador antes de abrir el otro
+    if (st.cart.size || $("#mName").value.trim() || $("#mPhone").value.trim()) storeDraft();
+    renderManual(st.view, d);
+  };
+}
+function applyDraft(d) {
+  st.draftId = d.id;
+  const set = (id, v) => { const el = $(id); if (el && v != null) el.value = v; };
+  set("#mName", d.name); set("#mPhone", d.phone); set("#mEmail", d.email); set("#mPaste", d.paste);
+  set("#mAddr", d.addr); set("#mRef", d.ref); set("#mFee", d.fee);
+  set("#mRName", d.rname); set("#mRPhone", d.rphone); set("#mFrom", d.from); set("#mMsg", d.msg);
+  st.cart = new Map((d.cart || []).filter(([k]) => st.prods.some((p) => p.id === Number(String(k).split(":")[0]))));
+  const pick = (name, v) => { const r = v && $(`input[name="${name}"][value="${v}"]`); if (r && !r.disabled) { r.checked = true; r.dispatchEvent(new Event("change")); } };
+  pick("mMode", d.mode); pick("mWhen", d.when);
+  if (d.date && [...$("#mDate").options].some((o) => o.value === d.date)) { $("#mDate").value = d.date; fillTimes(); if (d.time) $("#mTime").value = d.time; }
+  $("#mGift").checked = Boolean(d.gift); $("#mGiftBox").hidden = !d.gift;
+  pick("mPay", d.pay); if (d.dep) { $("#mDep").value = d.dep; st.depManual = d.depManual; }
+  if (d.loc) { st.loc = d.loc; st.locLabel = d.locLabel || ""; }
+  drawProds(); quote();
+}
+
+export async function renderManual(view, draft = null) {
+  st = { cart: new Map(), loc: null, locLabel: "", quote: null, cfg: null, prods: [], cats: [], map: null, filter: "", view, draftId: null };
   view.innerHTML = `<p class="muted">Cargando…</p>`;
   const [cfg, cats, prods, opts, sets] = await Promise.all([
     api("config"),
@@ -42,6 +100,7 @@ export async function renderManual(view) {
       <p class="muted small" style="margin:10px 0 0">Guárdalos en WhatsApp Business como respuestas rápidas con estos atajos; la lista completa está en la guía de WhatsApp Business.</p>
     </details>
 
+    <div id="mDrafts"></div>
     <form class="manual" id="mForm" novalidate>
       <section class="panel">
         <h2 class="mtitle"><span>1</span> Cliente</h2>
@@ -115,12 +174,18 @@ export async function renderManual(view) {
         <div id="mSum" class="msum"></div>
         <div id="mCopyBox" class="mcopy" hidden></div>
         <button class="btn primary big" id="mGo" style="margin-top:12px">Registrar pedido</button>
+        <button class="btn" type="button" data-draft style="margin-top:8px">Guardar borrador y empezar otra</button>
         <p class="err" id="mErr" role="alert"></p>
       </section>
     </form>
-    <div class="mbar" id="mBar" hidden><span class="tabnum" id="mBarTot"></span><button class="btn small primary" type="button" id="mBarGo">Registrar</button></div>
+    <div class="mbar" id="mBar" hidden><span class="tabnum" id="mBarTot"></span><button class="btn small" type="button" data-draft>Guardar borrador</button><button class="btn small primary" type="button" id="mBarGo">Registrar</button></div>
     <div id="mDone"></div>`;
   $("#mBarGo").onclick = () => $("#mGo").click();
+  $$("[data-draft]", view).forEach((b) => (b.onclick = () => {
+    const d = storeDraft(); if (!d) return;
+    toast(`Borrador guardado: ${d.name.trim() || d.phone || "sin nombre"}. Puede empezar otra cotización.`, 4000);
+    renderManual(view);
+  }));
 
   $$("[data-copy]", view).forEach((b) => (b.onclick = () => copy(QUICK[+b.dataset.copy][1])));
   // +593 99 123 4567 → 0991234567 apenas se pega o se escribe
@@ -182,16 +247,19 @@ export async function renderManual(view) {
   $("#mFind").onclick = findPasted;
   $("#mPaste").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); findPasted(); } });
   $("#mForm").onsubmit = submit;
+  // nombre, dirección, regalo…: también actualizan el borrador abierto
+  $("#mForm").addEventListener("input", () => { if (st.draftId) { clearTimeout(st.autoT); st.autoT = setTimeout(() => st.draftId && storeDraft(), 800); } });
   $("#mCopyBox").onclick = (e) => {
     const b = e.target.closest("[data-cp]"); if (!b) return;
     const k = b.dataset.cp;
     copy(k === "res" ? summaryText() : k === "banks" ? banksText() : st.bank.accounts[+k].number);
   };
-  fillDates(); drawProds();
+  fillDates(); drawProds(); drawDrafts();
+  if (draft) applyDraft(draft);
 
   const k = cfg.kitchen?.lat ? { lat: cfg.kitchen.lat, lng: cfg.kitchen.lng } : null;
   st.map = await createMap($("#mMap"), {
-    start: null, center: k, searchSlot: $("#mSearchSlot"),
+    start: draft?.loc || null, center: k, searchSlot: $("#mSearchSlot"),
     onPick: (lat, lng, addr) => { st.loc = { lat, lng }; st.locLabel = addr || ""; quote(); },
   });
 }
@@ -283,6 +351,8 @@ function drawSum() {
     $("#mDepNote").innerHTML = t ? `${t <= 50 ? `<span class="err">Ojo: los eventos son pedidos de más de $50. </span>` : ""}Saldo por cobrar el día del evento: <b>${money(Math.max(t - d, 0))}</b>` : "";
   }
   drawCopy();
+  // un borrador abierto se va actualizando solo mientras se edita
+  if (st.draftId && !st.saving) { clearTimeout(st.autoT); st.autoT = setTimeout(() => { if (st.draftId && $("#mForm") && !$("#mForm").hidden) storeDraft(); }, 800); }
   if ($("#mBar")) { $("#mBar").hidden = !lines.length; $("#mBarTot").innerHTML = `Total <b>${money(t)}</b>${isDeposit() ? ` · anticipo ${money(depNow())}` : ""}`; }
   $("#mGo").textContent = lines.length && fee != null ? (isDone() ? `Registrar como entregado · ${money(t)}` : isDeposit() ? `Registrar evento · anticipo ${money(depNow())}` : paid ? `Registrar pedido pagado · ${money(t)}` : `Registrar y crear enlace · ${money(t)}`) : "Registrar pedido";
 }
@@ -424,6 +494,7 @@ async function submit(e) {
   const btn = $("#mGo"); btn.disabled = true; btn.textContent = "Registrando…";
   try {
     const res = await api("crear_manual", body);
+    if (st.draftId) { clearTimeout(st.autoT); dropDraft(st.draftId); st.draftId = null; }
     done(res, body, paid || deposit != null, delivered);
   } catch (ex) { err.textContent = ex.message; btn.disabled = false; drawSum(); }
 }
