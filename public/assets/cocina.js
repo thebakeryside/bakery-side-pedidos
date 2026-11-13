@@ -1,4 +1,4 @@
-import { sb, api, $, $$, money, esc, hhmm, when, dayLabel, orderRange, toast, waLink, STATUS, todayLocal , tableSearch } from "./common.js";
+import { sb, api, $, $$, money, esc, hhmm, when, dayLabel, orderRange, toast, waLink, waAttrs, waMode, setWaMode, fold, STATUS, todayLocal , tableSearch } from "./common.js";
 import { requireLogin, loginHTML } from "./auth.js";
 import { renderManual } from "./manual.js";
 
@@ -346,7 +346,7 @@ function card(o) {
       </div>
     </details>
     <div class="acts">
-      <a class="btn small ghost" href="${waLink(o.customer_phone, waText(o))}" target="_blank" rel="noopener">WhatsApp</a>
+      <a class="btn small ghost" ${waAttrs(o.customer_phone, waText(o))}>WhatsApp</a>
       <a class="btn small ghost" href="https://www.google.com/maps/search/?api=1&query=${o.lat},${o.lng}" target="_blank" rel="noopener">Mapa</a>
       ${canForce && o.status === "listo" ? `<button class="btn small ghost" data-act="forceAsk" data-id="${o.id}">Marcar entregado</button>` : ""}
       ${o.status !== "cancelado" && S.editing?.id !== o.id ? `<button class="btn small ghost" data-act="editOpen" data-id="${o.id}">✏️ Editar pedido</button>` : ""}
@@ -493,6 +493,7 @@ async function openEditor(o) {
   box.innerHTML = `
     <div class="edhead"><b>✏️ Editar ${esc(o.code)}</b><button class="btn small ghost" data-act="edClose" type="button">Cerrar</button></div>
     <label class="f">Agregar productos</label>
+    <input class="in" data-edsearch type="search" placeholder="Buscar producto (ej.: hibiscus, mini, lata)" autocomplete="off">
     <div class="edrow"><select class="in" data-edp style="flex:1;min-width:180px"><option value="">Elige un producto…</option>${optsHtml}</select>
       <input class="in" data-edq type="number" inputmode="numeric" min="1" max="50" value="1" style="width:70px" aria-label="Cantidad">
       <button class="btn small" data-act="edAdd" type="button">Agregar</button></div>
@@ -505,6 +506,25 @@ async function openEditor(o) {
     <p class="err" data-ederr role="alert"></p>
     <div class="edrow"><button class="btn primary" data-act="edSave" type="button">Guardar cambios</button></div>`;
   $("[data-edp]", box).onchange = edDrawOpts;
+  // buscador: filtra la lista (sin tildes, todas las palabras) y elige solo si queda un producto
+  const edSel = $("[data-edp]", box);
+  const catName = (p) => S.cats.find((c) => c.id === p.category_id)?.name || "";
+  $("[data-edsearch]", box).oninput = (e) => {
+    const words = fold(e.target.value).split(/\s+/).filter(Boolean);
+    let hits = 0, last = null;
+    $$("option[value]", edSel).forEach((op) => {
+      if (!op.value) return;
+      const p = S.products.find((x) => String(x.id) === op.value);
+      const hay = fold(`${p?.name} ${catName(p)} ${p?.description || ""}`);
+      const ok = words.every((w) => hay.includes(w));
+      op.hidden = !ok; op.disabled = !ok;
+      if (ok) { hits++; last = op.value; }
+    });
+    $$("optgroup", edSel).forEach((g) => (g.hidden = ![...g.children].some((op) => !op.hidden)));
+    if (hits === 1 && edSel.value !== last) { edSel.value = last; edDrawOpts(); }
+    else if (edSel.selectedOptions[0]?.hidden) { edSel.value = ""; edDrawOpts(); }
+  };
+  $("[data-edsearch]", box).onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); if (edSel.value) edAdd(); } };
   $("[data-edfee]", box)?.addEventListener("input", edDrawSum);
   box.addEventListener("change", (e) => { if (e.target.matches("[data-edg]")) edDrawOpts(true); if (e.target.matches("input[name=edpay]")) edDrawSum(); });
   edDrawList();
@@ -529,6 +549,7 @@ function edAdd() {
   if (miss) { err.textContent = `Elige ${miss.getAttribute("aria-label").toLowerCase()}.`; miss.focus(); return; }
   S.editing.add.push({ product_id: pid, quantity: q, options: sels.map((x) => Number(x.value)).filter(Boolean) });
   $("[data-edp]", box).value = ""; $("[data-edq]", box).value = 1; $("[data-edopts]", box).innerHTML = "";
+  const sr = $("[data-edsearch]", box); if (sr) { sr.value = ""; sr.dispatchEvent(new Event("input")); sr.focus(); }
   edDrawList();
 }
 function edDrawList() {
@@ -594,7 +615,7 @@ function renderRiders() {
       <h2 class="display" style="font-size:30px">Motorizados</h2>
       <p class="muted small">${active.length} ${active.length === 1 ? "motorizado activo" : "motorizados activos"}. Para agregar o quitar motorizados, habla con el master.</p>
       <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Nombre</th><th>WhatsApp</th><th>Placa</th><th>Estado</th></tr></thead><tbody>
-      ${S.riders.map((r) => `<tr><td>${esc(r.full_name)}</td><td><a href="${waLink(r.phone, "")}" target="_blank" rel="noopener">${esc(r.phone)}</a></td><td>${esc(r.plate || "")}</td>
+      ${S.riders.map((r) => `<tr><td>${esc(r.full_name)}</td><td><a ${waAttrs(r.phone, "")}>${esc(r.phone)}</a></td><td>${esc(r.plate || "")}</td>
         <td>${r.active ? `<span class="st st-entregado">Activo</span>` : `<span class="st">Inactivo</span>`}</td></tr>`).join("") || `<tr><td colspan="4" class="muted">Aún no hay motorizados.</td></tr>`}
       </tbody></table></div>
     </div>`;
@@ -680,7 +701,16 @@ async function renderSettings() {
         <p class="muted small" style="margin:6px 0 12px">¿Mucho trabajo? Durante 30 minutos, los pedidos nuevos se siguen recibiendo, pero con una hora de llegada más tarde.</p>
         <div class="chips" role="radiogroup" aria-label="Minutos extra">${[15, 30, 45].map((m) => `<label class="chip"><input type="radio" name="extra" value="${m}" ${m === extra ? "checked" : ""}> +${m} min</label>`).join("")}</div>
         <button class="btn primary" type="button" id="busyGo" style="margin-top:12px">Activar por 30 minutos</button>`}
+    </div>
+    <div class="panel">
+      <h2 class="mtitle" style="margin:0 0 4px">WhatsApp en este equipo</h2>
+      <p class="muted small" style="margin:0 0 10px">Cómo se abren los botones de WhatsApp de los pedidos. Con la app instalada se abre directo el chat, sin pestaña nueva.</p>
+      <div class="chips" role="radiogroup" aria-label="Abrir WhatsApp con">
+        <label class="chip"><input type="radio" name="waMode" value="app" ${waMode() === "app" ? "checked" : ""}> App de WhatsApp instalada</label>
+        <label class="chip"><input type="radio" name="waMode" value="web" ${waMode() === "web" ? "checked" : ""}> WhatsApp Web (navegador)</label>
+      </div>
     </div>`;
+  $$('input[name="waMode"]').forEach((r) => (r.onchange = () => { setWaMode(r.value); toast(r.value === "app" ? "WhatsApp se abrirá en la app" : "WhatsApp se abrirá en WhatsApp Web"); }));
 
   todayHoursText().then((t) => { const el = $("#todayHours"); if (el) el.textContent = t; });
 

@@ -73,6 +73,25 @@ export const waLink = (phone, text) => {
   const p = String(phone || "").replace(/\D/g, "").replace(/^0/, "593");
   return `https://wa.me/${p}?text=${encodeURIComponent(text)}`;
 };
+// Paneles (cocina, master, moto): abrir WhatsApp directo en la app instalada, sin pestaña intermedia.
+// Se elige por equipo en Cocina → Tienda ("app" o "web").
+export const waMode = () => { try { return localStorage.getItem("tbs_wa_mode") || "app"; } catch { return "app"; } };
+export const setWaMode = (m) => { try { localStorage.setItem("tbs_wa_mode", m === "web" ? "web" : "app"); } catch {} };
+export function waAppLink(phone, text) {
+  const p = String(phone || "").replace(/\D/g, "").replace(/^0/, "593");
+  const t = encodeURIComponent(text || "");
+  return waMode() === "web" ? `https://web.whatsapp.com/send?phone=${p}&text=${t}` : `whatsapp://send?phone=${p}&text=${t}`;
+}
+// Atributos para un <a>: la app se abre en el mismo lugar (sin pestaña nueva); WhatsApp Web, en otra pestaña
+export const waAttrs = (phone, text) => `href="${esc(waAppLink(phone, text))}"${waMode() === "web" ? ' target="_blank" rel="noopener"' : ""}`;
+// Número de Ecuador pegado como +593 99 123 4567, 593991234567 o 991234567 → 0991234567
+export function normPhoneEC(v) {
+  let d = String(v || "").replace(/\D/g, "");
+  if (d.startsWith("593")) d = d.slice(3);
+  if (d.length === 9 && d.startsWith("9")) d = "0" + d;
+  return d;
+}
+
 
 export const STATUS = {
   pendiente_pago: "Esperando pago",
@@ -130,7 +149,8 @@ export const allergenNames = (codes) => ALLERGENS.filter(([k]) => (codes || []).
 export const isTodayLocal = (iso) => !!iso && new Date(new Date(iso).getTime() - 5 * 3600000).toISOString().slice(0, 10) === todayLocal();
 
 // Buscador para tablas de los paneles: filtra filas mientras escribes (sin importar tildes ni mayúsculas)
-const fold = (t) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+// Para buscar sin importar tildes ni mayúsculas
+export const fold = (t) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 export function tableSearch(scope, placeholder = "Buscar…") {
   if (!scope) return;
   const box = document.createElement("input");

@@ -1,5 +1,5 @@
 // Pedido por WhatsApp: cocina o master lo registran con lo mínimo y le mandan al cliente el enlace de pago
-import { sb, api, $, $$, money, esc, hhmm, when, toast, waLink, localToISO, todayLocal, parseBank } from "./common.js";
+import { sb, api, $, $$, money, esc, hhmm, when, toast, waLink, waAttrs, normPhoneEC, fold, localToISO, todayLocal, parseBank } from "./common.js";
 import { createMap } from "./mapa.js";
 
 const SITE = "https://thebakeryside.com";
@@ -120,7 +120,22 @@ export async function renderManual(view) {
     <div id="mDone"></div>`;
 
   $$("[data-copy]", view).forEach((b) => (b.onclick = () => copy(QUICK[+b.dataset.copy][1])));
-  $("#mSearch").oninput = () => { st.filter = $("#mSearch").value.trim().toLowerCase(); drawProds(); };
+  // +593 99 123 4567 → 0991234567 apenas se pega o se escribe
+  const fixPhone = () => { const el = $("#mPhone"), v = el.value; if (/\+/.test(v) || v.replace(/\D/g, "").length >= 12) { const n = normPhoneEC(v); if (n !== v) el.value = n; } };
+  $("#mPhone").addEventListener("input", fixPhone);
+  $("#mPhone").addEventListener("blur", () => { $("#mPhone").value = normPhoneEC($("#mPhone").value); });
+  // buscador: sin tildes, todas las palabras, también por categoría, descripción y opciones; Enter agrega si hay un solo producto
+  $("#mSearch").oninput = () => { st.filter = fold($("#mSearch").value.trim()); drawProds(); };
+  $("#mSearch").onkeydown = (e) => {
+    if (e.key === "Escape") { $("#mSearch").value = ""; st.filter = ""; drawProds(); return; }
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const hits = st.prods.filter(matches);
+    if (hits.length === 1 && !(st.opts[hits[0].id] || []).length) {
+      const k = String(hits[0].id); st.cart.set(k, (st.cart.get(k) || 0) + 1);
+      $("#mSearch").value = ""; st.filter = ""; drawProds(); quote(); toast(`+1 ${hits[0].name}`);
+    } else if (hits.length) $("#mProds").querySelector("button, select")?.focus();
+  };
   // armar un combo: muestra el endulzante solo si la bebida elegida lo lleva
   const buildLive = (box) => {
     const gs = st.opts[box.dataset.pid] || [];
@@ -182,10 +197,19 @@ function copy(text) {
 const todayStr = () => todayLocal();
 const isOutToday = (p) => p && (p.sold_out_day === todayStr() || (p.stock_day === todayStr() && p.stock_left !== null && p.stock_left <= 0));
 const outTag = (p) => (isOutToday(p) ? ` <span class="err small">· agotado hoy</span>` : "");
+// ¿El producto coincide con lo buscado? Todas las palabras deben aparecer en el nombre, la categoría, la descripción o sus opciones
+function matches(p) {
+  const words = (st.filter || "").split(/\s+/).filter(Boolean);
+  if (!words.length) return true;
+  const cat = st.cats.find((c) => c.id === p.category_id)?.name || "";
+  const opts = (st.opts[p.id] || []).flatMap((g) => g.option_choices.map((c) => c.name)).join(" ");
+  const hay = fold(`${p.name} ${cat} ${p.description || ""} ${opts}`);
+  return words.every((w) => hay.includes(w));
+}
 function drawProds() {
   const f = st.filter;
   const html = st.cats.map((c) => {
-    const items = st.prods.filter((p) => p.category_id === c.id && (!f || p.name.toLowerCase().includes(f)));
+    const items = st.prods.filter((p) => p.category_id === c.id && matches(p));
     if (!items.length) return "";
     const row = (k, label, price) => {
       const q = st.cart.get(k) || 0;
@@ -264,8 +288,9 @@ function summaryText() {
 }
 function banksText() {
   const b = st.bank;
-  const accs = b.accounts.map((a) => `${a.bank}\nCuenta de ${String(a.type || "ahorros").toLowerCase()}\n${a.number}`).join("\n\n");
-  return `Puede transferir a cualquiera de estas cuentas:\n\n${accs}\n\nA nombre de: ${b.holder}${b.email ? `\nCorreo: ${b.email}` : ""}\nMonto: ${money(payAmount())}\n\nPor favor, envíenos el comprobante por aquí. ¡Gracias! 🙌`;
+  const bank = (n) => (/^banco/i.test(n) ? n : `Banco ${n}`);
+  const accs = b.accounts.map((a) => `${bank(a.bank)}\nCuenta de ${String(a.type || "ahorros").toLowerCase()} (${a.number})`).join("\n.\n");
+  return `Transferencia Directa\n👤 ${b.holder}${b.email ? `\n📩 ${b.email}` : ""}\n.\n${accs}`;
 }
 function drawCopy() {
   const box = $("#mCopyBox"); if (!box) return;
@@ -406,7 +431,7 @@ function done(res, body, paid) {
       <p class="muted">${res.deposit != null ? `Anticipo ${money(res.deposit)} registrado; ya está en Pedidos de cocina. Saldo por cobrar el día del evento: <b>${money(res.balance_due)}</b>.` : paid ? "Quedó pagado y ya está en Pedidos de cocina." : "Queda «Esperando pago». Pasa a cocina apenas el cliente pague con el enlace."}</p>
       <pre class="msg">${esc(msg)}</pre>
       <div class="row-btns">
-        <a class="btn primary" href="${esc(waLink(body.customer_phone, msg))}" target="_blank" rel="noopener">Enviar por WhatsApp</a>
+        <a class="btn primary" ${waAttrs(body.customer_phone, msg)}>Enviar por WhatsApp</a>
         <button class="btn" type="button" id="mCopy">Copiar mensaje</button>
         <button class="btn ghost" type="button" id="mNew">Nuevo pedido</button>
       </div>
