@@ -1,4 +1,4 @@
-import { sb, api, $, $$, money, esc, hhmm, when, dayLabel, orderRange, toast, waLink, waAttrs, waMode, setWaMode, fold, STATUS, todayLocal , tableSearch } from "./common.js";
+import { sb, api, $, $$, money, esc, hhmm, when, dayLabel, orderRange, toast, waLink, waAttrs, waMode, setWaMode, waAuto, setWaAuto, openWa, fold, STATUS, todayLocal , tableSearch } from "./common.js";
 import { requireLogin, loginHTML } from "./auth.js";
 import { renderManual } from "./manual.js";
 
@@ -188,7 +188,7 @@ function waText(o) {
     por_confirmar: `Hola ${first}, recibimos tu comprobante del pedido ${o.code}. Lo estamos verificando. Seguimiento: ${link}`,
     confirmado: `Hola ${first}, ¡confirmamos tu pedido ${o.code}! ${o.scheduled_for ? `Lo entregamos ${dayLabel(o.scheduled_for).toLowerCase()} entre ${orderRange(o, win())}.` : `Llega entre ${orderRange(o, win())}.`} Seguimiento: ${link}`,
     preparando: `Hola ${first}, tu pedido ${o.code} ya se está preparando. Seguimiento: ${link}`,
-    listo: `Hola ${first}, tu pedido ${o.code} está listo y sale en minutos. Seguimiento: ${link}`,
+    listo: o.fulfillment === "pickup" ? `Hola ${first}, tu pedido ${o.code} ya está listo para retirar en nuestra cocina. Seguimiento: ${link}` : `Hola ${first}, tu pedido ${o.code} está listo y sale en minutos. Seguimiento: ${link}`,
     en_camino: `Hola ${first}, tu pedido ${o.code} va en camino${r ? ` con ${r}` : ""}. Seguimiento: ${link}`,
     entregado: `Hola ${first}, gracias por tu pedido ${o.code}. ¡Que lo disfrutes!`,
     cancelado: `Hola ${first}, tu pedido ${o.code} fue cancelado. Escríbenos si tienes dudas.`,
@@ -381,8 +381,15 @@ function card(o) {
 // ---------- acciones de pedidos ----------
 async function upd(id, patch, msg) {
   const { error } = await sb.from("orders").update(patch).eq("id", id);
-  if (error) return toast("No se pudo guardar: " + error.message);
+  if (error) { toast("No se pudo guardar: " + error.message); return false; }
   toast(msg); await loadOrders(); render();
+  return true;
+}
+// Después de cambiar el estado: abre el chat del cliente con el mensaje de ese paso (si está encendido en Tienda)
+function tell(o, status) {
+  if (!waAuto() || !o?.customer_phone) return;
+  const text = waText({ ...o, status });
+  if (text) openWa(o.customer_phone, text);
 }
 document.addEventListener("click", async (e) => {
   const b = e.target.closest("button[data-act]"); if (!b) return;
@@ -396,12 +403,12 @@ document.addEventListener("click", async (e) => {
     case "confirmPay": {
       // la hora de llegada se cuenta desde que se confirma el pago; si son dos entregas, se confirman ambas
       const patch = { payment_status: "pagado", status: "confirmado", paid_at: now };
-      if (!o.group_id) return upd(id, patch, `${o.code}: pago confirmado`);
+      if (!o.group_id) { if (await upd(id, patch, `${o.code}: pago confirmado`)) tell(o, "confirmado"); return; }
       for (const g of S.orders.filter((x) => x.group_id === o.group_id && x.status !== "cancelado")) {
         const { error } = await sb.from("orders").update(patch).eq("id", g.id);
         if (error) return toast("No se pudo guardar: " + error.message);
       }
-      toast(`${o.code}: pago confirmado (las dos entregas)`); await loadOrders(); render(); return;
+      toast(`${o.code}: pago confirmado (las dos entregas)`); await loadOrders(); render(); tell(o, "confirmado"); return;
     }
     // Pago fuera de la tienda (link de pago o transferencia por WhatsApp): cocina lo marca a mano
     case "manualPayAsk": $(`[data-mpay="${id}"]`).hidden = false; break;
@@ -415,7 +422,7 @@ document.addEventListener("click", async (e) => {
         const { error } = await sb.from("orders").update(patch).eq("id", g.id);
         if (error) return toast("No se pudo guardar: " + error.message);
       }
-      toast(`${o.code}: marcado como pagado${group.length > 1 ? " (las dos entregas)" : ""}`); await loadOrders(); render(); return;
+      toast(`${o.code}: marcado como pagado${group.length > 1 ? " (las dos entregas)" : ""}`); await loadOrders(); render(); tell(o, "confirmado"); return;
     }
     case "uber": openUber(o); return; // solo abre Uber; el pedido no se marca hasta tocar "Ya lo pedí"
     case "uberMark": return upd(id, { uber_requested_at: now }, `${o.code}: Uber pedido`);
@@ -425,8 +432,8 @@ document.addEventListener("click", async (e) => {
       catch { window.prompt("Copia estos datos:", uberText(o)); }
       return;
     }
-    case "prep": return upd(id, { status: "preparando", prep_started_at: now }, `${o.code} en preparación`);
-    case "ready": return upd(id, { status: "listo", ready_at: now }, `${o.code} listo`);
+    case "prep": if (await upd(id, { status: "preparando", prep_started_at: now }, `${o.code} en preparación`)) tell(o, "preparando"); return;
+    case "ready": if (await upd(id, { status: "listo", ready_at: now }, `${o.code} listo`)) tell(o, "listo"); return;
     case "balanceAsk": $(`[data-bal="${id}"]`).hidden = false; break;
     case "extraAsk": $(`[data-extra="${id}"]`).hidden = false; break;
     case "extraPaid": {
@@ -443,16 +450,17 @@ document.addEventListener("click", async (e) => {
     case "edDel": S.editing.add.splice(Number(b.dataset.i), 1); edDrawList(); return;
     case "edSave": return edSave(b);
     case "balancePaid": return upd(id, { balance_paid_at: now }, `Saldo de ${o.code} cobrado`);
-    case "pickedUp": return upd(id, { status: "entregado", delivered_at: now, picked_at: o.picked_at || now, delivered_by: "cocina", delivery_note: "Retiró en la cocina" }, `${o.code} entregado`);
+    case "pickedUp": if (await upd(id, { status: "entregado", delivered_at: now, picked_at: o.picked_at || now, delivered_by: "cocina", delivery_note: "Retiró en la cocina" }, `${o.code} entregado`)) tell(o, "entregado"); return;
     case "forceAsk": $(`[data-force="${id}"]`).hidden = false; $(`[data-freason="${id}"]`).focus(); break;
     case "force": {
       const reason = $(`[data-freason="${id}"]`).value.trim();
-      return upd(id, { status: "entregado", delivered_at: now, picked_at: o.picked_at || now, delivered_by: "cocina", delivery_note: reason.slice(0, 200) || null }, `${o.code} entregado`);
+      if (await upd(id, { status: "entregado", delivered_at: now, picked_at: o.picked_at || now, delivered_by: "cocina", delivery_note: reason.slice(0, 200) || null }, `${o.code} entregado`)) tell(o, "entregado");
+      return;
     }
     // Entregas con Uber Courier: cocina marca la salida y la entrega
     case "sentAsk": $(`[data-sent="${id}"]`).hidden = false; break;
-    case "sent": return upd(id, { status: "en_camino", picked_at: now }, `${o.code} en camino`);
-    case "delivered": return upd(id, { status: "entregado", delivered_at: now, picked_at: o.picked_at || now, delivered_by: "cocina", delivery_note: "Uber" }, `${o.code} entregado`);
+    case "sent": if (await upd(id, { status: "en_camino", picked_at: now }, `${o.code} en camino`)) tell(o, "en_camino"); return;
+    case "delivered": if (await upd(id, { status: "entregado", delivered_at: now, picked_at: o.picked_at || now, delivered_by: "cocina", delivery_note: "Uber" }, `${o.code} entregado`)) tell(o, "entregado"); return;
     case "cancelAsk": $(`[data-cancel="${id}"]`).hidden = false; $(`[data-reason="${id}"]`).focus(); break;
     case "cancel": {
       const reason = $(`[data-reason="${id}"]`).value.trim();
@@ -717,7 +725,9 @@ async function renderSettings() {
         <label class="chip"><input type="radio" name="waMode" value="app" ${waMode() === "app" ? "checked" : ""}> App de WhatsApp instalada</label>
         <label class="chip"><input type="radio" name="waMode" value="web" ${waMode() === "web" ? "checked" : ""}> WhatsApp Web (navegador)</label>
       </div>
+      <label class="check" style="margin-top:10px"><input type="checkbox" id="waAuto" ${waAuto() ? "checked" : ""}> Al tocar <b>Confirmar pago</b>, <b>Empezar a preparar</b>, <b>Listo</b>, <b>Salió</b> o <b>Entregado</b>, abrir el chat del cliente con el mensaje ya escrito (solo falta Enviar)</label>
     </div>`;
+  $("#waAuto").onchange = (e) => { setWaAuto(e.target.checked); toast(e.target.checked ? "Se abrirá el chat del cliente en cada paso" : "Ya no se abrirá el chat en cada paso"); };
   $$('input[name="waMode"]').forEach((r) => (r.onchange = () => { setWaMode(r.value); toast(r.value === "app" ? "WhatsApp se abrirá en la app" : "WhatsApp se abrirá en WhatsApp Web"); }));
 
   todayHoursText().then((t) => { const el = $("#todayHours"); if (el) el.textContent = t; });

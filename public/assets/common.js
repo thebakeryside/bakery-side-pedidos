@@ -82,6 +82,13 @@ export function waAppLink(phone, text) {
   const t = encodeURIComponent(text || "");
   return waMode() === "web" ? `https://web.whatsapp.com/send?phone=${p}&text=${t}` : `whatsapp://send?phone=${p}&text=${t}`;
 }
+// Al cambiar de estado un pedido, abrir el chat del cliente con el mensaje listo (por equipo; encendido por defecto)
+export const waAuto = () => { try { return localStorage.getItem("tbs_wa_auto") !== "0"; } catch { return true; } };
+export const setWaAuto = (on) => { try { localStorage.setItem("tbs_wa_auto", on ? "1" : "0"); } catch {} };
+export function openWa(phone, text) {
+  const url = waAppLink(phone, text);
+  if (waMode() === "web") window.open(url, "_blank", "noopener"); else location.href = url;
+}
 // Atributos para un <a>: la app se abre en el mismo lugar (sin pestaña nueva); WhatsApp Web, en otra pestaña
 export const waAttrs = (phone, text) => `href="${esc(waAppLink(phone, text))}"${waMode() === "web" ? ' target="_blank" rel="noopener"' : ""}`;
 // Número de Ecuador pegado como +593 99 123 4567, 593991234567 o 991234567 → 0991234567
