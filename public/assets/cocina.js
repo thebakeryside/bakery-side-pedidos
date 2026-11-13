@@ -195,6 +195,13 @@ function waText(o) {
   };
   return msgs[o.status];
 }
+// Aviso repentino de retraso por lluvia (botón "🌧️ Lluvia" en la tarjeta); va en "usted"
+function rainText(o) {
+  const first = o.customer_name.split(" ")[0];
+  const link = `${location.origin}/pedido?t=${o.tracking_token}`;
+  return `Hola, ${first} 🌧️ En este momento estamos experimentando retrasos en las entregas por la fuerte lluvia y el tráfico en la ciudad. Su pedido ${o.code} podría tardar un poco más en llegar; lo estamos cuidando para que llegue perfecto. Gracias por su paciencia 🤍\nSeguimiento: ${link}\n\nThe Bakery Side · ¡Qué dulce!`;
+}
+const rainOk = (o) => o.customer_phone && o.fulfillment !== "pickup" && !["entregado", "cancelado", "pendiente_pago"].includes(o.status);
 
 // Tarjeta de pedido: arriba lo que cocina necesita (hora, productos, regalo, acción); los datos del cliente van plegados
 const ICON = {
@@ -370,6 +377,7 @@ function card(o) {
     </details>
     <div class="acts">
       <a class="btn small ghost" ${waAttrs(o.customer_phone, waText(o))}>WhatsApp</a>
+      ${rainOk(o) ? `<a class="btn small ghost" title="Avisar al cliente que hay retraso por lluvia" ${waAttrs(o.customer_phone, rainText(o))}>🌧️ Lluvia</a>` : ""}
       <a class="btn small ghost" href="https://www.google.com/maps/search/?api=1&query=${o.lat},${o.lng}" target="_blank" rel="noopener">Mapa</a>
       ${canForce && o.status === "listo" ? `<button class="btn small ghost" data-act="forceAsk" data-id="${o.id}">Marcar entregado</button>` : ""}
       ${o.status !== "cancelado" && S.editing?.id !== o.id ? `<button class="btn small ghost" data-act="editOpen" data-id="${o.id}">✏️ Editar pedido</button>` : ""}
