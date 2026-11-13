@@ -613,6 +613,13 @@ function coordsIn(t: string) {
   return null;
 }
 
+// Sellos de lo agregado a un pedido ya pagado: se entregan cuando no queda diferencia por cobrar
+async function topUpStamps(orderId: string) {
+  const { data, error } = await db.rpc("top_up_order_stamps", { p_order: orderId });
+  if (error) { console.error("top_up_order_stamps", error); return 0; }
+  return Number(data ?? 0);
+}
+
 // ---------- acciones ----------
 const actions: Record<string, (b: any, user: User) => Promise<unknown>> = {
   async config() {
@@ -739,7 +746,8 @@ const actions: Record<string, (b: any, user: User) => Promise<unknown>> = {
       patch.extra_paid_at ? "diferencia cobrada" : "",
     ].filter(Boolean);
     await db.from("order_events").insert({ order_id: o!.id, status: o!.status, actor: user!.id, note: `Editado por ${by}: ${parts.join(" · ")}`.slice(0, 500) });
-    return { code: o!.code, subtotal, delivery_fee: fee, total, diff, extra_due: paidLike ? extra : 0, paid: paidLike };
+    const stamps = o!.payment_status === "pagado" ? await topUpStamps(o!.id) : 0;
+    return { code: o!.code, subtotal, delivery_fee: fee, total, diff, extra_due: paidLike ? extra : 0, paid: paidLike, stamps };
   },
 
   // Cocina confirma que el cliente pagó la diferencia (o que ya se le devolvió)
@@ -754,7 +762,8 @@ const actions: Record<string, (b: any, user: User) => Promise<unknown>> = {
     const { error: e2 } = await db.from("orders").update({ extra_due: 0, extra_paid: r2(Number(o!.extra_paid || 0) + due), extra_paid_at: new Date().toISOString(), extra_ref: ref }).eq("id", o!.id).eq("extra_due", o!.extra_due);
     if (e2) throw e2;
     await db.from("order_events").insert({ order_id: o!.id, status: o!.status, actor: user!.id, note: `${due > 0 ? `Diferencia de $${due.toFixed(2)} cobrada` : `Devueltos $${(-due).toFixed(2)} al cliente`} · ${ref}`.slice(0, 500) });
-    return { ok: true, code: o!.code, amount: due };
+    const stamps = await topUpStamps(o!.id);
+    return { ok: true, code: o!.code, amount: due, stamps };
   },
 
   // Convierte un enlace de ubicación de WhatsApp/Google Maps (incluidos los cortos) en coordenadas

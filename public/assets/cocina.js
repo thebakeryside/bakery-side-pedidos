@@ -425,7 +425,7 @@ document.addEventListener("click", async (e) => {
       b.disabled = true;
       try {
         const r = await api("cobrar_diferencia", { order_id: id, ref: $(`[data-extraref="${id}"]`).value.trim() });
-        toast(r.amount > 0 ? `${o.code}: diferencia de ${money(r.amount)} cobrada` : `${o.code}: devolución registrada`);
+        toast((r.amount > 0 ? `${o.code}: diferencia de ${money(r.amount)} cobrada` : `${o.code}: devolución registrada`) + (r.stamps ? ` · +${r.stamps} sello${r.stamps > 1 ? "s" : ""} para el cliente` : ""), 5000);
       } catch (ex) { b.disabled = false; return toast(ex.message); }
       await loadOrders(); render(); return;
     }
@@ -581,7 +581,7 @@ async function edSave(btn) {
       extra_paid: Boolean(paidNow), extra_ref: paidNow ? ($("[data-edref]", box)?.value.trim() || "") : "",
     });
     S.editing = null;
-    toast(r.paid && r.extra_due > 0 ? `${r.code}: nuevo total ${money(r.total)} · falta cobrar ${money(r.extra_due)}` : r.paid && r.extra_due < 0 ? `${r.code}: nuevo total ${money(r.total)} · devolver ${money(-r.extra_due)}` : `${r.code}: nuevo total ${money(r.total)}`, 5000);
+    toast(r.paid && r.extra_due > 0 ? `${r.code}: nuevo total ${money(r.total)} · falta cobrar ${money(r.extra_due)}` : r.paid && r.extra_due < 0 ? `${r.code}: nuevo total ${money(r.total)} · devolver ${money(-r.extra_due)}` : `${r.code}: nuevo total ${money(r.total)}${r.stamps ? ` · +${r.stamps} sello${r.stamps > 1 ? "s" : ""} para el cliente` : ""}`, 5000);
     await loadOrders(); render();
   } catch (ex) { err.textContent = ex.message; btn.disabled = false; btn.textContent = "Guardar cambios"; }
 }
