@@ -1,5 +1,5 @@
 // The Bakery Side — API pública de la tienda
-// Acciones: config, cotizar, crear, crear_manual, ubicar, pagar, confirmar, pago_info, subir, comprobante, perfil, guardar_perfil
+// Acciones: config, cotizar, crear, crear_manual, editar_pedido, cobrar_diferencia, ubicar, pagar, confirmar, pago_info, subir, comprobante, perfil, guardar_perfil
 // El seguimiento usa la función de base de datos track_order(token).
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -273,6 +273,12 @@ async function validateSchedule(s: Settings, scheduled: string | null, prep: num
   return { scheduled_for: when.toISOString(), eta: when };
 }
 
+const r2 = (n: number) => Math.round(n * 100) / 100;
+function feeValue(v: unknown) {
+  const f = r2(Number(v));
+  if (!(Number.isFinite(f) && f >= 0 && f <= 100)) fail("Revisa el valor del envío (entre $0 y $100).");
+  return f;
+}
 const clean = (v: unknown, max = 200) => String(v ?? "").trim().slice(0, max);
 function normPhone(v: unknown) {
   let d = String(v ?? "").replace(/\D/g, "");
@@ -468,7 +474,13 @@ async function makeOrder(b: any, cust: Record<string, any> | null, staff: { paid
     // Envío gratis desde un monto (tienda y WhatsApp) o primer pedido con cuenta (solo tienda; en dos entregas, solo la primera)
     const welcome = !staff && !b._no_welcome && await welcomeEligible(cust?.user_id, s);
     const promo = pickup ? null : shippingPromo(cart.subtotal - discount, s, welcome);
-    const fee = promo === "primer_pedido" ? q.welcome_promo_fee : promo ? q.promo_fee : q.fee;
+    let fee = promo === "primer_pedido" ? q.welcome_promo_fee : promo ? q.promo_fee : q.fee;
+    // Cocina/master pueden cobrar otro valor de envío en pedidos de WhatsApp (el motorizado sigue ganando el calculado)
+    let feeEdited = false;
+    if (staff && !pickup && b.delivery_fee_override != null && b.delivery_fee_override !== "") {
+      fee = feeValue(b.delivery_fee_override);
+      feeEdited = true;
+    }
     const payExtra = !staff && b.payment_method === "transferencia" ? Number(s.transfer_extra_minutes ?? 5) : 0;
     const sched = await validateSchedule(s, b.scheduled_for || null, cart.prep, cart.lead, q.travel_min, payExtra, Boolean(staff));
     const limited = checkStock(cart, localDay(sched.scheduled_for ? new Date(sched.scheduled_for) : new Date()), Boolean(staff));
@@ -506,6 +518,7 @@ async function makeOrder(b: any, cust: Record<string, any> | null, staff: { paid
     };
     if (groupId) row.group_id = groupId;
     if (pickup) row.fulfillment = "pickup";
+    if (feeEdited) row.fee_edited = true;
     if (staff) {
       row.channel = "whatsapp";
       row.payment_ref = `Pedido por WhatsApp · registrado por ${staff.by}`;
@@ -513,6 +526,7 @@ async function makeOrder(b: any, cust: Record<string, any> | null, staff: { paid
     let ins = await db.from("orders").insert(row).select().single();
     if (ins.error && /customer_email/.test(ins.error.message)) { delete row.customer_email; ins = await db.from("orders").insert(row).select().single(); }
     if (ins.error && /channel/.test(ins.error.message)) { delete row.channel; ins = await db.from("orders").insert(row).select().single(); }
+    if (ins.error && /fee_edited/.test(ins.error.message)) { delete row.fee_edited; ins = await db.from("orders").insert(row).select().single(); }
     if (ins.error && /rider_fee|delivery_promo/.test(ins.error.message)) { delete row.rider_fee; delete row.delivery_promo; ins = await db.from("orders").insert(row).select().single(); }
     if (ins.error) throw ins.error;
     const o = ins.data;
@@ -664,6 +678,83 @@ const actions: Record<string, (b: any, user: User) => Promise<unknown>> = {
     const res = await makeOrder({ ...b, customer_phone: phone, invoice_type: "consumidor_final", use_birthday: false, reward_product_id: null }, cust ?? null, { paid: Boolean(b.paid), by, deposit: b.deposit != null && b.deposit !== "" ? Number(b.deposit) : undefined });
     delete res._order;
     return res;
+  },
+
+  // Cocina o master editan un pedido ya hecho: agregan productos y/o cambian el envío.
+  // Si ya estaba pagado (o con transferencia por revisar), el cambio queda como diferencia por cobrar (o por devolver).
+  async editar_pedido(b, user) {
+    const by = await staffName(user);
+    const { data: o, error } = await db.from("orders").select("*").eq("id", clean(b.order_id, 40)).maybeSingle();
+    if (error) throw error;
+    if (!o) fail("Pedido no encontrado.");
+    if (o!.status === "cancelado") fail("Este pedido está cancelado.");
+    const add = Array.isArray(b.items) && b.items.length ? await priceCart(b.items) : null;
+    let fee = Number(o!.delivery_fee);
+    if (b.delivery_fee != null && b.delivery_fee !== "") {
+      const f = feeValue(b.delivery_fee);
+      if (o!.fulfillment === "pickup" && f > 0) fail("Es un retiro en cocina: no lleva envío.");
+      fee = f;
+    }
+    const feeChanged = Math.abs(fee - Number(o!.delivery_fee)) > 0.001;
+    if (!add && !feeChanged) fail("No hay cambios para guardar.");
+    const subtotal = r2(Number(o!.subtotal) + (add?.subtotal ?? 0));
+    const total = r2(subtotal - Number(o!.discount || 0) + fee);
+    const diff = r2(total - Number(o!.total));
+    const paidLike = ["pagado", "en_revision"].includes(o!.payment_status);
+    const now = new Date().toISOString();
+    const patch: Record<string, unknown> = { subtotal, delivery_fee: fee, total };
+    if (feeChanged) patch.fee_edited = true;
+    if (add) patch.prep_minutes = Math.max(Number(o!.prep_minutes ?? 0), add.prep);
+    let extra = r2(Number(o!.extra_due || 0));
+    if (paidLike && diff !== 0) {
+      extra = r2(extra + diff);
+      patch.extra_due = extra;
+      // "ya me transfirió la diferencia": queda cobrada en el mismo paso
+      if (b.extra_paid && extra !== 0) {
+        Object.assign(patch, { extra_due: 0, extra_paid: r2(Number(o!.extra_paid || 0) + extra), extra_paid_at: now, extra_ref: clean(b.extra_ref, 120) || `Marcado por ${by}` });
+        extra = 0;
+      }
+    }
+    let inserted: number[] = [];
+    if (add) {
+      const { data: rows, error: e1 } = await db.from("order_items").insert(add.lines.map((l) => ({ ...l, order_id: o!.id }))).select("id");
+      if (e1) throw e1;
+      inserted = (rows ?? []).map((r: any) => r.id);
+    }
+    const { error: e2 } = await db.from("orders").update(patch).eq("id", o!.id);
+    if (e2) { if (inserted.length) await db.from("order_items").delete().in("id", inserted); throw e2; }
+    // stock del día: lo agregado también descuenta
+    if (add) {
+      const today = localDay(new Date());
+      const limited = checkStock(add, localDay(new Date(o!.scheduled_for || o!.created_at)), true);
+      for (const l of limited) {
+        const p = add.prods.find((x) => x.id === l.id)!;
+        await db.from("products").update({ stock_left: Math.max(0, (p.stock_left ?? 0) - l.q) }).eq("id", l.id).eq("stock_day", today);
+      }
+    }
+    const parts = [
+      add ? `agregó ${add.lines.map((l) => `${l.quantity}× ${l.name}`).join(", ")}` : "",
+      feeChanged ? `envío ${Number(o!.delivery_fee).toFixed(2)} → ${fee.toFixed(2)}` : "",
+      `total ${Number(o!.total).toFixed(2)} → ${total.toFixed(2)}`,
+      patch.extra_paid_at ? "diferencia cobrada" : "",
+    ].filter(Boolean);
+    await db.from("order_events").insert({ order_id: o!.id, status: o!.status, actor: user!.id, note: `Editado por ${by}: ${parts.join(" · ")}`.slice(0, 500) });
+    return { code: o!.code, subtotal, delivery_fee: fee, total, diff, extra_due: paidLike ? extra : 0, paid: paidLike };
+  },
+
+  // Cocina confirma que el cliente pagó la diferencia (o que ya se le devolvió)
+  async cobrar_diferencia(b, user) {
+    const by = await staffName(user);
+    const { data: o, error } = await db.from("orders").select("*").eq("id", clean(b.order_id, 40)).maybeSingle();
+    if (error) throw error;
+    if (!o) fail("Pedido no encontrado.");
+    const due = r2(Number(o!.extra_due || 0));
+    if (!due) fail("Este pedido no tiene diferencia pendiente.");
+    const ref = clean(b.ref, 120) || `Marcado por ${by}`;
+    const { error: e2 } = await db.from("orders").update({ extra_due: 0, extra_paid: r2(Number(o!.extra_paid || 0) + due), extra_paid_at: new Date().toISOString(), extra_ref: ref }).eq("id", o!.id).eq("extra_due", o!.extra_due);
+    if (e2) throw e2;
+    await db.from("order_events").insert({ order_id: o!.id, status: o!.status, actor: user!.id, note: `${due > 0 ? `Diferencia de $${due.toFixed(2)} cobrada` : `Devueltos $${(-due).toFixed(2)} al cliente`} · ${ref}`.slice(0, 500) });
+    return { ok: true, code: o!.code, amount: due };
   },
 
   // Convierte un enlace de ubicación de WhatsApp/Google Maps (incluidos los cortos) en coordenadas

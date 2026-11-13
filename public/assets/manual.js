@@ -72,6 +72,11 @@ export async function renderManual(view) {
         <div class="search" id="mSearchSlot"></div>
         <div class="map-wrap" style="margin-top:8px"><div id="mMap" class="map"></div><div class="pin" aria-hidden="true"><span></span></div></div>
         <div id="mQuote" class="muted small" style="margin-top:8px">Marca la ubicación para calcular el envío.</div>
+        <div class="mdep" style="margin-top:10px">
+          <label class="f" for="mFee">Envío a cobrar <span class="hint">(déjalo vacío para usar el calculado; cámbialo si quieres cobrar otro valor)</span></label>
+          <div class="mdep-row"><span class="mdep-cur">$</span><input class="in" id="mFee" type="number" inputmode="decimal" min="0" max="100" step="0.25" placeholder="Calculado"><button type="button" class="btn small" id="mFeeReset" hidden>Usar el calculado</button></div>
+          <p class="muted small" id="mFeeNote" hidden style="margin:6px 0 0"></p>
+        </div>
         <div class="form-grid">
           <div><label class="f" for="mAddr">Dirección</label><input class="in" id="mAddr" placeholder="Ciudadela, manzana y villa o calle y número"></div>
           <div><label class="f" for="mRef">Referencia <span class="hint">(opcional)</span></label><input class="in" id="mRef"></div>
@@ -148,6 +153,8 @@ export async function renderManual(view) {
     drawSum();
   }));
   $("#mDep").oninput = () => { st.depManual = true; drawSum(); };
+  $("#mFee").oninput = () => drawSum();
+  $("#mFeeReset").onclick = () => { $("#mFee").value = ""; drawSum(); };
   $("#mDep75").onclick = () => { st.depManual = false; setDep75(); drawSum(); };
   $("#mDate").onchange = fillTimes; $("#mTime").onchange = drawSum;
   $("#mFind").onclick = findPasted;
@@ -210,8 +217,11 @@ const setDep75 = () => { const t = totalNow(); $("#mDep").value = t ? (Math.roun
 const depNow = () => Math.round(Number($("#mDep")?.value || 0) * 100) / 100;
 const isPickup = () => Boolean($('input[name="mMode"][value="pickup"]')?.checked);
 // Envío gratis desde el monto de Ajustes (hasta los km cubiertos; más lejos, solo la diferencia). Igual que en el servidor.
-const freeShip = () => { const m = Number(st.cfg?.free_ship?.min || 0); return !isPickup() && st.quote && m > 0 && subtotal() >= m - 1e-9; };
-const feeNow = () => (isPickup() ? 0 : st.quote ? (freeShip() ? Number(st.quote.promo_fee ?? 0) : st.quote.delivery_fee) : undefined);
+// Envío escrito a mano por cocina (null = el calculado)
+const feeOverride = () => { const v = $("#mFee")?.value.trim(); if (!v || isPickup()) return null; const n = Math.round(Number(v) * 100) / 100; return Number.isFinite(n) && n >= 0 ? n : null; };
+const freeShip = () => { const m = Number(st.cfg?.free_ship?.min || 0); return !isPickup() && feeOverride() == null && st.quote && m > 0 && subtotal() >= m - 1e-9; };
+const autoFee = () => (st.quote ? (freeShip() ? Number(st.quote.promo_fee ?? 0) : st.quote.delivery_fee) : undefined);
+const feeNow = () => (isPickup() ? 0 : feeOverride() != null ? (st.quote ? feeOverride() : undefined) : autoFee());
 const kId = (k) => Number(String(k).split(":")[0]);
 const kOpts = (k) => (String(k).split(":")[1] || "").split(".").filter(Boolean).map(Number);
 const choice = (cid) => { for (const gs of Object.values(st.opts)) for (const g of gs) { const c = g.option_choices.find((x) => x.id === cid); if (c) return c; } return null; };
@@ -223,8 +233,14 @@ const items = () => [...st.cart].map(([k, quantity]) => ({ product_id: kId(k), q
 function drawSum() {
   const lines = [...st.cart].map(([k, q]) => `<div class="line"><span>${q} × ${esc(lName(k))}</span><span class="tabnum">${money(lPrice(k) * q)}</span></div>`);
   const fee = feeNow();
+  const ov = feeOverride();
+  if ($("#mFeeReset")) {
+    $("#mFeeReset").hidden = ov == null;
+    $("#mFeeNote").hidden = ov == null || !st.quote;
+    if (ov != null && st.quote) $("#mFeeNote").innerHTML = `Se cobrará <b>${money(ov)}</b> de envío en vez de ${money(autoFee())}. El motorizado sigue ganando ${money(st.quote.delivery_fee)}.`;
+  }
   $("#mSum").innerHTML = lines.length
-    ? `${lines.join("")}<div class="line"><span>${isPickup() ? "Retira en la cocina" : freeShip() ? `Envío gratis (desde ${money(st.cfg.free_ship.min)})` : "Envío"}</span><span class="tabnum">${fee != null ? (freeShip() ? `<s class="muted">${money(st.quote.delivery_fee)}</s> ${money(fee)}` : money(fee)) : "—"}</span></div><div class="line total"><span>Total</span><span class="tabnum">${money(subtotal() + (fee || 0))}</span></div>`
+    ? `${lines.join("")}<div class="line"><span>${isPickup() ? "Retira en la cocina" : ov != null ? "Envío (editado)" : freeShip() ? `Envío gratis (desde ${money(st.cfg.free_ship.min)})` : "Envío"}</span><span class="tabnum">${fee != null ? (freeShip() ? `<s class="muted">${money(st.quote.delivery_fee)}</s> ${money(fee)}` : money(fee)) : "—"}</span></div><div class="line total"><span>Total</span><span class="tabnum">${money(subtotal() + (fee || 0))}</span></div>`
     : `<p class="muted small" style="margin:10px 0 0">Agrega productos.</p>`;
   const paid = $('input[name="mPay"][value="paid"]')?.checked;
   const t = subtotal() + (fee || 0);
@@ -242,7 +258,7 @@ const payAmount = () => (isDeposit() ? depNow() : subtotal() + (feeNow() || 0));
 function summaryText() {
   const fee = feeNow();
   const lines = [...st.cart].map(([k, q]) => `${q} × ${lName(k)} · ${money(lPrice(k) * q)}`).join("\n");
-  const ship = isPickup() ? "Retira en nuestra cocina" : freeShip() ? "Envío: ¡gratis! 🎁" : `Envío: ${money(fee || 0)}`;
+  const ship = isPickup() ? "Retira en nuestra cocina" : freeShip() || (feeOverride() === 0) ? "Envío: ¡gratis! 🎁" : `Envío: ${money(fee || 0)}`;
   const dep = isDeposit() ? `\nAnticipo para reservar: ${money(depNow())}\nSaldo el día del evento: ${money(Math.max(subtotal() + (fee || 0) - depNow(), 0))}` : "";
   return `Este es el detalle de su pedido en The Bakery Side 🧁\n\n${lines}\n\nSubtotal: ${money(subtotal())}\n${ship}\nTotal: ${money(subtotal() + (fee || 0))}${dep}`;
 }
@@ -331,6 +347,7 @@ async function submit(e) {
   const pickup = isPickup();
   if (!pickup && !st.loc) return bad("Marca la ubicación de entrega.", $("#mPaste"));
   if (!pickup && !st.quote) return bad("Aún no tenemos el costo de envío para esa ubicación.");
+  if (!pickup && $("#mFee").value.trim() && (feeOverride() == null || feeOverride() > 100)) return bad("Revisa el valor del envío (entre $0 y $100) o déjalo vacío.", $("#mFee"));
   if (!pickup && !$("#mAddr").value.trim()) return bad("Escribe la dirección.", $("#mAddr"));
   const later = $('input[name="mWhen"][value="later"]').checked;
   if (later && !$("#mTime").value) return bad("Elige día y hora.", $("#mDate"));
@@ -361,6 +378,7 @@ async function submit(e) {
     gift_message: gift ? $("#mMsg").value : null,
     gift_from: gift ? ($("#mFrom").value.trim() || $("#mName").value.trim()) : null,
     paid, ...(deposit != null ? { deposit } : {}),
+    ...(!pickup && feeOverride() != null ? { delivery_fee_override: feeOverride() } : {}),
   };
   const btn = $("#mGo"); btn.disabled = true; btn.textContent = "Registrando…";
   try {

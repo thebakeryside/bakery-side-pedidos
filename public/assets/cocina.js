@@ -1,4 +1,4 @@
-import { sb, $, $$, money, esc, hhmm, when, dayLabel, orderRange, toast, waLink, STATUS, todayLocal , tableSearch } from "./common.js";
+import { sb, api, $, $$, money, esc, hhmm, when, dayLabel, orderRange, toast, waLink, STATUS, todayLocal , tableSearch } from "./common.js";
 import { requireLogin, loginHTML } from "./auth.js";
 import { renderManual } from "./manual.js";
 
@@ -29,7 +29,7 @@ requireLogin(async (user) => {
   setInterval(() => { uberAlerts(); if (S.tab === "pedidos") render(); }, 30000); // refresca tiempos y avisa cuándo pedir el Uber
 });
 
-$$(".tabs [data-tab]").forEach((b) => b.addEventListener("click", () => { S.tab = b.dataset.tab; render(); }));
+$$(".tabs [data-tab]").forEach((b) => b.addEventListener("click", () => { S.tab = b.dataset.tab; S.editing = null; render(); }));
 
 // ---------- datos ----------
 async function loadOrders() {
@@ -129,7 +129,9 @@ function beep() {
 }
 
 // ---------- vista ----------
-function render() {
+function render(force = false) {
+  // mientras se edita un pedido no se redibuja la lista (se perdería lo que se está escribiendo)
+  if (S.editing && !force && ["pedidos", "agenda", "historial"].includes(S.tab)) { S.pendingRender = true; return; }
   $$(".tabs [data-tab]").forEach((b) => b.setAttribute("aria-selected", b.dataset.tab === S.tab));
   const soon = Date.now() + AGENDA_HOURS * 3600000;
   const isAgenda = (o) => o.scheduled_for && new Date(o.scheduled_for).getTime() > soon && ["confirmado", "por_confirmar"].includes(o.status);
@@ -208,7 +210,15 @@ function relTime(o) {
   return "";
 }
 const balancePending = (o) => Number(o.balance_due) > 0 && !o.balance_paid_at && o.status !== "cancelado";
+const extraDue = (o) => (o.status === "cancelado" ? 0 : Math.round(Number(o.extra_due || 0) * 100) / 100);
 function payChip(o) {
+  const ex = extraDue(o);
+  const base = payChipBase(o);
+  if (ex > 0) return base + `<span class="chip bad">${ICON.pay}Falta cobrar diferencia ${money(ex)}</span>`;
+  if (ex < 0) return base + `<span class="chip warn">${ICON.pay}Devolver ${money(-ex)} al cliente</span>`;
+  return base;
+}
+function payChipBase(o) {
   if (o.payment_status === "pagado" && balancePending(o)) return `<span class="chip warn">${ICON.pay}Anticipo ${money(o.deposit)} · falta ${money(o.balance_due)}</span>`;
   if (o.payment_status === "pagado") return `<span class="chip ok">${ICON.pay}Pagado${Number(o.balance_due) > 0 ? " (saldo cobrado)" : ""}</span>`;
   if (o.payment_status === "en_revision") return `<span class="chip warn">${ICON.pay}Transferencia por verificar</span>`;
@@ -310,6 +320,9 @@ function card(o) {
     ${o.gift_message || o.recipient_name ? `<div class="gift">${ICON.gift}<div><b>Regalo${o.recipient_name ? ` para ${esc(o.recipient_name)}` : ""}</b><span class="from">De parte de: <b>${esc(o.gift_from || o.customer_name)}</b></span>${o.gift_message ? `<span>Tarjeta: “${esc(o.gift_message)}”</span>` : `<span>Sin mensaje: solo la firma.</span>`}</div></div>` : ""}
     ${o.payment_status === "pagado" && balancePending(o) ? `<div class="balnote"><div>🎉 <b>Evento:</b> cobrar el saldo de <b>${money(o.balance_due)}</b> antes de entregar.</div><button class="btn small" data-act="balanceAsk" data-id="${o.id}">Saldo cobrado</button></div>
     <div class="confirm-row" data-bal="${o.id}" hidden><p class="small" style="margin:0;flex:1">¿Confirmas que el cliente ya pagó los ${money(o.balance_due)}?</p><button class="btn small primary" data-act="balancePaid" data-id="${o.id}">Sí, ya pagó</button></div>` : ""}
+    ${extraDue(o) ? `<div class="balnote"><div>${extraDue(o) > 0 ? `➕ <b>Pedido editado:</b> cobrar la diferencia de <b>${money(extraDue(o))}</b> antes de entregar.` : `↩️ <b>Pedido editado:</b> devolverle <b>${money(-extraDue(o))}</b> al cliente.`}</div><button class="btn small" data-act="extraAsk" data-id="${o.id}">${extraDue(o) > 0 ? "Diferencia cobrada" : "Ya le devolví"}</button></div>
+    <div class="confirm-row" data-extra="${o.id}" hidden><p class="small" style="margin:0;width:100%">${extraDue(o) > 0 ? `¿Confirmas que el cliente ya pagó los <b>${money(extraDue(o))}</b> de diferencia? Revisa que el dinero ya esté en la cuenta.` : `¿Confirmas que ya le devolviste <b>${money(-extraDue(o))}</b>?`}</p><input class="in" placeholder="Referencia o banco (opcional)" data-extraref="${o.id}" style="flex:1;min-width:160px"><button class="btn small primary" data-act="extraPaid" data-id="${o.id}">Sí, confirmado</button></div>` : ""}
+    ${S.editing?.id === o.id ? `<div class="editbox" data-edit="${o.id}"></div>` : ""}
     ${o.group_id ? `<div class="linknote">🔗 Pago junto con ${linkedCodes(o)} (dos entregas)</div>` : ""}
     ${o.order_items.some((i) => /^Postre sorpresa/.test(i.name)) ? `<div class="linknote">🎁 Incluye postre sorpresa de regalo: elige uno de hasta ${money(S.settings?.reward_max_value ?? 4)}</div>` : ""}
     <div class="chips">${payChip(o)}${pick ? `<span class="chip ok">🛍️ Retira en la cocina</span>` : `${S.riders.some((r) => r.active) ? riderChip(o) : ""}<span class="chip">${ICON.pin}${Number(o.distance_km).toFixed(1)} km</span>${uberChip(o)}`}</div>
@@ -323,7 +336,8 @@ function card(o) {
         ${o.recipient_name ? `<span>Recibe: <b>${esc(o.recipient_name)}</b>${o.recipient_phone ? " · " + esc(o.recipient_phone) : ""}</span>` : ""}
         <span>${esc(o.address)}${o.reference ? " · " + esc(o.reference) : ""}</span>
         ${Number(o.deposit) > 0 ? `<span>Evento · anticipo ${money(o.deposit)} · saldo ${money(o.balance_due)}${o.balance_paid_at ? ` cobrado ${hhmm(o.balance_paid_at)}` : " por cobrar"}</span>` : ""}
-        <span>Total <b>${money(o.total)}</b> · envío ${money(o.delivery_fee)} · ${o.payment_method === "tarjeta" ? "tarjeta" : "transferencia"}</span>
+        <span>Total <b>${money(o.total)}</b> · envío ${money(o.delivery_fee)}${o.fee_edited ? " (editado)" : ""} · ${o.payment_method === "tarjeta" ? "tarjeta" : "transferencia"}</span>
+        ${Number(o.extra_paid) ? `<span>${Number(o.extra_paid) > 0 ? `Diferencia cobrada: ${money(o.extra_paid)}` : `Devuelto al cliente: ${money(-Number(o.extra_paid))}`}${o.extra_paid_at ? ` · ${hhmm(o.extra_paid_at)}` : ""}${o.extra_ref ? ` · ${esc(o.extra_ref)}` : ""}</span>` : ""}
         ${Number(o.discount) > 0 ? `<span>Regalo de cumpleaños: −${money(o.discount)}</span>` : ""}
         ${o.user_id ? `<span>Cliente con cuenta (suma sellos)</span>` : ""}
         ${o.invoice_type === "con_datos" ? `<span>Factura: ${esc(o.invoice_name)} · ${esc(o.invoice_id_number)} · ${esc(o.invoice_email)}</span>` : ""}
@@ -335,6 +349,7 @@ function card(o) {
       <a class="btn small ghost" href="${waLink(o.customer_phone, waText(o))}" target="_blank" rel="noopener">WhatsApp</a>
       <a class="btn small ghost" href="https://www.google.com/maps/search/?api=1&query=${o.lat},${o.lng}" target="_blank" rel="noopener">Mapa</a>
       ${canForce && o.status === "listo" ? `<button class="btn small ghost" data-act="forceAsk" data-id="${o.id}">Marcar entregado</button>` : ""}
+      ${o.status !== "cancelado" && S.editing?.id !== o.id ? `<button class="btn small ghost" data-act="editOpen" data-id="${o.id}">✏️ Editar pedido</button>` : ""}
       ${canCancel ? `<button class="btn small ghost" data-act="cancelAsk" data-id="${o.id}">Cancelar</button>` : ""}
     </div>
     ${o.status === "pendiente_pago" ? `<div class="confirm-row" data-mpay="${o.id}" hidden>
@@ -405,6 +420,20 @@ document.addEventListener("click", async (e) => {
     case "prep": return upd(id, { status: "preparando", prep_started_at: now }, `${o.code} en preparación`);
     case "ready": return upd(id, { status: "listo", ready_at: now }, `${o.code} listo`);
     case "balanceAsk": $(`[data-bal="${id}"]`).hidden = false; break;
+    case "extraAsk": $(`[data-extra="${id}"]`).hidden = false; break;
+    case "extraPaid": {
+      b.disabled = true;
+      try {
+        const r = await api("cobrar_diferencia", { order_id: id, ref: $(`[data-extraref="${id}"]`).value.trim() });
+        toast(r.amount > 0 ? `${o.code}: diferencia de ${money(r.amount)} cobrada` : `${o.code}: devolución registrada`);
+      } catch (ex) { b.disabled = false; return toast(ex.message); }
+      await loadOrders(); render(); return;
+    }
+    case "editOpen": return openEditor(o);
+    case "edClose": S.editing = null; render(); return;
+    case "edAdd": return edAdd();
+    case "edDel": S.editing.add.splice(Number(b.dataset.i), 1); edDrawList(); return;
+    case "edSave": return edSave(b);
     case "balancePaid": return upd(id, { balance_paid_at: now }, `Saldo de ${o.code} cobrado`);
     case "pickedUp": return upd(id, { status: "entregado", delivered_at: now, picked_at: o.picked_at || now, delivered_by: "cocina", delivery_note: "Retiró en la cocina" }, `${o.code} entregado`);
     case "forceAsk": $(`[data-force="${id}"]`).hidden = false; $(`[data-freason="${id}"]`).focus(); break;
@@ -430,6 +459,132 @@ document.addEventListener("change", (e) => {
   const o = S.orders.find((x) => x.id === s.dataset.id);
   upd(o.id, { rider_id: s.value ? Number(s.value) : null, rider_accepted_at: null }, s.value ? `${o.code} asignado` : `${o.code} sin motorizado`);
 });
+
+// ---------- editar un pedido ya hecho: agregar productos y cambiar el envío ----------
+async function loadOpts() {
+  if (S.opts) return;
+  let r = await sb.from("product_option_groups").select("product_id, only_if, option_groups(id,name,required,sort,option_choices(id,name,price_delta,sort,active))");
+  if (r.error) r = await sb.from("product_option_groups").select("product_id, option_groups(id,name,required,sort,option_choices(id,name,price_delta,sort,active))");
+  const m = {};
+  for (const x of r.data || []) {
+    const g = x.option_groups; if (!g) continue;
+    const ch = (g.option_choices || []).filter((c) => c.active).sort((a, b) => a.sort - b.sort);
+    if (!ch.length) continue;
+    (m[x.product_id] ||= []).push({ ...g, option_choices: ch, only_if: x.only_if?.length ? x.only_if.map(Number) : null });
+  }
+  for (const gs of Object.values(m)) gs.sort((a, b) => (a.only_if ? 1 : 0) - (b.only_if ? 1 : 0) || (a.sort || 0) - (b.sort || 0));
+  S.opts = m;
+}
+const edOrder = () => S.orders.find((x) => x.id === S.editing?.id);
+const edChoice = (cid) => { for (const gs of Object.values(S.opts || {})) for (const g of gs) { const c = g.option_choices.find((x) => x.id === cid); if (c) return c; } return null; };
+const edLinePrice = (l) => Number(S.products.find((p) => p.id === l.product_id)?.price || 0) + l.options.reduce((t, c) => t + Number(edChoice(c)?.price_delta || 0), 0);
+const edLineName = (l) => { const p = S.products.find((x) => x.id === l.product_id); const n = l.options.map((c) => edChoice(c)?.name).filter(Boolean); return (p?.name || "Producto") + (n.length ? ` (${n.join(", ")})` : ""); };
+
+async function openEditor(o) {
+  await loadOpts();
+  S.editing = { id: o.id, add: [] };
+  render(true);
+  const box = $(`[data-edit="${o.id}"]`); if (!box) return;
+  const pick = o.fulfillment === "pickup";
+  const cats = S.cats.filter((c) => c.active !== false);
+  const prods = S.products.filter((p) => p.active && !/^Postre sorpresa/.test(p.name));
+  const optsHtml = cats.map((c) => { const ps = prods.filter((p) => p.category_id === c.id); return ps.length ? `<optgroup label="${esc(c.name)}">${ps.map((p) => `<option value="${p.id}">${esc(p.name)} · ${money(p.price)}</option>`).join("")}</optgroup>` : ""; }).join("")
+    + (() => { const rest = prods.filter((p) => !cats.some((c) => c.id === p.category_id)); return rest.length ? `<optgroup label="Otros">${rest.map((p) => `<option value="${p.id}">${esc(p.name)} · ${money(p.price)}</option>`).join("")}</optgroup>` : ""; })();
+  box.innerHTML = `
+    <div class="edhead"><b>✏️ Editar ${esc(o.code)}</b><button class="btn small ghost" data-act="edClose" type="button">Cerrar</button></div>
+    <label class="f">Agregar productos</label>
+    <div class="edrow"><select class="in" data-edp style="flex:1;min-width:180px"><option value="">Elige un producto…</option>${optsHtml}</select>
+      <input class="in" data-edq type="number" inputmode="numeric" min="1" max="50" value="1" style="width:70px" aria-label="Cantidad">
+      <button class="btn small" data-act="edAdd" type="button">Agregar</button></div>
+    <div class="edrow" data-edopts></div>
+    <div data-edlist></div>
+    ${pick ? "" : `<label class="f" style="margin-top:8px">Envío a cobrar</label>
+    <div class="edrow"><span class="mdep-cur">$</span><input class="in" data-edfee type="number" inputmode="decimal" min="0" max="100" step="0.25" value="${Number(o.delivery_fee).toFixed(2)}" style="width:110px">
+      <span class="muted small">Antes ${money(o.delivery_fee)}${Number(o.rider_fee) ? ` · el motorizado sigue ganando ${money(o.rider_fee)}` : ""}</span></div>`}
+    <div data-edsum></div>
+    <p class="err" data-ederr role="alert"></p>
+    <div class="edrow"><button class="btn primary" data-act="edSave" type="button">Guardar cambios</button></div>`;
+  $("[data-edp]", box).onchange = edDrawOpts;
+  $("[data-edfee]", box)?.addEventListener("input", edDrawSum);
+  box.addEventListener("change", (e) => { if (e.target.matches("[data-edg]")) edDrawOpts(true); if (e.target.matches("input[name=edpay]")) edDrawSum(); });
+  edDrawList();
+  box.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+// Opciones del producto elegido (endulzante, bebida del combo…); las condicionales solo si aplican
+function edDrawOpts(keep = false) {
+  const box = $(`[data-edit="${S.editing.id}"]`), slot = $("[data-edopts]", box);
+  const pid = Number($("[data-edp]", box).value), gs = S.opts[pid] || [];
+  const prev = keep === true ? Object.fromEntries($$("[data-edg]", slot).map((x) => [x.dataset.edg, x.value])) : {};
+  const base = gs.filter((g) => !g.only_if).map((g) => Number(prev[g.id] || 0)).filter(Boolean);
+  slot.innerHTML = gs.filter((g) => !g.only_if || g.only_if.some((c) => base.includes(c))).map((g) => `<select class="in" data-edg="${g.id}" aria-label="${esc(g.name)}"><option value="">${esc(g.name)}${g.required ? "" : " (opcional)"}…</option>${g.option_choices.map((c) => `<option value="${c.id}" ${String(prev[g.id]) === String(c.id) ? "selected" : ""}>${esc(c.name)}${Number(c.price_delta) > 0 ? ` +${money(c.price_delta)}` : ""}</option>`).join("")}</select>`).join("");
+}
+function edAdd() {
+  const box = $(`[data-edit="${S.editing.id}"]`), err = $("[data-ederr]", box); err.textContent = "";
+  const pid = Number($("[data-edp]", box).value);
+  if (!pid) { err.textContent = "Elige el producto que quiere agregar."; return; }
+  const q = Math.floor(Number($("[data-edq]", box).value));
+  if (!(q >= 1 && q <= 50)) { err.textContent = "Revisa la cantidad."; return; }
+  const sels = $$("[data-edg]", box);
+  const miss = sels.find((x) => !x.value && (S.opts[pid] || []).find((g) => String(g.id) === x.dataset.edg)?.required);
+  if (miss) { err.textContent = `Elige ${miss.getAttribute("aria-label").toLowerCase()}.`; miss.focus(); return; }
+  S.editing.add.push({ product_id: pid, quantity: q, options: sels.map((x) => Number(x.value)).filter(Boolean) });
+  $("[data-edp]", box).value = ""; $("[data-edq]", box).value = 1; $("[data-edopts]", box).innerHTML = "";
+  edDrawList();
+}
+function edDrawList() {
+  const box = $(`[data-edit="${S.editing.id}"]`); if (!box) return;
+  $("[data-edlist]", box).innerHTML = S.editing.add.length ? `<ul class="edlist">${S.editing.add.map((l, i) => `<li><span><b>+${l.quantity}</b> ${esc(edLineName(l))}</span><span class="tabnum">${money(edLinePrice(l) * l.quantity)} <button class="chip-x" type="button" data-act="edDel" data-i="${i}" aria-label="Quitar">×</button></span></li>`).join("")}</ul>` : "";
+  edDrawSum();
+}
+function edCalc() {
+  const o = edOrder(), box = $(`[data-edit="${o.id}"]`);
+  const added = S.editing.add.reduce((t, l) => t + edLinePrice(l) * l.quantity, 0);
+  const feeIn = $("[data-edfee]", box);
+  const fee = feeIn ? Math.round(Number(feeIn.value || 0) * 100) / 100 : Number(o.delivery_fee);
+  const total = Math.round((Number(o.subtotal) + added - Number(o.discount || 0) + fee) * 100) / 100;
+  return { o, box, added, fee, total, diff: Math.round((total - Number(o.total)) * 100) / 100, paidLike: ["pagado", "en_revision"].includes(o.payment_status) };
+}
+function edDrawSum() {
+  const { o, box, added, fee, total, diff, paidLike } = edCalc();
+  const mode = $("input[name=edpay]:checked", box)?.value || "due";
+  const pend = Math.round((extraDue(o) + diff) * 100) / 100; // lo que quedaría por cobrar en total
+  let pay = "";
+  if (diff && paidLike) {
+    pay = diff > 0
+      ? `<div class="chips" role="radiogroup" style="margin-top:8px"><label class="chip"><input type="radio" name="edpay" value="due" ${mode === "due" ? "checked" : ""}> Queda por cobrar ${money(pend)}</label><label class="chip"><input type="radio" name="edpay" value="paid" ${mode === "paid" ? "checked" : ""}> Ya me pagó la diferencia</label></div>`
+      : `<div class="chips" role="radiogroup" style="margin-top:8px"><label class="chip"><input type="radio" name="edpay" value="due" ${mode === "due" ? "checked" : ""}> Queda por devolver ${money(-pend)}</label><label class="chip"><input type="radio" name="edpay" value="paid" ${mode === "paid" ? "checked" : ""}> Ya le devolví</label></div>`;
+    if (mode === "paid") pay += `<input class="in" data-edref placeholder="Referencia o banco de la transferencia (opcional)" value="${esc(S.editing.ref || "")}" style="margin-top:6px;width:100%">`;
+  }
+  const feeTxt = Math.abs(fee - Number(o.delivery_fee)) > 0.001 ? `<div class="line"><span>Envío</span><span class="tabnum"><s class="muted">${money(o.delivery_fee)}</s> ${money(fee)}</span></div>` : "";
+  $("[data-edsum]", box).innerHTML = `<div class="msum" style="margin-top:10px">
+      ${added ? `<div class="line"><span>Productos agregados</span><span class="tabnum">+${money(added)}</span></div>` : ""}${feeTxt}
+      <div class="line"><span>Total antes</span><span class="tabnum">${money(o.total)}</span></div>
+      <div class="line total"><span>Nuevo total</span><span class="tabnum">${money(total)}</span></div>
+      ${diff ? `<div class="line"><span>${diff > 0 ? "Diferencia a cobrar" : "Diferencia a devolver"}</span><span class="tabnum"><b>${money(Math.abs(diff))}</b></span></div>` : ""}
+    </div>
+    ${diff && !paidLike ? `<p class="muted small" style="margin:6px 0 0">El pedido aún no está pagado: el cliente pagará el nuevo total de ${money(total)}${o.payment_method === "tarjeta" ? ". Si ya abrió el pago con tarjeta, mándele de nuevo el enlace del pedido" : ""}.</p>` : ""}
+    ${pay}`;
+  $("[data-edref]", box)?.addEventListener("input", (e) => { S.editing.ref = e.target.value; });
+}
+async function edSave(btn) {
+  const { o, box, fee, diff, paidLike } = edCalc();
+  const err = $("[data-ederr]", box); err.textContent = "";
+  const feeIn = $("[data-edfee]", box);
+  if (feeIn && !(fee >= 0 && fee <= 100 && feeIn.value !== "")) { err.textContent = "Revisa el valor del envío (entre $0 y $100)."; feeIn.focus(); return; }
+  const feeChanged = feeIn && Math.abs(fee - Number(o.delivery_fee)) > 0.001;
+  if (!S.editing.add.length && !feeChanged) { err.textContent = "No hay cambios: agrega un producto o cambia el envío."; return; }
+  const paidNow = paidLike && diff && $("input[name=edpay]:checked", box)?.value === "paid";
+  btn.disabled = true; btn.textContent = "Guardando…";
+  try {
+    const r = await api("editar_pedido", {
+      order_id: o.id, items: S.editing.add, ...(feeChanged ? { delivery_fee: fee } : {}),
+      extra_paid: Boolean(paidNow), extra_ref: paidNow ? ($("[data-edref]", box)?.value.trim() || "") : "",
+    });
+    S.editing = null;
+    toast(r.paid && r.extra_due > 0 ? `${r.code}: nuevo total ${money(r.total)} · falta cobrar ${money(r.extra_due)}` : r.paid && r.extra_due < 0 ? `${r.code}: nuevo total ${money(r.total)} · devolver ${money(-r.extra_due)}` : `${r.code}: nuevo total ${money(r.total)}`, 5000);
+    await loadOrders(); render();
+  } catch (ex) { err.textContent = ex.message; btn.disabled = false; btn.textContent = "Guardar cambios"; }
+}
 
 // ---------- motorizados (solo consulta) ----------
 function renderRiders() {
