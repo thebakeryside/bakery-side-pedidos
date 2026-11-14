@@ -132,12 +132,21 @@ function beep() {
 }
 
 // ---------- vista ----------
-// "Datos del cliente y entrega" (y la lista de sin pagar) siguen abiertos aunque la lista se redibuje cada 30 s o con cada pedido nuevo
-const OPEN_MORE = new Set();
+// "Datos del cliente y entrega" (y la lista de sin pagar) quedan abiertos 60 s desde que se abren, aunque la lista se redibuje
+const MORE_SECONDS = 60;
+const OPEN_MORE = new Map(); // clave → hora en que se abrió
+const isOpenMore = (k) => { const t = OPEN_MORE.get(k); if (t && Date.now() - t < MORE_SECONDS * 1000) return true; OPEN_MORE.delete(k); return false; };
 document.addEventListener("toggle", (e) => {
   const d = e.target, k = d?.dataset?.more;
   if (!k) return;
-  if (d.open) OPEN_MORE.add(k); else OPEN_MORE.delete(k);
+  if (!d.open) { OPEN_MORE.delete(k); return; }
+  if (isOpenMore(k)) return; // se volvió a dibujar abierto: conserva su hora
+  const t = Date.now(); OPEN_MORE.set(k, t);
+  setTimeout(() => {
+    if (OPEN_MORE.get(k) !== t) return;
+    OPEN_MORE.delete(k);
+    document.querySelectorAll(`details[data-more="${CSS.escape(k)}"]`).forEach((x) => (x.open = false));
+  }, MORE_SECONDS * 1000);
 }, true);
 function render(force = false) {
   // mientras se edita un pedido no se redibuja la lista (se perdería lo que se está escribiendo)
@@ -168,7 +177,7 @@ function render(force = false) {
       ${group("En preparación", by(["preparando"]))}
       ${group("Listos y en camino", by(["listo", "en_camino"]))}
       ${!active.length ? `<div class="panel"><p class="muted">No hay pedidos en curso. Cuando entre uno, aparecerá aquí ${S.sound ? "y sonará" : "(el sonido está apagado; tócalo arriba para encenderlo)"}.</p></div>` : ""}
-      ${unpaid.length ? `<details style="margin-top:18px" data-more="unpaid"${OPEN_MORE.has("unpaid") ? " open" : ""}><summary class="muted">Pedidos sin pagar en las últimas 2 horas (${unpaid.length})</summary><div class="cards" style="margin-top:10px">${unpaid.map(card).join("")}</div></details>` : ""}`;
+      ${unpaid.length ? `<details style="margin-top:18px" data-more="unpaid"${isOpenMore("unpaid") ? " open" : ""}><summary class="muted">Pedidos sin pagar en las últimas 2 horas (${unpaid.length})</summary><div class="cards" style="margin-top:10px">${unpaid.map(card).join("")}</div></details>` : ""}`;
   } else if (S.tab === "agenda") {
     const list = agenda.sort((a, b) => new Date(a.scheduled_for) - new Date(b.scheduled_for));
     const days = {};
@@ -369,7 +378,7 @@ function card(o) {
     ${needsUber(o) ? `<div class="acts uber-acts"><button class="btn small${o.uber_requested_at || uberMinLeft(o) <= 10 ? " primary" : ""}" data-act="uber" data-id="${o.id}">${ICON.moto}Pedir Uber</button>${o.uber_requested_at ? "" : `<button class="btn small" data-act="uberMark" data-id="${o.id}">✓ Ya lo pedí</button>`}<button class="btn small ghost" data-act="uberCopy" data-id="${o.id}">Copiar datos para el Uber</button></div>` : ""}
     ${main || assign ? `<div class="acts main">${main}${assign}</div>` : ""}
     ${o.status === "listo" && !pick && !o.uber_requested_at ? `<div class="confirm-row" data-sent="${o.id}" hidden><p class="small" style="margin:0;flex:1">Todavía no marcas el Uber como pedido. ¿Ya salió el pedido?</p><button class="btn small primary" data-act="sent" data-id="${o.id}">Sí, ya salió</button></div>` : ""}
-    <details class="more" data-more="${o.id}"${OPEN_MORE.has(String(o.id)) ? " open" : ""}>
+    <details class="more" data-more="${o.id}"${isOpenMore(String(o.id)) ? " open" : ""}>
       <summary>Datos del cliente y entrega</summary>
       <div class="meta">
         <span><b>${esc(o.customer_name)}</b> · <a href="tel:${esc(o.customer_phone)}">${esc(o.customer_phone)}</a></span>
