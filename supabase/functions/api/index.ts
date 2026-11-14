@@ -274,6 +274,7 @@ async function validateSchedule(s: Settings, scheduled: string | null, prep: num
 }
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
+const fmtWhen = (d: Date) => d.toLocaleString("es-EC", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "America/Guayaquil" });
 function feeValue(v: unknown) {
   const f = r2(Number(v));
   if (!(Number.isFinite(f) && f >= 0 && f <= 100)) fail("Revisa el valor del envío (entre $0 y $100).");
@@ -712,7 +713,19 @@ const actions: Record<string, (b: any, user: User) => Promise<unknown>> = {
       fee = f;
     }
     const feeChanged = Math.abs(fee - Number(o!.delivery_fee)) > 0.001;
-    if (!add && !feeChanged) fail("No hay cambios para guardar.");
+    // Reagendar: cocina puede mover el pedido a otro día/hora dentro del horario (sin límite de cupo ni anticipación)
+    let resched: Date | null = null;
+    if (b.scheduled_for) {
+      if (["en_camino", "entregado"].includes(o!.status)) fail("Este pedido ya salió: ya no se puede reagendar.");
+      const w = new Date(String(b.scheduled_for));
+      if (isNaN(w.getTime())) fail("La nueva fecha no es válida.");
+      if (w.getTime() < Date.now()) fail("Elige una hora que aún no haya pasado.");
+      if (w.getTime() > Date.now() + 31 * 86400000) fail("Se puede reagendar hasta 30 días antes.");
+      const s = await getSettings();
+      if (!isOpenAt(w, s)) fail(`Ese día atendemos ${hoursText(w, s)}. Elige otra hora.`);
+      if (!o!.scheduled_for || Math.abs(new Date(o!.scheduled_for).getTime() - w.getTime()) > 30000) resched = w;
+    }
+    if (!add && !feeChanged && !resched) fail("No hay cambios para guardar.");
     const subtotal = r2(Number(o!.subtotal) + (add?.subtotal ?? 0));
     const total = r2(subtotal - Number(o!.discount || 0) + fee);
     const diff = r2(total - Number(o!.total));
@@ -721,6 +734,11 @@ const actions: Record<string, (b: any, user: User) => Promise<unknown>> = {
     const patch: Record<string, unknown> = { subtotal, delivery_fee: fee, total };
     if (feeChanged) patch.fee_edited = true;
     if (add) patch.prep_minutes = Math.max(Number(o!.prep_minutes ?? 0), add.prep);
+    if (resched) {
+      Object.assign(patch, { scheduled_for: resched.toISOString(), eta: resched.toISOString(), rider_id: null, rider_accepted_at: null });
+      // si ya se estaba preparando, vuelve a la agenda
+      if (["preparando", "listo"].includes(o!.status)) patch.status = "confirmado";
+    }
     let extra = r2(Number(o!.extra_due || 0));
     if (paidLike && diff !== 0) {
       extra = r2(extra + diff);
@@ -751,12 +769,13 @@ const actions: Record<string, (b: any, user: User) => Promise<unknown>> = {
     const parts = [
       add ? `agregó ${add.lines.map((l) => `${l.quantity}× ${l.name}`).join(", ")}` : "",
       feeChanged ? `envío ${Number(o!.delivery_fee).toFixed(2)} → ${fee.toFixed(2)}` : "",
-      `total ${Number(o!.total).toFixed(2)} → ${total.toFixed(2)}`,
+      resched ? `reagendado ${o!.scheduled_for ? fmtWhen(new Date(o!.scheduled_for)) : "(era para ahora)"} → ${fmtWhen(resched)}` : "",
+      add || feeChanged ? `total ${Number(o!.total).toFixed(2)} → ${total.toFixed(2)}` : "",
       patch.extra_paid_at ? "diferencia cobrada" : "",
     ].filter(Boolean);
-    await db.from("order_events").insert({ order_id: o!.id, status: o!.status, actor: user!.id, note: `Editado por ${by}: ${parts.join(" · ")}`.slice(0, 500) });
+    await db.from("order_events").insert({ order_id: o!.id, status: (patch.status as string) || o!.status, actor: user!.id, note: `Editado por ${by}: ${parts.join(" · ")}`.slice(0, 500) });
     const stamps = o!.payment_status === "pagado" ? await topUpStamps(o!.id) : 0;
-    return { code: o!.code, subtotal, delivery_fee: fee, total, diff, extra_due: paidLike ? extra : 0, paid: paidLike, stamps };
+    return { code: o!.code, subtotal, delivery_fee: fee, total, diff, extra_due: paidLike ? extra : 0, paid: paidLike, stamps, scheduled_for: resched ? resched.toISOString() : o!.scheduled_for };
   },
 
   // Cocina confirma que el cliente pagó la diferencia (o que ya se le devolvió)

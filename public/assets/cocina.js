@@ -1,4 +1,4 @@
-import { sb, api, $, $$, money, esc, hhmm, when, dayLabel, orderRange, toast, waLink, waAttrs, waMode, setWaMode, waAuto, setWaAuto, openWa, fold, STATUS, todayLocal , tableSearch } from "./common.js";
+import { sb, api, $, $$, money, esc, hhmm, when, dayLabel, orderRange, toast, waLink, waAttrs, waMode, setWaMode, waAuto, setWaAuto, openWa, fold, STATUS, todayLocal , tableSearch, localToISO } from "./common.js";
 import { requireLogin, loginHTML } from "./auth.js";
 import { renderManual } from "./manual.js";
 
@@ -519,8 +519,52 @@ const edChoice = (cid) => { for (const gs of Object.values(S.opts || {})) for (c
 const edLinePrice = (l) => Number(S.products.find((p) => p.id === l.product_id)?.price || 0) + l.options.reduce((t, c) => t + Number(edChoice(c)?.price_delta || 0), 0);
 const edLineName = (l) => { const p = S.products.find((x) => x.id === l.product_id); const n = l.options.map((c) => edChoice(c)?.name).filter(Boolean); return (p?.name || "Producto") + (n.length ? ` (${n.join(", ")})` : ""); };
 
+// Reagendar: días y horas del horario (los mismos de "＋ Pedido WhatsApp"); cocina puede elegir cualquier franja futura
+async function loadCfg() { if (!S.cfg || Date.now() - S.cfgAt > 10 * 60000) { S.cfg = await api("config", {}); S.cfgAt = Date.now(); } }
+function edHours(date) {
+  const d = S.cfg?.days?.find((x) => x.day === date);
+  if (d) return d.closed ? null : d;
+  return S.cfg?.open_time ? { open: S.cfg.open_time, close: S.cfg.close_time } : null;
+}
+function edTimes(date) {
+  const h = edHours(date); if (!h) return [];
+  const [oh, om] = h.open.split(":").map(Number), [ch, cm] = h.close.split(":").map(Number), step = Number(S.cfg.slot_minutes) || 30;
+  const out = [], earliest = Date.now() + 10 * 60000;
+  for (let m = oh * 60 + om; m <= ch * 60 + cm; m += step) {
+    const t = `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+    if (h.break_from && h.break_to && t > h.break_from && t < h.break_to) continue;
+    const at = new Date(localToISO(date, t)).getTime();
+    if (at >= earliest && at <= Date.now() + 30 * 86400000) out.push(t);
+  }
+  return out;
+}
+function edDates() {
+  const out = [];
+  for (let i = 0; i <= 30; i++) {
+    const d = todayLocal(i);
+    if (edTimes(d).length) out.push(`<option value="${d}">${i === 0 ? "Hoy" : i === 1 ? "Mañana" : new Date(d + "T12:00:00-05:00").toLocaleDateString("es-EC", { weekday: "long", day: "numeric", month: "short", timeZone: "America/Guayaquil" })}</option>`);
+  }
+  return out.join("");
+}
+function edFillTimes(box) {
+  const d = $("[data-eddate]", box).value;
+  $("[data-edtime]", box).innerHTML = d ? edTimes(d).map((t) => `<option>${t}</option>`).join("") : "";
+}
+function edWhen(box) {
+  const d = $("[data-eddate]", box)?.value, t = $("[data-edtime]", box)?.value;
+  return d && t ? localToISO(d, t) : null;
+}
+function rescheduleText(o, iso) {
+  const first = o.customer_name.split(" ")[0];
+  const link = `${location.origin}/pedido?t=${o.tracking_token}`;
+  const day = dayLabel(iso).toLowerCase();
+  const verb = o.fulfillment === "pickup" ? "lo puede retirar" : "se lo entregamos";
+  return `Hola, ${first} 🤍 Le confirmamos que su pedido ${o.code} quedó reagendado: ${verb} ${day} a las ${hhmm(iso)}. Gracias por su comprensión.\nSeguimiento: ${link}\n\nThe Bakery Side · ¡Qué dulce!`;
+}
+
 async function openEditor(o) {
   await loadOpts();
+  try { await loadCfg(); } catch { /* sin horario: no se muestra reagendar */ }
   S.editing = { id: o.id, add: [] };
   render(true);
   const box = $(`[data-edit="${o.id}"]`); if (!box) return;
@@ -541,6 +585,10 @@ async function openEditor(o) {
     ${pick ? "" : `<label class="f" style="margin-top:8px">Envío a cobrar</label>
     <div class="edrow"><span class="mdep-cur">$</span><input class="in" data-edfee type="number" inputmode="decimal" min="0" max="100" step="0.25" value="${Number(o.delivery_fee).toFixed(2)}" style="width:110px">
       <span class="muted small">Antes ${money(o.delivery_fee)}${Number(o.rider_fee) ? ` · el motorizado sigue ganando ${money(o.rider_fee)}` : ""}</span></div>`}
+    ${S.cfg && !["en_camino", "entregado"].includes(o.status) ? `<label class="f" style="margin-top:8px">Reagendar ${pick ? "retiro" : "entrega"}</label>
+    <p class="muted small" style="margin:0 0 4px">Ahora: ${o.scheduled_for ? `${esc(dayLabel(o.scheduled_for))} a las ${hhmm(o.scheduled_for)}` : "para ahora (sin agendar)"}. Deje "Sin cambio" si no se mueve.</p>
+    <div class="edrow"><select class="in" data-eddate style="flex:1;min-width:160px" aria-label="Nuevo día"><option value="">Sin cambio</option>${edDates()}</select>
+      <select class="in" data-edtime style="width:110px" aria-label="Nueva hora"></select></div>` : ""}
     <div data-edsum></div>
     <p class="err" data-ederr role="alert"></p>
     <div class="edrow"><button class="btn primary" data-act="edSave" type="button">Guardar cambios</button></div>`;
@@ -565,6 +613,8 @@ async function openEditor(o) {
   };
   $("[data-edsearch]", box).onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); if (edSel.value) edAdd(); } };
   $("[data-edfee]", box)?.addEventListener("input", edDrawSum);
+  $("[data-eddate]", box)?.addEventListener("change", () => { edFillTimes(box); edDrawSum(); });
+  $("[data-edtime]", box)?.addEventListener("change", edDrawSum);
   box.addEventListener("change", (e) => { if (e.target.matches("[data-edg]")) edDrawOpts(true); if (e.target.matches("input[name=edpay]")) edDrawSum(); });
   edDrawList();
   box.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -615,9 +665,11 @@ function edDrawSum() {
       : `<div class="chips" role="radiogroup" style="margin-top:8px"><label class="chip"><input type="radio" name="edpay" value="due" ${mode === "due" ? "checked" : ""}> Queda por devolver ${money(-pend)}</label><label class="chip"><input type="radio" name="edpay" value="paid" ${mode === "paid" ? "checked" : ""}> Ya le devolví</label></div>`;
     if (mode === "paid") pay += `<input class="in" data-edref placeholder="Referencia o banco de la transferencia (opcional)" value="${esc(S.editing.ref || "")}" style="margin-top:6px;width:100%">`;
   }
+  const nw = edWhen(box);
+  const whenTxt = nw ? `<div class="line"><span>Nueva ${o.fulfillment === "pickup" ? "hora de retiro" : "entrega"}</span><span class="tabnum"><b>${esc(dayLabel(nw))} · ${hhmm(nw)}</b></span></div>` : "";
   const feeTxt = Math.abs(fee - Number(o.delivery_fee)) > 0.001 ? `<div class="line"><span>Envío</span><span class="tabnum"><s class="muted">${money(o.delivery_fee)}</s> ${money(fee)}</span></div>` : "";
   $("[data-edsum]", box).innerHTML = `<div class="msum" style="margin-top:10px">
-      ${added ? `<div class="line"><span>Productos agregados</span><span class="tabnum">+${money(added)}</span></div>` : ""}${feeTxt}
+      ${whenTxt}${added ? `<div class="line"><span>Productos agregados</span><span class="tabnum">+${money(added)}</span></div>` : ""}${feeTxt}
       <div class="line"><span>Total antes</span><span class="tabnum">${money(o.total)}</span></div>
       <div class="line total"><span>Nuevo total</span><span class="tabnum">${money(total)}</span></div>
       ${diff ? `<div class="line"><span>${diff > 0 ? "Diferencia a cobrar" : "Diferencia a devolver"}</span><span class="tabnum"><b>${money(Math.abs(diff))}</b></span></div>` : ""}
@@ -632,17 +684,21 @@ async function edSave(btn) {
   const feeIn = $("[data-edfee]", box);
   if (feeIn && !(fee >= 0 && fee <= 100 && feeIn.value !== "")) { err.textContent = "Revisa el valor del envío (entre $0 y $100)."; feeIn.focus(); return; }
   const feeChanged = feeIn && Math.abs(fee - Number(o.delivery_fee)) > 0.001;
-  if (!S.editing.add.length && !feeChanged) { err.textContent = "No hay cambios: agrega un producto o cambia el envío."; return; }
+  const nw = edWhen(box);
+  if (!S.editing.add.length && !feeChanged && !nw) { err.textContent = "No hay cambios: agregue un producto, cambie el envío o elija un nuevo día."; return; }
   const paidNow = paidLike && diff && $("input[name=edpay]:checked", box)?.value === "paid";
   btn.disabled = true; btn.textContent = "Guardando…";
   try {
     const r = await api("editar_pedido", {
-      order_id: o.id, items: S.editing.add, ...(feeChanged ? { delivery_fee: fee } : {}),
+      order_id: o.id, items: S.editing.add, ...(feeChanged ? { delivery_fee: fee } : {}), ...(nw ? { scheduled_for: nw } : {}),
       extra_paid: Boolean(paidNow), extra_ref: paidNow ? ($("[data-edref]", box)?.value.trim() || "") : "",
     });
+    const onlyWhen = nw && !S.editing.add.length && !feeChanged;
     S.editing = null;
-    toast(r.paid && r.extra_due > 0 ? `${r.code}: nuevo total ${money(r.total)} · falta cobrar ${money(r.extra_due)}` : r.paid && r.extra_due < 0 ? `${r.code}: nuevo total ${money(r.total)} · devolver ${money(-r.extra_due)}` : `${r.code}: nuevo total ${money(r.total)}${r.stamps ? ` · +${r.stamps} sello${r.stamps > 1 ? "s" : ""} para el cliente` : ""}`, 5000);
+    if (onlyWhen) toast(`${r.code} reagendado para ${when(nw).toLowerCase()}`, 5000); else toast(r.paid && r.extra_due > 0 ? `${r.code}: nuevo total ${money(r.total)} · falta cobrar ${money(r.extra_due)}` : r.paid && r.extra_due < 0 ? `${r.code}: nuevo total ${money(r.total)} · devolver ${money(-r.extra_due)}` : `${r.code}: nuevo total ${money(r.total)}${r.stamps ? ` · +${r.stamps} sello${r.stamps > 1 ? "s" : ""} para el cliente` : ""}`, 5000);
     await loadOrders(); render();
+    // reagendado: abre el chat del cliente con la nueva fecha (solo falta Enviar)
+    if (nw && o.customer_phone) openWa(o.customer_phone, rescheduleText(o, nw));
   } catch (ex) { err.textContent = ex.message; btn.disabled = false; btn.textContent = "Guardar cambios"; }
 }
 
