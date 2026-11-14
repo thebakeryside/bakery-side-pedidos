@@ -274,12 +274,16 @@ function uberChip(o) {
   if (m <= 10) return `<span class="chip warn">${ICON.moto}Pide el Uber a las ${hhmm(uberAt(o))} · en ${m} min</span>`;
   return `<span class="chip">${ICON.moto}Pide el Uber a las ${hhmm(uberAt(o))}${m < 120 ? ` · en ${m} min` : ""}</span>`;
 }
+// Datos de la recogida en la cocina (los mismos que Boris escribía a mano en Uber: edificio, apto e instrucciones)
+const PICKUP = { building: "Familia Cucalón Lucas", apt: "Mz63 V17", note: "Ingreso una cuadra antes de la gasolinera Terpel, por una garita azul" };
 // Abre la app de Uber con la cocina como recogida y el pin exacto del cliente como entrega
 function uberLink(o) {
   const st = S.settings || {}, who = o.recipient_name || o.customer_name;
   const q = new URLSearchParams({
     action: "setPickup",
-    "pickup[latitude]": st.kitchen_lat, "pickup[longitude]": st.kitchen_lng, "pickup[nickname]": "The Bakery Side",
+    "pickup[latitude]": st.kitchen_lat, "pickup[longitude]": st.kitchen_lng,
+    "pickup[nickname]": `The Bakery Side · ${PICKUP.building} · ${PICKUP.apt}`,
+    "pickup[formatted_address]": `${PICKUP.building} · ${PICKUP.apt} · ${PICKUP.note}`,
     "dropoff[latitude]": o.lat, "dropoff[longitude]": o.lng, "dropoff[nickname]": `${who} · ${o.code}`,
     "dropoff[formatted_address]": o.address || "",
   });
@@ -289,7 +293,7 @@ function uberLink(o) {
 // Computadora: la web de Uber ya no lee el enlace antiguo (/ul/); este formato abre el viaje con la recogida y la entrega puestas
 function uberWebLink(o) {
   const st = S.settings || {}, who = o.recipient_name || o.customer_name;
-  const pickup = { latitude: Number(st.kitchen_lat), longitude: Number(st.kitchen_lng), addressLine1: "The Bakery Side" };
+  const pickup = { latitude: Number(st.kitchen_lat), longitude: Number(st.kitchen_lng), addressLine1: `The Bakery Side · ${PICKUP.building} · ${PICKUP.apt}`, addressLine2: PICKUP.note };
   const drop = { latitude: Number(o.lat), longitude: Number(o.lng), addressLine1: `${who} · ${o.code}`, addressLine2: String(o.address || "").split(" · Ubicación del mapa: ")[0].slice(0, 120) };
   const v = uberVehicle();
   return `https://m.uber.com/go/product-selection?pickup=${encodeURIComponent(JSON.stringify(pickup))}&drop%5B0%5D=${encodeURIComponent(JSON.stringify(drop))}${v ? `&vehicle=${v}` : ""}`;
