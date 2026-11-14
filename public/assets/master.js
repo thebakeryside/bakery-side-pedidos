@@ -122,6 +122,8 @@ async function weekly(py, n = S.weeks || 12) {
     w.gift += Math.max(0, Number(o.rider_fee ?? o.delivery_fee) - Number(o.delivery_fee));
   }
   for (const w of weeks) { const y = py.find((x) => x.period_from === iso(w.from)); w.py = y ? Number(y.net) : null; w.pyN = y?.orders ?? null; }
+  // las semanas antes de la primera venta no se muestran
+  while (weeks.length > 1 && !weeks[weeks.length - 1].n && weeks[weeks.length - 1].py == null) weeks.pop();
   const wk = (w) => `${dShort(iso(w.from))} – ${dShort(iso(w.from + 6 * DAY))}`;
   const max = Math.max(1, ...weeks.map((w) => w.prod + (w.py || 0)));
   const prev = (i) => weeks[i + 1];
