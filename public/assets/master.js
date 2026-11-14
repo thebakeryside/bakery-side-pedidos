@@ -84,6 +84,7 @@ async function ventas() {
       </div>
       <p class="muted small" style="margin:0">${card.length} con tarjeta · ${orders.length - card.length} por transferencia. La comisión es un estimado del 5,75% sobre lo cobrado con tarjeta.</p>
     </div>
+    <div class="panel" style="margin-top:14px" id="weekly"><p class="muted small">Cargando ventas por semana…</p></div>
     ${pyPanel(py, monthStart, monthEnd)}
     ${ppPanel(pp, ppLast)}
     <div class="cards" style="margin-top:14px">
@@ -98,6 +99,52 @@ async function ventas() {
     </div>`;
   $("#month").onchange = (e) => { S.month = e.target.value || S.month; ventas(); };
   bindPyForm();
+  weekly(py);
+}
+
+// Ventas por semana (lunes a domingo, hora de Guayaquil): web + WhatsApp pagados y lo que liquidó PedidosYa esa semana
+async function weekly(py, n = S.weeks || 12) {
+  const box = $("#weekly"); if (!box) return;
+  const DAY = 86400000, local = (t) => new Date(new Date(t).getTime() - 5 * 3600000); // campos UTC = hora local
+  const t = local(Date.now()), dow = (t.getUTCDay() + 6) % 7; // 0 = lunes
+  const thisMon = Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate() - dow);
+  const firstMon = thisMon - (n - 1) * 7 * DAY;
+  const { data: rows, error } = await sb.from("orders").select("subtotal,discount,delivery_fee,rider_fee,total,paid_at,channel,user_id")
+    .eq("payment_status", "pagado").gte("paid_at", new Date(firstMon + 5 * 3600000).toISOString()).limit(5000);
+  if (error) { box.innerHTML = `<p class="err">${esc(error.message)}</p>`; return; }
+  const iso = (ms) => new Date(ms).toISOString().slice(0, 10);
+  const weeks = Array.from({ length: n }, (_, i) => ({ from: thisMon - i * 7 * DAY, n: 0, wa: 0, prod: 0, fee: 0, gift: 0, total: 0 }));
+  for (const o of rows || []) {
+    const l = local(o.paid_at), d = Date.UTC(l.getUTCFullYear(), l.getUTCMonth(), l.getUTCDate());
+    const w = weeks.find((x) => d >= x.from && d < x.from + 7 * DAY); if (!w) continue;
+    w.n++; if (o.channel === "whatsapp") w.wa++;
+    w.prod += Number(o.subtotal) - Number(o.discount || 0); w.fee += Number(o.delivery_fee); w.total += Number(o.total);
+    w.gift += Math.max(0, Number(o.rider_fee ?? o.delivery_fee) - Number(o.delivery_fee));
+  }
+  for (const w of weeks) { const y = py.find((x) => x.period_from === iso(w.from)); w.py = y ? Number(y.net) : null; w.pyN = y?.orders ?? null; }
+  const wk = (w) => `${dShort(iso(w.from))} – ${dShort(iso(w.from + 6 * DAY))}`;
+  const max = Math.max(1, ...weeks.map((w) => w.prod + (w.py || 0)));
+  const prev = (i) => weeks[i + 1];
+  const delta = (w, i) => { const p = prev(i); if (!p || !p.prod) return ""; const c = Math.round((w.prod / p.prod - 1) * 100); return `<span class="small" style="color:${c >= 0 ? "#2e7d32" : "#b3202a"}">${c >= 0 ? "▲" : "▼"} ${Math.abs(c)} %</span>`; };
+  box.innerHTML = `
+    <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;justify-content:space-between">
+      <h3 class="group-title" style="margin:0">Ventas por semana</h3>
+      <label class="muted small">Ver <select class="in" id="wkN" style="width:auto;padding:4px 8px">${[8, 12, 26].map((x) => `<option ${x === n ? "selected" : ""}>${x}</option>`).join("")}</select> semanas</label>
+    </div>
+    <p class="muted small" style="margin:6px 0 10px">De lunes a domingo, según el día en que se pagó. Web incluye los pedidos por WhatsApp. PedidosYa es lo liquidado esa semana (sale cuando Claude registra el estado de cuenta). La flecha compara los productos web con la semana anterior.</p>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Semana</th><th>Pedidos web</th><th>Productos web</th><th>Ticket</th><th>Envíos cobrados</th><th>Envío que pusiste</th><th>Cobrado web</th><th>PedidosYa</th><th>Web + PedidosYa</th></tr></thead><tbody>
+    ${weeks.map((w, i) => `<tr${i === 0 ? ' style="background:var(--crema)"' : ""}>
+      <td>${wk(w)}${i === 0 ? ` <span class="muted small">(en curso)</span>` : ""}</td>
+      <td class="tabnum">${w.n}${w.wa ? ` <span class="muted small">· ${w.wa} WA</span>` : ""}</td>
+      <td class="tabnum"><b>${money(w.prod)}</b> ${delta(w, i)}</td>
+      <td class="tabnum">${w.n ? money(w.prod / w.n) : "—"}</td>
+      <td class="tabnum">${money(w.fee)}</td>
+      <td class="tabnum">${w.gift > 0.004 ? money(w.gift) : "—"}</td>
+      <td class="tabnum">${money(w.total)}</td>
+      <td class="tabnum">${w.py == null ? "—" : `${money(w.py)}${w.pyN ? ` <span class="muted small">· ${w.pyN}</span>` : ""}`}</td>
+      <td class="tabnum"><div style="display:flex;align-items:center;gap:6px;justify-content:flex-end"><span style="display:inline-block;height:8px;border-radius:4px;background:#C68A4E;width:${Math.round((w.prod + (w.py || 0)) / max * 60)}px"></span><b>${money(w.prod + (w.py || 0))}</b></div></td></tr>`).join("")}
+    </tbody></table></div>`;
+  $("#wkN").onchange = (e) => { S.weeks = Number(e.target.value); weekly(py, S.weeks); };
 }
 
 // PedidosYa: tabla de semanas liquidadas (de lunes a domingo; el estado de cuenta llega el jueves)
