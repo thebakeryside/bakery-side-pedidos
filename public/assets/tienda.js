@@ -324,7 +324,9 @@ function itemCard(p) {
 const byName = (a, b) => a.name.localeCompare(b.name, "es", { numeric: true, sensitivity: "base" });
 const baseOrder = (c) => (/dulces enteros/i.test(c.name) ? (a, b) => Number(b.price) - Number(a.price) || byName(a, b) : byName);
 // Los de temporada (navideños) van primero, en el orden de Master → Menú
-const menuOrder = (c) => (a, b) => (b.seasonal ? 1 : 0) - (a.seasonal ? 1 : 0) || (a.seasonal && b.seasonal ? (a.sort ?? 0) - (b.sort ?? 0) : baseOrder(c)(a, b));
+// Combos: siempre por precio, de mayor a menor (también los navideños)
+const byPriceDesc = (a, b) => Number(b.price) - Number(a.price) || byName(a, b);
+const menuOrder = (c) => /^combos/i.test(c.name) ? byPriceDesc : (a, b) => (b.seasonal ? 1 : 0) - (a.seasonal ? 1 : 0) || (a.seasonal && b.seasonal ? (a.sort ?? 0) - (b.sort ?? 0) : baseOrder(c)(a, b));
 // Al agregar o quitar solo se actualizan los botones de ese producto (las fotos no se recargan)
 function updateCard(id) {
   const el = document.querySelector(`#menu [data-pid="${id}"]`); if (!el) return;
