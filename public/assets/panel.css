@@ -398,3 +398,41 @@ dialog.rcpt::backdrop { background: rgb(28 23 20 / .6); }
 .mdraft-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .mdraft { display: flex; align-items: center; gap: 6px; background: #FCF4EA; border: 1px solid rgba(198,138,78,.4); border-radius: 12px; padding: 4px 6px 4px 4px; }
 .mdraft .chip-x, .edlist .chip-x { border: 0; background: none; color: inherit; font-size: 17px; line-height: 1; cursor: pointer; padding: 0 4px; opacity: .65; }
+
+/* ===== Cotizaciones ===== */
+.qtabs { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.qlist { display: grid; gap: 12px; }
+.qcard { margin: 0; }
+.qcard-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; margin-bottom: 4px; }
+.qcard .qstatus { width: auto; min-height: 36px; padding: 6px 10px; }
+.qed { display: grid; gap: 14px; margin-top: 14px; }
+.qed > .panel { margin: 0; }
+.qprods { display: grid; gap: 6px; margin-top: 8px; }
+.qprod { display: flex; justify-content: space-between; gap: 10px; align-items: center; text-align: left; border: 1px solid var(--line); background: var(--surface); color: inherit; border-radius: 10px; padding: 9px 12px; cursor: pointer; font: inherit; }
+.qprod:hover { border-color: var(--tostado); }
+.qline { border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 10px; background: var(--surface); }
+.qline-head { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.qline-head .chip-x, .rtier .chip-x { border: 0; background: none; color: inherit; font-size: 22px; line-height: 1; cursor: pointer; padding: 0 6px; opacity: .6; }
+.qline-head .qname { font-weight: 700; }
+.qline-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px 10px; align-items: end; margin-top: 8px; }
+.qline-grid label.f, .qrecipe label.f, .qdetail { margin: 0; font-size: 13px; }
+.qline-total { display: grid; justify-items: end; padding-bottom: 6px; }
+.qline-total b { font-size: 19px; }
+.qrecipe { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px 10px; margin-top: 8px; padding: 10px; border-radius: 10px; background: var(--surface-2); }
+.qinline { display: flex; gap: 6px; align-items: center; }
+.qinline .in { max-width: 90px; }
+.qdetail { display: block; margin-top: 8px !important; }
+.qline-info { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin-top: 8px; }
+.qline input.in.bad { border-color: var(--error); box-shadow: 0 0 0 3px rgb(176 58 40 / .12); }
+.qline input.in.warn { border-color: #D9A43A; }
+p.bad, span.bad, .small.bad { color: var(--error); }
+p.warn, span.warn, .small.warn { color: var(--aviso); }
+.qrule { margin: 4px 0 0; }
+.qprofit { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); }
+.qprofit > div { display: grid; gap: 2px; }
+.qprofit b { font-size: 17px; }
+.rtiers { display: grid; gap: 6px; }
+.rtier { display: flex; gap: 8px; align-items: center; flex-wrap: nowrap; font-size: 14px; }
+.rtier label { display: inline-flex; align-items: center; white-space: nowrap; }
+.rtier .in { width: 64px; display: inline-block; margin: 0 4px; min-height: 38px; }
+.tbl .rcap { width: 70px; }

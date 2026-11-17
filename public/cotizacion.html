@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cotización · The Bakery Side</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#FFFFFF">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/icon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="/icon-180.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700&family=Bebas+Neue&display=swap">
+<link rel="stylesheet" href="/assets/app.css">
+<style>
+  .doc { max-width: 760px; margin: 0 auto; padding: 24px 16px 60px; }
+  .sheet { background: #fff; border: 1px solid var(--line); border-radius: 18px; padding: 28px; box-shadow: var(--shadow); }
+  .hd { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding-bottom: 18px; border-bottom: 3px solid var(--tostado); }
+  .hd img { width: 110px; height: auto; }
+  .hd .tag { font-family: var(--display); font-size: 15px; letter-spacing: .08em; color: var(--accent-ink); }
+  .hd h1 { font-family: var(--display); font-weight: 400; font-size: 44px; line-height: 1; margin: 2px 0 0; letter-spacing: .03em; }
+  .hd .meta { text-align: right; font-size: 14px; color: var(--text-2); }
+  .hd .meta b { color: var(--text); }
+  .who { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin: 18px 0; font-size: 14.5px; }
+  .who span { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-2); }
+  table.items { width: 100%; border-collapse: collapse; font-size: 15px; }
+  table.items th { text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-2); font-weight: 600; padding: 8px 6px; border-bottom: 1px solid var(--line); }
+  table.items td { padding: 11px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.items .n { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  table.items small { display: block; color: var(--text-2); }
+  table.items s { color: var(--text-2); font-size: 13px; display: block; }
+  .tot { margin: 16px 0 0 auto; max-width: 320px; display: grid; gap: 6px; font-size: 15px; }
+  .tot div { display: flex; justify-content: space-between; gap: 12px; font-variant-numeric: tabular-nums; }
+  .tot .save { color: var(--ok); font-weight: 600; }
+  .tot .grand { border-top: 2px solid var(--tinta); padding-top: 8px; font-family: var(--display); font-size: 30px; letter-spacing: .03em; }
+  .box { margin-top: 20px; padding: 14px 16px; border-radius: 12px; background: var(--crema); font-size: 14.5px; }
+  .box h3 { font-family: var(--display); font-weight: 400; font-size: 20px; letter-spacing: .05em; margin: 0 0 6px; }
+  .box p { margin: 4px 0; }
+  .terms { font-size: 12.5px; color: var(--text-2); margin-top: 18px; white-space: pre-line; }
+  .ft { margin-top: 22px; padding-top: 14px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; font-size: 13px; color: var(--text-2); }
+  .ft b { font-family: var(--display); font-weight: 400; font-size: 18px; letter-spacing: .05em; color: var(--tinta); }
+  .acts { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; margin-top: 18px; }
+  .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 700; background: var(--crema); }
+  .badge.old { background: rgb(176 58 40 / .1); color: var(--error); }
+  .badge.ok { background: rgb(62 122 52 / .12); color: var(--ok); }
+  @media (max-width: 560px) {
+    .sheet { padding: 18px 14px; border-radius: 14px; }
+    .hd h1 { font-size: 34px; }
+    .hd img { width: 84px; }
+    table.items th.lp, table.items td.lp { display: none; }
+  }
+  @media print {
+    @page { size: A4; margin: 14mm; }
+    html, body { background: #fff !important; }
+    .doc { padding: 0; max-width: none; }
+    .sheet { border: 0; box-shadow: none; padding: 0; }
+    .acts, .noprint { display: none !important; }
+    .box { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .hd { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    table.items th.lp, table.items td.lp { display: table-cell; }
+  }
+</style>
+</head>
+<body class="light">
+<main class="doc" id="doc"><p class="muted">Cargando su cotización…</p></main>
+<script type="module" src="/assets/cotizacion.js"></script>
+</body>
+</html>

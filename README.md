@@ -8,6 +8,7 @@ Sistema propio de pedidos a domicilio, sin comisiones de apps de delivery.
 | `/pedido?t=…` | Clientes | Seguimiento del pedido |
 | `/pago` | Clientes | Página de regreso de Payphone; confirma el pago |
 | `/cocina` | Dueños | Pedidos en tiempo real, transferencias, motorizados, menú y ajustes |
+| `/cotizacion?t=…` | Clientes | Cotización con enlace propio; se descarga como PDF |
 | `/moto` | Motorizados | Sus entregas, ruta en Maps/Waze y botones de recogido/entregado |
 
 ## Partes
@@ -33,3 +34,11 @@ Nunca se guardan claves en este repositorio. La clave publicable de Supabase en 
 ## Temporada navideña
 
 `public/assets/temporada.js` y `temporada.css` visten las páginas del cliente entre dos fechas (por defecto del 9 nov 2026 al 6 ene 2027) y se apagan solas. Las fechas, el interruptor y los últimos días para pedir se cambian en Master → Ajustes → Temporada navideña (guarda `productos/temporada/navidad.json`). Vista previa: `/?navidad=1` (y `&acto=adviento|fiestas|reyes`); `/?navidad=0` la quita.
+
+## Cotizaciones
+
+Cocina → Cotizaciones (y Master → Cotizaciones), solo para la cuenta master porque usa los costos. Cálculos en `public/assets/quote-calc.js`; pantalla en `cotizaciones.js`; página del cliente `cotizacion.html` (lee la función `quote_public`, que nunca devuelve costos).
+
+- **Meta** (60 %): precio sugerido para lo que no está en el menú (desde una receta de Costos + envase).
+- **Piso** (45 %): ningún descuento automático deja menos; bajarlo a mano pide confirmación.
+- **Tramos** por cantidad (se suma la categoría) y **tope por producto** (`products.quote_max_disc`; bebidas 10 %). Se editan en Cotizaciones → Reglas de descuento (tabla `quote_rules`).

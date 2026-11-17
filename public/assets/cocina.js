@@ -1,6 +1,7 @@
 import { sb, api, $, $$, money, esc, hhmm, when, dayLabel, orderRange, toast, waLink, waAttrs, waMode, setWaMode, waAuto, setWaAuto, openWa, fold, STATUS, todayLocal , tableSearch, localToISO } from "./common.js";
 import { requireLogin, loginHTML } from "./auth.js";
 import { renderManual } from "./manual.js";
+import { renderQuotes } from "./cotizaciones.js";
 
 $("#loginSlot").innerHTML = loginHTML("Panel de cocina");
 
@@ -12,6 +13,7 @@ const AGENDA_HOURS = 3; // los agendados aparecen en "Pedidos" desde 3 horas ant
 requireLogin(async (user) => {
   const { data: prof } = await sb.from("profiles").select("role,is_master").eq("user_id", user.id).maybeSingle();
   $("#toMaster").hidden = !prof?.is_master;
+  $("#tabQuotes").hidden = !prof?.is_master; // cotizaciones usan los costos: solo master
   if (prof?.role !== "admin" && !prof?.is_master) {
     $("#view").innerHTML = `<div class="panel"><h2 class="display" style="font-size:32px">Sin acceso a cocina</h2><p class="muted">Tu correo ${esc(user.email)} no está autorizado como administrador. Si eres motorizado, entra en <a href="/moto">/moto</a>.</p></div>`;
     $(".tabs").hidden = true; return;
@@ -162,6 +164,8 @@ function render(force = false) {
   const v = $("#view");
   // el formulario de pedido por WhatsApp no se redibuja con cada actualización
   if (S.tab === "nuevo") { if (v.dataset.on !== "nuevo") { v.dataset.on = "nuevo"; renderManual(v); } return; }
+  // cotizaciones: tampoco se redibuja cuando entra un pedido (se perdería lo que se está escribiendo)
+  if (S.tab === "cotizaciones") { if (v.dataset.on !== "cotizaciones") { v.dataset.on = "cotizaciones"; renderQuotes(v); } return; }
   v.dataset.on = S.tab;
   if (S.tab === "pedidos") {
     const today = new Date().toLocaleDateString("es-EC", { timeZone: "America/Guayaquil" });
