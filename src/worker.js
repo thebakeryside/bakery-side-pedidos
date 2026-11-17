@@ -1,3 +1,5 @@
+// Las descripciones pueden llevar **negrita** (se ve en la tienda); fuera de la tienda van sin asteriscos.
+const plainDesc = (d) => String(d || "").replace(/\*\*/g, "");
 // The Bakery Side: sirve el sitio estático y, en las páginas públicas, escribe el menú dentro del HTML
 // para que Google y los asistentes de IA (que no ejecutan JavaScript) vean los productos, precios y horario.
 // Si algo falla, devuelve la página tal cual: nunca rompe la tienda.
@@ -124,7 +126,7 @@ function jsonLd(groups, cfg) {
         hasMenuItem: g.items.map((p) => ({
           "@type": "MenuItem",
           name: p.name,
-          description: p.description || undefined,
+          description: plainDesc(p.description) || undefined,
           image: mediaURL(p.image_url) || undefined,
           offers: { "@type": "Offer", price: Number(p.price).toFixed(2), priceCurrency: "USD", availability: "https://schema.org/InStock" },
         })),
@@ -139,14 +141,14 @@ function jsonLd(groups, cfg) {
 // Lista sencilla para la tienda: se ve un instante mientras carga la tienda interactiva (que la reemplaza)
 function menuList(groups) {
   return `<div class="ssr-menu">${groups.map((g) => `<h3 class="cat-title">${esc(g.name)}</h3><ul class="ssr-list">${g.items.map((p) =>
-    `<li><span><b>${esc(p.name)}</b>${p.description ? ` <small>${esc(p.description)}</small>` : ""}</span><span class="tabnum">${money(p.price)}</span></li>`).join("")}</ul>`).join("")}</div>`;
+    `<li><span><b>${esc(p.name)}</b>${p.description ? ` <small>${esc(plainDesc(p.description))}</small>` : ""}</span><span class="tabnum">${money(p.price)}</span></li>`).join("")}</ul>`).join("")}</div>`;
 }
 
 // Tarjetas con foto para las páginas de búsqueda
 function menuCards(groups) {
   return groups.map((g) => `<h2 class="lp-cat">${esc(g.name)}</h2><div class="lp-grid">${g.items.map((p) => `<a class="lp-card" href="/#cat-${g.id}">
     ${p.image_url ? `<img src="${esc(mediaURL(p.image_url))}" alt="${esc(p.name)} de The Bakery Side" loading="lazy" width="400" height="400">` : ""}
-    <span class="lp-body"><b>${esc(p.name)}</b>${p.servings ? `<small>Porciones: ${esc(p.servings)}</small>` : ""}${p.description ? `<small>${esc(p.description)}</small>` : ""}
+    <span class="lp-body"><b>${esc(p.name)}</b>${p.servings ? `<small>Porciones: ${esc(p.servings)}</small>` : ""}${p.description ? `<small>${esc(plainDesc(p.description))}</small>` : ""}
     <span class="lp-price">${money(p.price)}${p.lead_hours ? (p.lead_hours < 24 ? " · ¡Agenda para mañana!" : ` · pedir con ${p.lead_hours} h`) : ""}</span></span></a>`).join("")}</div>`).join("");
 }
 
@@ -159,7 +161,7 @@ function hoursText(cfg) {
 async function llms(asset) {
   const base = await asset.text();
   const { groups, cfg } = await loadData();
-  const menu = groups.map((g) => `## ${g.name}\n${g.items.map((p) => `- ${p.name} (${money(p.price)})${p.servings ? `, porciones: ${p.servings}` : ""}${p.lead_hours ? (p.lead_hours < 24 ? ", se agenda desde mañana" : `, pedir con ${p.lead_hours} h de anticipación`) : ""}${p.description ? `: ${p.description}` : ""}`).join("\n")}`).join("\n\n");
+  const menu = groups.map((g) => `## ${g.name}\n${g.items.map((p) => `- ${p.name} (${money(p.price)})${p.servings ? `, porciones: ${p.servings}` : ""}${p.lead_hours ? (p.lead_hours < 24 ? ", se agenda desde mañana" : `, pedir con ${p.lead_hours} h de anticipación`) : ""}${p.description ? `: ${plainDesc(p.description)}` : ""}`).join("\n")}`).join("\n\n");
   const hrs = hoursText(cfg);
   return new Response(`${base.trim()}\n\n# Horario de esta semana\n${hrs || "Consulta en la tienda"}\n\n# Menú actual (precios en USD)\n\n${menu}\n`, {
     headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=300" },
