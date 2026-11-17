@@ -1020,3 +1020,13 @@ $("#orderForm").addEventListener("submit", async (e) => {
 });
 
 init();
+
+// Con una ventana abierta (opciones de un combo, pago, bienvenida) o el carrito abierto en el celular,
+// el fondo no se mueve: solo se desplaza la ventana.
+{
+  const lockers = [...document.querySelectorAll(".modal"), $("#cartScrim")].filter(Boolean);
+  const sync = () => document.documentElement.classList.toggle("noscroll", lockers.some((el) => !el.hidden));
+  const mo = new MutationObserver(sync);
+  lockers.forEach((el) => mo.observe(el, { attributes: true, attributeFilter: ["hidden"] }));
+  sync();
+}

@@ -405,3 +405,7 @@ body.in-checkout .demand-bar { display: none !important; }
 @media (max-width: 640px) {
   .item.seasonal.theme-azul, .item.seasonal.theme-azul:hover { --season: #1F4E8C; --season-bg: #EDF3FB; box-shadow: none; }
 }
+
+/* fondo quieto mientras hay una ventana abierta (ver tienda.js) */
+html.noscroll, html.noscroll body { overflow: hidden; overscroll-behavior: none; }
+.modal, .modal-card, .cart { overscroll-behavior: contain; }
