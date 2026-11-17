@@ -347,7 +347,8 @@ function renderMenu() {
         ? `<div class="menu-grid">${g.items.map(itemCard).join("")}</div>`
         : `<div class="soon"><span class="display">Próximamente</span><span class="muted small">Estamos preparando esta sección.</span></div>`}`).join("")
     : `<p class="muted">Pronto publicaremos el menú.</p>`;
-  if (groups.length && state.products.some((p) => p.allergens?.length)) $("#menu").insertAdjacentHTML("beforeend", `<div class="alg-legend"><b>Alérgenos</b>${ALLERGENS.map(([k, i, n]) => `<span><span class="alg" aria-hidden="true">${i}</span>${n}</span>`).join("")}<small>Todo se prepara en la misma cocina: puede haber trazas. ¿Alergia severa? Escríbenos antes de pedir.</small></div>`);
+  // Leyenda de alérgenos al final del menú: oculta por ahora (solo está marcado el alcohol; 17 nov).
+  // if (groups.length && state.products.some((p) => p.allergens?.length)) $("#menu").insertAdjacentHTML("beforeend", `<div class="alg-legend"><b>Alérgenos</b>${ALLERGENS.map(([k, i, n]) => `<span><span class="alg" aria-hidden="true">${i}</span>${n}</span>`).join("")}<small>Todo se prepara en la misma cocina: puede haber trazas. ¿Alergia severa? Escríbenos antes de pedir.</small></div>`);
 }
 $("#menu").addEventListener("click", (e) => {
   const b = e.target.closest("[data-a]"); if (!b) return;
