@@ -398,3 +398,10 @@ body.in-checkout .demand-bar { display: none !important; }
   .item.seasonal::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 6px;
     background: repeating-linear-gradient(-45deg, var(--season) 0 5px, #fff 5px 10px); }
 }
+/* tema azul (Día del Hombre): mismo recuadro y franja a rayas que los navideños, en azul */
+.item.seasonal.theme-azul, .item.seasonal.theme-azul:hover { --season: #1F4E8C; box-shadow: 0 6px 18px rgb(31 78 140 / .14); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .item.seasonal.theme-azul { --season: #6EA0E8; } }
+:root[data-theme="dark"] .item.seasonal.theme-azul { --season: #6EA0E8; }
+@media (max-width: 640px) {
+  .item.seasonal.theme-azul, .item.seasonal.theme-azul:hover { --season: #1F4E8C; --season-bg: #EDF3FB; box-shadow: none; }
+}
