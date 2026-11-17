@@ -14,6 +14,11 @@ async function main() {
   const disc = Number(q.discount) > 0.004;
   const dep = Math.round(Number(q.total) * Number(q.deposit_pct) * 100) / 100;
   const bank = parseBank(q.bank_info);
+  // Con pago total (100 %) o sin anticipo, no tiene sentido hablar de anticipo ni de saldo: se quitan esas frases de las condiciones.
+  const pctDep = Number(q.deposit_pct);
+  const terms = (pctDep >= 1 || pctDep <= 0)
+    ? String(q.terms || "").split(/(?<=\.)\s+/).filter((s) => !/anticipo|saldo/i.test(s)).join(" ").trim()
+    : q.terms;
   const wa = q.whatsapp ? waLink(q.whatsapp, `¡Hola! Quiero confirmar la cotización ${q.code} de The Bakery Side.`) : null;
   const del = q.delivery === "domicilio" ? money(q.delivery_fee) : q.delivery === "retiro" ? "Retiro en local" : "Por confirmar";
   doc.innerHTML = `
@@ -47,7 +52,7 @@ async function main() {
         <p>${Number(q.deposit_pct) < 1 ? `Anticipo de <b>${money(dep)}</b> (${Math.round(q.deposit_pct * 100)} %) y el saldo de <b>${money(Math.round((q.total - dep) * 100) / 100)}</b> antes de la entrega.` : `Pago total de <b>${money(q.total)}</b> para confirmar.`}</p>
         ${bank && bank.accounts.length ? `<p style="margin-top:8px"><b>Transferencia</b>${bank.holder ? ` a nombre de ${esc(bank.holder)}` : ""}:</p>${bank.accounts.map((a) => `<p>${esc(a.bank)} · ${esc(a.type)} · <b>${esc(a.number)}</b></p>`).join("")}${bank.email ? `<p>Comprobante a ${esc(bank.email)}</p>` : ""}` : ""}
       </div>` : ""}
-      ${q.terms ? `<p class="terms">${esc(q.terms)}</p>` : ""}
+      ${terms ? `<p class="terms">${esc(terms)}</p>` : ""}
       <footer class="ft"><b>The Bakery Side</b><span>thebakeryside.com · @thebakeryside${q.whatsapp ? ` · WhatsApp ${esc(q.whatsapp)}` : ""}</span></footer>
     </article>
     <div class="acts">
