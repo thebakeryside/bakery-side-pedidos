@@ -5,7 +5,8 @@ import { costos } from "./costos.js";
 import { renderQuotes } from "./cotizaciones.js";
 
 $("#loginSlot").innerHTML = loginHTML("Panel master");
-const S = { tab: "ventas", month: new Date(Date.now() - 5 * 3600000).toISOString().slice(0, 7) };
+const todayGye = () => new Date(Date.now() - 5 * 3600000).toISOString().slice(0, 10);
+const S = { tab: "ventas", mode: "mes", month: todayGye().slice(0, 7), day: todayGye() };
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString("es-EC", { day: "numeric", month: "short", year: "numeric", timeZone: "America/Guayaquil" }) : "";
 const rpcErr = (e) => toast(/master/i.test(e.message) ? "Solo el master puede hacer esto." : e.message);
 
@@ -40,17 +41,22 @@ function confirmRow(btn, text, onYes) {
 
 // ---------- ventas ----------
 async function ventas() {
-  const [y, m] = S.month.split("-").map(Number);
-  const from = new Date(Date.UTC(y, m - 1, 1, 5)).toISOString(), to = new Date(Date.UTC(y, m, 1, 5)).toISOString();
+  const isDay = S.mode === "dia";
+  if (isDay) S.month = S.day.slice(0, 7);
+  const [y, m] = S.month.split("-").map(Number), dd = Number(S.day.slice(8, 10));
+  // límites en hora de Guayaquil (UTC−5)
+  const from = isDay ? new Date(Date.UTC(y, m - 1, dd, 5)).toISOString() : new Date(Date.UTC(y, m - 1, 1, 5)).toISOString();
+  const to = isDay ? new Date(Date.UTC(y, m - 1, dd + 1, 5)).toISOString() : new Date(Date.UTC(y, m, 1, 5)).toISOString();
+  const periodo = isDay ? "del día" : "del mes";
   $("#view").innerHTML = `<p class="muted">Cargando…</p>`;
   const { data: orders, error } = await sb.from("orders")
-    .select("id,subtotal,discount,delivery_fee,rider_fee,total,payment_method,rider_id,status,riders(full_name),order_items(name,quantity,line_total)")
-    .eq("payment_status", "pagado").gte("paid_at", from).lt("paid_at", to);
+    .select("id,code,paid_at,channel,subtotal,discount,delivery_fee,rider_fee,total,payment_method,rider_id,status,riders(full_name),order_items(name,quantity,line_total)")
+    .eq("payment_status", "pagado").gte("paid_at", from).lt("paid_at", to).order("paid_at");
   if (error) return ($("#view").innerHTML = `<p class="err">${esc(error.message)}</p>`);
   // Liquidaciones semanales de PedidosYa (las registra Claude cada viernes; cuentan en el mes en que se liquidan)
   const { data: chAll } = await sb.from("channel_settlements").select("*").in("channel", ["pedidosya", "payphone"]).order("period_from", { ascending: false });
   const py = (chAll || []).filter((w) => w.channel === "pedidosya"), pp = (chAll || []).filter((w) => w.channel === "payphone"), monthStart = S.month + "-01", monthEnd = new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10);
-  const pyMonth = py.filter((w) => (w.settled_on || w.period_to) >= monthStart && (w.settled_on || w.period_to) < monthEnd);
+  const pyMonth = isDay ? [] : py.filter((w) => (w.settled_on || w.period_to) >= monthStart && (w.settled_on || w.period_to) < monthEnd);
   const pyNet = pyMonth.reduce((s, w) => s + Number(w.net), 0), pyOrders = pyMonth.reduce((s, w) => s + Number(w.orders || 0), 0);
   const ppLast = pp.filter((w) => w.balance_at).sort((a, b) => b.balance_at.localeCompare(a.balance_at))[0];
   const pyPending = py.filter((w) => w.status !== "pagado").reduce((s, w) => s + Number(w.net), 0);
@@ -68,9 +74,18 @@ async function ventas() {
   $("#view").innerHTML = `
     <div class="panel" style="display:grid;gap:14px">
       <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;justify-content:space-between">
-        <h2 class="display" style="font-size:30px">Ventas del mes</h2>
-        <div><label class="f" for="month" style="margin-top:0">Mes</label><input class="in" type="month" id="month" value="${S.month}" style="width:auto"></div>
+        <h2 class="display" style="font-size:30px">Ventas ${periodo}</h2>
+        <div style="display:flex;gap:6px;align-items:end;flex-wrap:wrap">
+          <div><label class="f" for="vMode" style="margin-top:0">Ver</label><select class="in" id="vMode" style="width:auto"><option value="mes"${isDay ? "" : " selected"}>Mes</option><option value="dia"${isDay ? " selected" : ""}>Día</option></select></div>
+          <button class="btn small ghost" type="button" id="vPrev" aria-label="Anterior" style="margin-bottom:4px">‹</button>
+          <div>${isDay
+            ? `<label class="f" for="day" style="margin-top:0">Día</label><input class="in" type="date" id="day" value="${S.day}" max="${todayGye()}" style="width:auto">`
+            : `<label class="f" for="month" style="margin-top:0">Mes</label><input class="in" type="month" id="month" value="${S.month}" style="width:auto">`}</div>
+          <button class="btn small ghost" type="button" id="vNext" aria-label="Siguiente" style="margin-bottom:4px">›</button>
+          ${isDay && S.day !== todayGye() ? `<button class="btn small ghost" type="button" id="vToday" style="margin-bottom:4px">Hoy</button>` : ""}
+        </div>
       </div>
+      ${isDay ? `<p class="muted small" style="margin:0;text-transform:capitalize">${new Date(S.day + "T12:00:00Z").toLocaleDateString("es-EC", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })}</p>` : ""}
       <div class="stats">
         <div><b>${orders.length}</b>pedidos pagados</div>
         <div><b>${money(products)}</b>ventas en productos</div>
@@ -78,29 +93,91 @@ async function ventas() {
         ${shipGift > 0.004 ? `<div><b>${money(shipGift)}</b>envíos gratis que pusiste</div>` : ""}
         <div><b>${money(total)}</b>cobrado en total</div>
         <div><b>${money(cardFee)}</b>comisión Payphone aprox.</div>
-        <div><b>${money(pyNet)}</b>liquidado por PedidosYa${pyOrders ? ` · ${pyOrders} pedidos` : ""}</div>
+        ${isDay ? "" : `<div><b>${money(pyNet)}</b>liquidado por PedidosYa${pyOrders ? ` · ${pyOrders} pedidos` : ""}</div>`}
         ${pyPending > 0.004 ? `<div><b>${money(pyPending)}</b>PedidosYa por depositarte</div>` : ""}
         ${ppLast && Number(ppLast.balance_end) > 0.004 ? `<div><b>${money(Number(ppLast.balance_end))}</b>en Payphone sin retirar</div>` : ""}
-        <div><b>${money(products + pyNet)}</b>web (productos) + PedidosYa</div>
+        ${isDay ? (orders.length ? `<div><b>${money(products / orders.length)}</b>ticket promedio</div>` : "") : `<div><b>${money(products + pyNet)}</b>web (productos) + PedidosYa</div>`}
       </div>
-      <p class="muted small" style="margin:0">${card.length} con tarjeta · ${orders.length - card.length} por transferencia. La comisión es un estimado del 5,75% sobre lo cobrado con tarjeta.</p>
+      <p class="muted small" style="margin:0">${card.length} con tarjeta · ${orders.length - card.length} por transferencia. La comisión es un estimado del 5,75% sobre lo cobrado con tarjeta.${isDay ? " PedidosYa se liquida por semana, así que no sale en la vista por día." : ""}</p>
     </div>
+    ${isDay ? dayOrdersPanel(orders) : dailyPanel(orders, y, m)}
     <div class="panel" style="margin-top:14px" id="weekly"><p class="muted small">Cargando ventas por semana…</p></div>
     ${pyPanel(py, monthStart, monthEnd)}
     ${ppPanel(pp, ppLast)}
     <div class="cards" style="margin-top:14px">
       <div class="panel"><h3 class="group-title" style="margin-top:0">Pago a motorizados</h3>
         <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Motorizado</th><th>Entregas</th><th>Envíos a pagar</th></tr></thead><tbody>
-        ${Object.entries(riders).map(([n, r]) => `<tr><td>${esc(n)}</td><td class="tabnum">${r.n}</td><td class="tabnum">${money(r.fees)}</td></tr>`).join("") || `<tr><td colspan="3" class="muted">Sin entregas este mes.</td></tr>`}
+        ${Object.entries(riders).map(([n, r]) => `<tr><td>${esc(n)}</td><td class="tabnum">${r.n}</td><td class="tabnum">${money(r.fees)}</td></tr>`).join("") || `<tr><td colspan="3" class="muted">Sin entregas ${isDay ? "este día" : "este mes"}.</td></tr>`}
         </tbody></table></div></div>
       <div class="panel"><h3 class="group-title" style="margin-top:0">Productos más vendidos</h3>
         <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Producto</th><th>Unidades</th><th>Ventas</th></tr></thead><tbody>
-        ${top.map(([n, p]) => `<tr><td>${esc(n)}</td><td class="tabnum">${p.q}</td><td class="tabnum">${money(p.v)}</td></tr>`).join("") || `<tr><td colspan="3" class="muted">Sin ventas este mes.</td></tr>`}
+        ${top.map(([n, p]) => `<tr><td>${esc(n)}</td><td class="tabnum">${p.q}</td><td class="tabnum">${money(p.v)}</td></tr>`).join("") || `<tr><td colspan="3" class="muted">Sin ventas ${isDay ? "este día" : "este mes"}.</td></tr>`}
         </tbody></table></div></div>
     </div>`;
-  $("#month").onchange = (e) => { S.month = e.target.value || S.month; ventas(); };
+  $("#vMode").onchange = (e) => {
+    S.mode = e.target.value;
+    // al pasar a día: hoy si es el mes en curso, si no el día 1 del mes elegido
+    if (S.mode === "dia") S.day = S.month === todayGye().slice(0, 7) ? todayGye() : S.month + "-01";
+    ventas();
+  };
+  if (isDay) $("#day").onchange = (e) => { if (e.target.value) { S.day = e.target.value; ventas(); } };
+  else $("#month").onchange = (e) => { S.month = e.target.value || S.month; ventas(); };
+  const shift = (k) => {
+    if (isDay) { const d = new Date(S.day + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + k); S.day = d.toISOString().slice(0, 10); }
+    else { const d = new Date(Date.UTC(y, m - 1 + k, 1)); S.month = d.toISOString().slice(0, 7); }
+    ventas();
+  };
+  $("#vPrev").onclick = () => shift(-1);
+  $("#vNext").onclick = () => shift(1);
+  if ($("#vToday")) $("#vToday").onclick = () => { S.day = todayGye(); ventas(); };
+  $$("[data-day]").forEach((r) => (r.onclick = () => { S.mode = "dia"; S.day = r.dataset.day; ventas(); window.scrollTo({ top: 0, behavior: "smooth" }); }));
   bindPyForm();
   weekly(py);
+}
+
+// Mes: una fila por día con ventas (tocar el día abre la vista de ese día)
+function dailyPanel(orders, y, m) {
+  const days = {};
+  for (const o of orders) {
+    const k = new Date(new Date(o.paid_at).getTime() - 5 * 3600000).toISOString().slice(0, 10);
+    const d = (days[k] ||= { n: 0, wa: 0, prod: 0, fee: 0, total: 0 });
+    d.n++; if (o.channel === "whatsapp") d.wa++;
+    d.prod += Number(o.subtotal) - Number(o.discount || 0); d.fee += Number(o.delivery_fee); d.total += Number(o.total);
+  }
+  const rows = Object.entries(days).sort((a, b) => b[0].localeCompare(a[0]));
+  const max = Math.max(1, ...rows.map(([, d]) => d.prod));
+  const wd = (k) => new Date(k + "T12:00:00Z").toLocaleDateString("es-EC", { weekday: "short", timeZone: "UTC" }).replace(".", "");
+  return `<div class="panel" style="margin-top:14px">
+    <h3 class="group-title" style="margin:0">Ventas por día</h3>
+    <p class="muted small" style="margin:6px 0 10px">Solo los días con pedidos pagados (web + WhatsApp), según el día en que se pagó. Toca un día para ver su detalle.</p>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Día</th><th>Pedidos</th><th>Productos</th><th>Ticket</th><th>Envíos cobrados</th><th>Cobrado</th></tr></thead><tbody>
+    ${rows.map(([k, d]) => `<tr data-day="${k}" style="cursor:pointer${k === todayGye() ? ";background:var(--crema)" : ""}">
+      <td><span class="muted small" style="text-transform:capitalize">${wd(k)}</span> ${dShort(k)}</td>
+      <td class="tabnum">${d.n}${d.wa ? ` <span class="muted small">· ${d.wa} WA</span>` : ""}</td>
+      <td class="tabnum"><div style="display:flex;align-items:center;gap:6px;justify-content:flex-end"><span style="display:inline-block;height:8px;border-radius:4px;background:#C68A4E;width:${Math.round(d.prod / max * 60)}px"></span><b>${money(d.prod)}</b></div></td>
+      <td class="tabnum">${money(d.prod / d.n)}</td>
+      <td class="tabnum">${money(d.fee)}</td>
+      <td class="tabnum">${money(d.total)}</td></tr>`).join("") || `<tr><td colspan="6" class="muted">Sin ventas este mes.</td></tr>`}
+    </tbody></table></div></div>`;
+}
+
+// Día: lista de los pedidos pagados ese día
+function dayOrdersPanel(orders) {
+  const hora = (t) => new Date(t).toLocaleTimeString("es-EC", { hour: "2-digit", minute: "2-digit", timeZone: "America/Guayaquil" });
+  const items = (o) => o.order_items.map((i) => `${i.quantity}× ${esc(i.name)}`).join(", ");
+  return `<div class="panel" style="margin-top:14px">
+    <h3 class="group-title" style="margin:0">Pedidos del día</h3>
+    <p class="muted small" style="margin:6px 0 10px">Pedidos pagados ese día (web + WhatsApp), por hora de pago.</p>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Hora</th><th>Pedido</th><th>Productos</th><th>Venta</th><th>Envío</th><th>Total</th><th>Pago</th></tr></thead><tbody>
+    ${orders.map((o) => `<tr>
+      <td class="tabnum">${hora(o.paid_at)}</td>
+      <td>${esc(o.code || "")}${o.channel === "whatsapp" ? ` <span class="muted small">WA</span>` : ""}</td>
+      <td class="small">${items(o)}</td>
+      <td class="tabnum">${money(Number(o.subtotal) - Number(o.discount || 0))}</td>
+      <td class="tabnum">${money(o.delivery_fee)}</td>
+      <td class="tabnum"><b>${money(o.total)}</b></td>
+      <td class="small">${({ tarjeta: "Tarjeta", transferencia: "Transferencia", efectivo: "Efectivo" })[o.payment_method] || esc(o.payment_method || "—")}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">Sin pedidos pagados este día.</td></tr>`}
+    </tbody></table></div></div>`;
 }
 
 // Ventas por semana (lunes a domingo, hora de Guayaquil): web + WhatsApp pagados y lo que liquidó PedidosYa esa semana
