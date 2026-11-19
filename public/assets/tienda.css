@@ -144,6 +144,14 @@ body.in-checkout .welcome-bar, body.in-checkout .how, body.in-checkout .steps, b
 .optchoice span:first-of-type { flex: 1; font-weight: 600; }
 .optchoice:has(input:checked) { border-color: var(--tinta); background: var(--crema); }
 .optchoice .free { font-size: 12.5px; font-weight: 700; color: var(--ok); background: rgb(62 122 52 / .1); padding: 2px 8px; border-radius: 999px; }
+.qleft { margin: -2px 0 2px; font-size: 14px; color: var(--tinta); }
+.qleft .qok { color: var(--ok); font-weight: 700; }
+.qrow { display: flex; gap: 10px; align-items: center; padding: 8px 8px 8px 14px; border: 1px solid #E6E1D3; border-radius: 12px; }
+.qrow.on { border-color: var(--tinta); background: var(--crema); }
+.qrow .qn { flex: 1; display: grid; gap: 1px; }
+.qrow .qn b { font-weight: 600; }
+.qrow .qn small { font-size: 13px; color: #6b625a; }
+.qstep { box-shadow: none; border: 1px solid #E6E1D3; }
 .freenote { margin: 2px 0 0; font-size: 13.5px; color: var(--ok); font-weight: 600; }
 .serv { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; font-size: 12.5px; font-weight: 600; color: var(--tinta); background: var(--crema); border-radius: 999px; padding: 3px 10px; }
 

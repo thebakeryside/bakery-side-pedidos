@@ -53,7 +53,9 @@ async function init() {
       api("config"),
       sb.from("categories").select("id,name,sort").eq("active", true).order("sort"),
       sb.from("products").select("*").eq("active", true).order("sort"),
-      sb.from("product_option_groups").select("product_id, only_if, option_groups(id,name,required,sort,option_choices(id,name,price_delta,sort,active))")
+      // pick_total: el cliente reparte N unidades entre las opciones (ej.: 12 chocobombs, eligiendo cuántas de cada sabor)
+      sb.from("product_option_groups").select("product_id, only_if, option_groups(id,name,required,sort,pick_total,option_choices(id,name,price_delta,sort,active))")
+        .then((r) => r.error ? sb.from("product_option_groups").select("product_id, only_if, option_groups(id,name,required,sort,option_choices(id,name,price_delta,sort,active))") : r)
         .then((r) => r.error ? sb.from("product_option_groups").select("product_id, option_groups(id,name,required,sort,option_choices(id,name,price_delta,sort,active))") : r),
     ]);
     // opciones por producto (si la tabla aún no existe, no hay opciones)
@@ -319,7 +321,7 @@ function itemCard(p) {
   const img = p.image_url ? `<img src="${esc(media(p.image_url))}" alt="${esc(p.name)}" loading="lazy">` : `<span class="can" aria-hidden="true">${esc(p.name.split(" ").map((w) => w[0]).join("").slice(0, 2))}</span>`;
   const lead = p.lead_hours ? `<span class="tag">${p.lead_hours < 24 ? "¡Agenda para mañana!" : `Pedir con ${p.lead_hours} h de anticipación`}</span>` : "";
   const stock = left === 0 ? `<span class="tag">Agotado por hoy · vuelve mañana</span>` : left != null ? `<span class="tag">Quedan ${left} hoy</span>` : "";
-  const hint = opts ? `<span class="optnote">Eliges ${groupsOf(p.id).map((g) => g.name.toLowerCase()).join(" y ")} al agregar</span>` : "";
+  const hint = opts ? `<span class="optnote">Eliges ${groupsOf(p.id).map((g) => (pickN(g) ? "tus sabores" : g.name.toLowerCase())).join(" y ")} al agregar</span>` : "";
   return `<article class="item${p.seasonal || p.theme ? " seasonal" : ""}${p.theme ? ` theme-${esc(p.theme)}` : ""}${left === 0 ? " soldout" : ""}${q ? " incart-on" : ""}" data-pid="${p.id}"><div class="ph">${img}${photoCtrl(p, q, left, opts)}</div><div class="body"><h3>${esc(p.name)}</h3>${servChip(p)}<p>${descHtml(p.description)}</p>${rateRow(p)}${hint}${lead}${promoTag(p)}${stock}<div class="foot"><span class="price">${money(p.price)}</span>${algRow(p)}</div></div></article>`;
 }
 // Orden del menú: dulces enteros de mayor a menor precio; el resto en orden alfabético (x2, x6, x12 en orden)
@@ -396,11 +398,24 @@ const qtyOf = (id) => [...state.cart].reduce((s, [k, q]) => s + (keyId(k) === id
 const choiceOf = (cid) => { for (const gs of Object.values(state.opts || {})) for (const g of gs) { const c = g.option_choices.find((x) => x.id === cid); if (c) return c; } return null; };
 // un grupo condicional solo aplica si se eligió una de las opciones que lo activan
 const applies = (g, chosen) => !g.only_if || g.only_if.some((c) => chosen.includes(c));
+// Grupos "por cantidad" (pick_total): se eligen N unidades repartidas entre las opciones; en la clave del carrito cada unidad repite su opción
+const pickN = (g) => (Number(g?.pick_total) > 0 ? Number(g.pick_total) : 0);
+// "Classic Christmas · cocoa con canela": lo que va antes del " · " es el nombre; lo de después, la pista que se ve al elegir
+const cName = (c) => String(c?.name || "").split(" · ")[0];
+const cHint = (c) => String(c?.name || "").split(" · ").slice(1).join(" · ");
 function validKey(k) {
   const gs = groupsOf(keyId(k)), opts = keyOpts(k);
-  return gs.every((g) => !g.required || !applies(g, opts) || g.option_choices.some((c) => opts.includes(c.id)));
+  return gs.every((g) => {
+    if (pickN(g)) return opts.filter((o) => g.option_choices.some((c) => c.id === o)).length === pickN(g);
+    return !g.required || !applies(g, opts) || g.option_choices.some((c) => opts.includes(c.id));
+  });
 }
-const lineName = (k) => { const n = keyOpts(k).map((c) => choiceOf(c)?.name).filter(Boolean); return product(keyId(k)).name + (n.length ? ` (${n.join(", ")})` : ""); };
+const lineName = (k) => {
+  const cnt = new Map(); keyOpts(k).forEach((c) => cnt.set(c, (cnt.get(c) || 0) + 1));
+  const n = [...cnt].map(([c, q]) => { const ch = choiceOf(c); return ch ? (q > 1 || isPickChoice(c) ? `${q} ${cName(ch)}` : cName(ch)) : null; }).filter(Boolean);
+  return product(keyId(k)).name + (n.length ? ` (${n.join(", ")})` : "");
+};
+function isPickChoice(cid) { for (const gs of Object.values(state.opts || {})) for (const g of gs) if (pickN(g) && g.option_choices.some((x) => x.id === cid)) return true; return false; }
 const linePrice = (k) => Number(product(keyId(k)).price) + keyOpts(k).reduce((s, c) => s + Number(choiceOf(c)?.price_delta || 0), 0);
 const cartItems = (keys = [...state.cart.keys()]) => keys.map((k) => ({ product_id: keyId(k), quantity: state.cart.get(k), options: keyOpts(k) }));
 const product = (id) => state.products.find((p) => p.id === id);
@@ -435,33 +450,63 @@ function freeShipHint(net) {
 function openPicker(p) {
   const gs = groupsOf(p.id);
   const box = $("#optModal");
+  const qc = {}; // grupos por cantidad: { grupo: { opción: unidades } }
   box.querySelector(".opt-title").textContent = p.name;
-  box.querySelector(".opt-body").innerHTML = gs.map((g) => `<fieldset class="optgroup" data-g="${g.id}"${g.only_if ? " hidden" : ""}><legend>${esc(g.name)}${g.required ? "" : ' <span class="muted small">(opcional)</span>'}</legend>
+  box.querySelector(".opt-body").innerHTML = gs.map((g) => {
+    if (pickN(g)) {
+      qc[g.id] = {};
+      return `<fieldset class="optgroup qgroup" data-g="${g.id}"><legend>Elige tus ${pickN(g)} ${esc(g.name.toLowerCase())}</legend>
+      <p class="qleft" aria-live="polite"></p>
+      ${g.option_choices.map((c) => `<div class="qrow" data-c="${c.id}"><span class="qn"><b>${esc(cName(c))}</b>${cHint(c) ? `<small>${esc(cHint(c))}</small>` : ""}</span><div class="pc-step qstep"><button type="button" data-q="-" aria-label="Quitar una ${esc(cName(c))}">${MINUS}</button><b class="qc">0</b><button type="button" data-q="+" aria-label="Agregar una ${esc(cName(c))}">${PLUS}</button></div></div>`).join("")}</fieldset>`;
+    }
+    return `<fieldset class="optgroup" data-g="${g.id}"${g.only_if ? " hidden" : ""}><legend>${esc(g.name)}${g.required ? "" : ' <span class="muted small">(opcional)</span>'}</legend>
     ${g.option_choices.map((c) => `<label class="optchoice"><input type="radio" name="g${g.id}" value="${c.id}"><span>${esc(c.name)}</span>${Number(c.price_delta) > 0 ? `<span class="muted small">+${money(c.price_delta)}</span>` : `<span class="free">${g.option_choices.some((x) => Number(x.price_delta) > 0) ? "Incluido" : "+$0.00"}</span>`}</label>`).join("")}
-    ${g.option_choices.every((c) => !Number(c.price_delta)) ? `<p class="freenote">🎁 Cualquier opción, sin recargo adicional.</p>` : ""}</fieldset>`).join("");
+    ${g.option_choices.every((c) => !Number(c.price_delta)) ? `<p class="freenote">🎁 Cualquier opción, sin recargo adicional.</p>` : ""}</fieldset>`;
+  }).join("");
   const add = box.querySelector(".opt-add");
-  const picked = (g) => Number(box.querySelector(`input[name="g${g.id}"]:checked`)?.value || 0);
+  const addTxt = "Agregar al pedido";
+  const picked = (g) => (pickN(g) ? 0 : Number(box.querySelector(`input[name="g${g.id}"]:checked`)?.value || 0));
+  const qsum = (g) => Object.values(qc[g.id] || {}).reduce((a, b) => a + b, 0);
   // grupos que aplican según lo elegido (el endulzante aparece solo si la bebida lo lleva)
   const live = () => { const ch = gs.filter((g) => !g.only_if).map(picked).filter(Boolean); return gs.filter((g) => applies(g, ch)); };
   const sync = () => {
     const on = live();
+    let falta = 0;
     gs.forEach((g) => {
       const fs = box.querySelector(`[data-g="${g.id}"]`), show = on.includes(g);
+      if (pickN(g)) {
+        const n = pickN(g), sum = qsum(g), left = n - sum; falta += left;
+        fs.querySelector(".qleft").innerHTML = left > 0 ? `Te ${left === 1 ? "falta" : "faltan"} <b>${left}</b> de ${n}` : `<span class="qok">✓ Listo: ${n} de ${n}</span>`;
+        fs.querySelectorAll(".qrow").forEach((r) => {
+          const q = qc[g.id][r.dataset.c] || 0;
+          r.querySelector(".qc").textContent = q; r.classList.toggle("on", q > 0);
+          r.querySelector('[data-q="-"]').disabled = q === 0; r.querySelector('[data-q="+"]').disabled = left === 0;
+        });
+        return;
+      }
       if (fs.hidden === show) { fs.hidden = !show; if (show) fs.animate?.([{ opacity: 0 }, { opacity: 1 }], 200); }
       if (!show) fs.querySelectorAll("input").forEach((i) => (i.checked = false));
     });
-    add.disabled = on.some((g) => g.required && !picked(g));
+    add.disabled = falta > 0 || on.some((g) => !pickN(g) && g.required && !picked(g));
+    add.textContent = falta > 0 ? `Elige ${falta} más para agregar` : addTxt;
   };
-  box.querySelectorAll("input").forEach((i) => (i.onchange = sync)); sync();
+  box.querySelectorAll("input").forEach((i) => (i.onchange = sync));
+  box.querySelectorAll(".qrow [data-q]").forEach((b) => (b.onclick = () => {
+    const g = b.closest("[data-g]").dataset.g, c = b.closest(".qrow").dataset.c;
+    qc[g][c] = Math.max(0, (qc[g][c] || 0) + (b.dataset.q === "+" ? 1 : -1)); sync();
+  }));
+  sync();
   add.onclick = () => {
-    const ids = live().map(picked).filter(Boolean);
+    const ids = live().flatMap((g) => pickN(g)
+      ? g.option_choices.flatMap((c) => Array(qc[g.id][c.id] || 0).fill(c.id))
+      : [picked(g)]).filter(Boolean);
     box.hidden = true;
     changeQty(ids.length ? `${p.id}:${ids.join(".")}` : String(p.id), 1);
     { const nm = lineName(ids.length ? `${p.id}:${ids.join(".")}` : String(p.id)); toast(S("added", `${nm} agregado`, { name: nm })); }
   };
   box.querySelector(".opt-close").onclick = () => (box.hidden = true);
   box.hidden = false;
-  box.querySelector("input")?.focus();
+  (box.querySelector("input") || box.querySelector('.qrow [data-q="+"]'))?.focus();
 }
 
 function renderCart() {

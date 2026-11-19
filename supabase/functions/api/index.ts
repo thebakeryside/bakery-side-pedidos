@@ -171,14 +171,17 @@ async function quote(s: Settings, lat: number, lng: number, staff = false) {
 // ---------- pedido ----------
 type Item = { product_id: number; quantity: number; options?: number[] };
 type Choice = { id: number; name: string; price_delta: number; active: boolean };
-type Group = { id: number; name: string; required: boolean; option_choices: Choice[]; only_if?: number[] | null };
+type Group = { id: number; name: string; required: boolean; option_choices: Choice[]; only_if?: number[] | null; pick_total?: number | null };
 
 // Opciones de cada producto (endulzante, etc.); si las tablas aún no existen, no hay opciones
 async function optionGroups(ids: number[]) {
   const m = new Map<number, Group[]>();
   // only_if: el grupo solo aplica si se eligió una de esas opciones (ej.: endulzante solo con bebidas que lo llevan)
+  // pick_total: el cliente reparte N unidades entre las opciones (ej.: 12 chocobombs, cuántas de cada sabor)
   let { data, error }: { data: any[] | null; error: any } = await db.from("product_option_groups")
-    .select("product_id, only_if, option_groups(id,name,required,sort,option_choices(id,name,price_delta,active))").in("product_id", ids);
+    .select("product_id, only_if, option_groups(id,name,required,sort,pick_total,option_choices(id,name,price_delta,active))").in("product_id", ids);
+  if (error) ({ data, error } = await db.from("product_option_groups")
+    .select("product_id, only_if, option_groups(id,name,required,sort,option_choices(id,name,price_delta,active))").in("product_id", ids));
   if (error) ({ data, error } = await db.from("product_option_groups")
     .select("product_id, option_groups(id,name,required,sort,option_choices(id,name,price_delta,active))").in("product_id", ids));
   if (error) return m;
@@ -209,6 +212,19 @@ async function priceCart(items: Item[]) {
     const picked: { group: string; choice: string; choice_id: number }[] = [];
     let delta = 0;
     for (const g of groups.get(p!.id) ?? []) {
+      // grupo por cantidad: cada unidad elegida viene repetida en options y deben sumar exactamente pick_total
+      const n = Number(g.pick_total) || 0;
+      if (n > 0) {
+        const units = chosen.filter((c) => g.option_choices.some((x) => x.active && x.id === c));
+        if (units.length !== n) fail(`Elige ${n} ${g.name.toLowerCase()} para ${p!.name} (llevas ${units.length}).`);
+        for (const ch of g.option_choices) {
+          const q = units.filter((c) => c === ch.id).length; if (!q) continue;
+          const nm = String(ch.name).split(" · ")[0];
+          picked.push({ group: g.name, choice: `${q} ${nm}`, choice_id: ch.id });
+          delta += Number(ch.price_delta) * q;
+        }
+        continue;
+      }
       if (g.only_if && !g.only_if.some((c) => chosen.includes(c))) continue; // no aplica a lo elegido
       const hits = g.option_choices.filter((c) => c.active && chosen.includes(c.id));
       if (hits.length > 1) fail(`Elige solo una opción de ${g.name.toLowerCase()} para ${p!.name}.`);

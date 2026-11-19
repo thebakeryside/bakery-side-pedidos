@@ -526,13 +526,15 @@ document.addEventListener("change", (e) => {
 // ---------- editar un pedido ya hecho: agregar productos y cambiar el envío ----------
 async function loadOpts() {
   if (S.opts) return;
-  let r = await sb.from("product_option_groups").select("product_id, only_if, option_groups(id,name,required,sort,option_choices(id,name,price_delta,sort,active))");
+  let r = await sb.from("product_option_groups").select("product_id, only_if, option_groups(id,name,required,sort,pick_total,option_choices(id,name,price_delta,sort,active))");
+  if (r.error) r = await sb.from("product_option_groups").select("product_id, only_if, option_groups(id,name,required,sort,option_choices(id,name,price_delta,sort,active))");
   if (r.error) r = await sb.from("product_option_groups").select("product_id, option_groups(id,name,required,sort,option_choices(id,name,price_delta,sort,active))");
   const m = {};
   for (const x of r.data || []) {
     const g = x.option_groups; if (!g) continue;
     const ch = (g.option_choices || []).filter((c) => c.active).sort((a, b) => a.sort - b.sort);
     if (!ch.length) continue;
+    if (Number(g.pick_total) > 0) ch.forEach((c) => (c._pick = true));
     (m[x.product_id] ||= []).push({ ...g, option_choices: ch, only_if: x.only_if?.length ? x.only_if.map(Number) : null });
   }
   for (const gs of Object.values(m)) gs.sort((a, b) => (a.only_if ? 1 : 0) - (b.only_if ? 1 : 0) || (a.sort || 0) - (b.sort || 0));
@@ -541,7 +543,9 @@ async function loadOpts() {
 const edOrder = () => S.orders.find((x) => x.id === S.editing?.id);
 const edChoice = (cid) => { for (const gs of Object.values(S.opts || {})) for (const g of gs) { const c = g.option_choices.find((x) => x.id === cid); if (c) return c; } return null; };
 const edLinePrice = (l) => Number(S.products.find((p) => p.id === l.product_id)?.price || 0) + l.options.reduce((t, c) => t + Number(edChoice(c)?.price_delta || 0), 0);
-const edLineName = (l) => { const p = S.products.find((x) => x.id === l.product_id); const n = l.options.map((c) => edChoice(c)?.name).filter(Boolean); return (p?.name || "Producto") + (n.length ? ` (${n.join(", ")})` : ""); };
+// cuenta las unidades de cada opción ("5 Classic Christmas, 4 Oreo Road") cuando el grupo es por cantidad (pick_total)
+const optLabel = (ids, find) => { const m = new Map(); ids.forEach((c) => m.set(c, (m.get(c) || 0) + 1)); return [...m].map(([c, q]) => { const ch = find(c); if (!ch) return null; const nm = String(ch.name).split(" · ")[0]; return q > 1 || ch._pick ? `${q} ${nm}` : nm; }).filter(Boolean); };
+const edLineName = (l) => { const p = S.products.find((x) => x.id === l.product_id); const n = optLabel(l.options, edChoice); return (p?.name || "Producto") + (n.length ? ` (${n.join(", ")})` : ""); };
 
 // Reagendar: días y horas del horario (los mismos de "＋ Pedido WhatsApp"); cocina puede elegir cualquier franja futura
 async function loadCfg() { if (!S.cfg || Date.now() - S.cfgAt > 10 * 60000) { S.cfg = await api("config", {}); S.cfgAt = Date.now(); } }
@@ -649,7 +653,9 @@ function edDrawOpts(keep = false) {
   const pid = Number($("[data-edp]", box).value), gs = S.opts[pid] || [];
   const prev = keep === true ? Object.fromEntries($$("[data-edg]", slot).map((x) => [x.dataset.edg, x.value])) : {};
   const base = gs.filter((g) => !g.only_if).map((g) => Number(prev[g.id] || 0)).filter(Boolean);
-  slot.innerHTML = gs.filter((g) => !g.only_if || g.only_if.some((c) => base.includes(c))).map((g) => `<select class="in" data-edg="${g.id}" aria-label="${esc(g.name)}"><option value="">${esc(g.name)}${g.required ? "" : " (opcional)"}…</option>${g.option_choices.map((c) => `<option value="${c.id}" ${String(prev[g.id]) === String(c.id) ? "selected" : ""}>${esc(c.name)}${Number(c.price_delta) > 0 ? ` +${money(c.price_delta)}` : ""}</option>`).join("")}</select>`).join("");
+  slot.innerHTML = gs.filter((g) => !g.only_if || g.only_if.some((c) => base.includes(c))).map((g) => Number(g.pick_total) > 0
+    ? `<div data-edpick="${g.id}" data-n="${Number(g.pick_total)}" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><span class="small">Reparte ${Number(g.pick_total)}:</span>${g.option_choices.map((c) => `<label class="small" style="display:inline-flex;align-items:center;gap:6px">${esc(String(c.name).split(" · ")[0])}<input class="in" type="number" inputmode="numeric" min="0" max="${Number(g.pick_total)}" value="0" data-edpc="${c.id}" style="width:64px"></label>`).join("")}</div>`
+    : `<select class="in" data-edg="${g.id}" aria-label="${esc(g.name)}"><option value="">${esc(g.name)}${g.required ? "" : " (opcional)"}…</option>${g.option_choices.map((c) => `<option value="${c.id}" ${String(prev[g.id]) === String(c.id) ? "selected" : ""}>${esc(c.name)}${Number(c.price_delta) > 0 ? ` +${money(c.price_delta)}` : ""}</option>`).join("")}</select>`).join("");
 }
 function edAdd() {
   const box = $(`[data-edit="${S.editing.id}"]`), err = $("[data-ederr]", box); err.textContent = "";
@@ -660,7 +666,14 @@ function edAdd() {
   const sels = $$("[data-edg]", box);
   const miss = sels.find((x) => !x.value && (S.opts[pid] || []).find((g) => String(g.id) === x.dataset.edg)?.required);
   if (miss) { err.textContent = `Elige ${miss.getAttribute("aria-label").toLowerCase()}.`; miss.focus(); return; }
-  S.editing.add.push({ product_id: pid, quantity: q, options: sels.map((x) => Number(x.value)).filter(Boolean) });
+  const picks = [];
+  for (const pk of $$("[data-edpick]", box)) {
+    const n = Number(pk.dataset.n), ins = $$("[data-edpc]", pk);
+    const sum = ins.reduce((a, i) => a + Math.max(0, Math.floor(Number(i.value) || 0)), 0);
+    if (sum !== n) { err.textContent = `Reparte exactamente ${n} entre los sabores (llevas ${sum}).`; ins[0]?.focus(); return; }
+    ins.forEach((i) => picks.push(...Array(Math.max(0, Math.floor(Number(i.value) || 0))).fill(Number(i.dataset.edpc))));
+  }
+  S.editing.add.push({ product_id: pid, quantity: q, options: [...sels.map((x) => Number(x.value)).filter(Boolean), ...picks] });
   $("[data-edp]", box).value = ""; $("[data-edq]", box).value = 1; $("[data-edopts]", box).innerHTML = "";
   const sr = $("[data-edsearch]", box); if (sr) { sr.value = ""; sr.dispatchEvent(new Event("input")); sr.focus(); }
   edDrawList();

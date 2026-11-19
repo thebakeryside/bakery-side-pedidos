@@ -76,7 +76,8 @@ export async function renderManual(view, draft = null) {
     api("config"),
     sb.from("categories").select("id,name,sort").eq("active", true).order("sort"),
     sb.from("products").select("*").eq("active", true).order("sort"),
-    sb.from("product_option_groups").select("product_id, only_if, option_groups(id,name,required,sort,option_choices(id,name,price_delta,sort,active))")
+    sb.from("product_option_groups").select("product_id, only_if, option_groups(id,name,required,sort,pick_total,option_choices(id,name,price_delta,sort,active))")
+      .then((r) => r.error ? sb.from("product_option_groups").select("product_id, only_if, option_groups(id,name,required,sort,option_choices(id,name,price_delta,sort,active))") : r)
       .then((r) => r.error ? sb.from("product_option_groups").select("product_id, option_groups(id,name,required,sort,option_choices(id,name,price_delta,sort,active))") : r),
     sb.from("settings").select("bank_info").single(),
   ]);
@@ -88,6 +89,7 @@ export async function renderManual(view, draft = null) {
     const g = r.option_groups; if (!g) continue;
     g.option_choices = (g.option_choices || []).filter((c) => c.active).sort((a, b) => a.sort - b.sort);
     if (!g.option_choices.length) continue;
+    if (Number(g.pick_total) > 0) (g.option_choices || []).forEach((c) => (c._pick = true));
     (st.opts[r.product_id] ||= []).push({ ...g, only_if: r.only_if?.length ? r.only_if.map(Number) : null });
   }
   // los grupos condicionales (ej.: endulzante según la bebida del combo) van después
@@ -206,6 +208,13 @@ export async function renderManual(view, draft = null) {
   };
   // armar un combo: muestra el endulzante solo si la bebida elegida lo lleva
   const buildLive = (box) => {
+    if (box.classList.contains("mpick")) { // reparte N unidades entre los sabores
+      const n = Number(box.dataset.n), ins = [...box.querySelectorAll("[data-pc]")];
+      const sum = ins.reduce((a, i) => a + Math.max(0, Math.floor(Number(i.value) || 0)), 0);
+      box.querySelector("[data-pleft]").textContent = sum === n ? "✓ Completo" : sum < n ? `Faltan ${n - sum}` : `Sobran ${sum - n}`;
+      box.querySelector("[data-build]").disabled = sum !== n;
+      return ins.flatMap((i) => Array(Math.max(0, Math.floor(Number(i.value) || 0))).fill(Number(i.dataset.pc)));
+    }
     const gs = st.opts[box.dataset.pid] || [];
     const val = (g) => Number(box.querySelector(`[data-g="${g.id}"]`).value || 0);
     const base = gs.filter((g) => !g.only_if).map(val).filter(Boolean);
@@ -214,11 +223,12 @@ export async function renderManual(view, draft = null) {
     box.querySelector("[data-build]").disabled = on.some((g) => g.required && !val(g));
     return on.map(val).filter(Boolean);
   };
-  $("#mProds").onchange = (e) => { const box = e.target.closest(".mbuild"); if (box) buildLive(box); };
+  $("#mProds").onchange = $("#mProds").oninput = (e) => { const box = e.target.closest(".mbuild"); if (box) buildLive(box); };
   $("#mProds").onclick = (e) => {
     const nb = e.target.closest("[data-build]");
     if (nb) {
-      const ids = buildLive(nb.closest(".mbuild")); if (nb.disabled) return;
+      const bx = nb.closest(".mbuild"), ids = buildLive(bx); if (nb.disabled) return;
+      if (bx.classList.contains("mpick")) bx.querySelectorAll("[data-pc]").forEach((i) => (i.value = 0));
       const k = `${nb.dataset.build}:${ids.join(".")}`;
       st.cart.set(k, Math.min((st.cart.get(k) || 0) + 1, 50)); drawProds(); quote(); return;
     }
@@ -295,6 +305,13 @@ function drawProds() {
     return `<h3 class="mcat">${esc(c.name)}</h3>${items.map((p) => {
       const gs = st.opts[p.id] || [], g = gs[0];
       if (!g) return row(String(p.id), p.name, p.price);
+      // por cantidad (ej.: 12 chocobombs): se escribe cuántas de cada sabor y deben sumar el total
+      if (Number(g.pick_total) > 0) {
+        const n = Number(g.pick_total), added = [...st.cart.keys()].filter((k) => kId(k) === p.id);
+        return `<div class="mopt"><b>${esc(p.name)}</b>${outTag(p)} <span class="muted small">· reparte ${n} entre los sabores y toca Agregar</span></div>` +
+          added.map((k) => row(k, `↳ ${optLabel(kOpts(k), choice).join(" · ")}`, lPrice(k))).join("") +
+          `<div class="mbuild mpick" data-pid="${p.id}" data-n="${n}">${g.option_choices.map((c) => `<label class="small" style="display:inline-flex;align-items:center;gap:6px">${esc(String(c.name).split(" · ")[0])}<input class="in" type="number" inputmode="numeric" min="0" max="${n}" value="0" data-pc="${c.id}" style="width:64px"></label>`).join("")}<span class="muted small" data-pleft>Faltan ${n}</span><button type="button" class="btn small primary" data-build="${p.id}" disabled>Agregar</button></div>`;
+      }
       // varias elecciones (combo: postre, bebida y endulzante si la bebida lo lleva): se arma con listas
       if (gs.length > 1 || g.only_if) {
         const added = [...st.cart.keys()].filter((k) => kId(k) === p.id);
@@ -326,7 +343,9 @@ const feeNow = () => (isPickup() ? 0 : feeOverride() != null ? (st.quote ? feeOv
 const kId = (k) => Number(String(k).split(":")[0]);
 const kOpts = (k) => (String(k).split(":")[1] || "").split(".").filter(Boolean).map(Number);
 const choice = (cid) => { for (const gs of Object.values(st.opts)) for (const g of gs) { const c = g.option_choices.find((x) => x.id === cid); if (c) return c; } return null; };
-const lName = (k) => { const n = kOpts(k).map((c) => choice(c)?.name).filter(Boolean); return st.prods.find((p) => p.id === kId(k)).name + (n.length ? ` (${n.join(", ")})` : ""); };
+// cuenta las unidades de cada opción ("5 Classic Christmas, 4 Oreo Road") cuando el grupo es por cantidad (pick_total)
+const optLabel = (ids, find) => { const m = new Map(); ids.forEach((c) => m.set(c, (m.get(c) || 0) + 1)); return [...m].map(([c, q]) => { const ch = find(c); if (!ch) return null; const nm = String(ch.name).split(" · ")[0]; return q > 1 || ch._pick ? `${q} ${nm}` : nm; }).filter(Boolean); };
+const lName = (k) => { const n = optLabel(kOpts(k), choice); return st.prods.find((p) => p.id === kId(k)).name + (n.length ? ` (${n.join(", ")})` : ""); };
 const lPrice = (k) => Number(st.prods.find((p) => p.id === kId(k))?.price || 0) + kOpts(k).reduce((s, c) => s + Number(choice(c)?.price_delta || 0), 0);
 const subtotal = () => [...st.cart].reduce((s, [k, q]) => s + lPrice(k) * q, 0);
 const items = () => [...st.cart].map(([k, quantity]) => ({ product_id: kId(k), quantity, options: kOpts(k) }));
