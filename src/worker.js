@@ -14,7 +14,8 @@ const PAGES = {
   "/": null,
   "/postres-a-domicilio": null,
   "/tortas-enteras": /dulces enteros/i,
-  "/regalos-dulces": /cans|antojos|dulces enteros/i,
+  "/regalos-dulces": /cans|chocobombs|antojos|dulces enteros/i,
+  "/chocobombs": /chocobombs/i,
 };
 
 let cache = { at: 0, data: null };
