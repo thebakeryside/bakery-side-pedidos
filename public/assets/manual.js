@@ -144,7 +144,7 @@ function useCustomer(c) {
     st.loc = { lat: l.lat, lng: l.lng }; st.locLabel = l.label; st.locEditing = false; quote();
   }
   const note = $("#mCustNote");
-  note.innerHTML = `✓ <b>Cliente anterior</b> · ${c.count} pedido${c.count > 1 ? "s" : ""}, el último el ${esc(shortDay(c.last))}.${l ? ` Se cargó su última ubicación (${esc(shortDay(l.at))}). Confírmela con el cliente; si ahora es otra, cámbiela en Entrega.` : " No tiene una ubicación guardada (solo retiró en la cocina)."} <button type="button" class="btn small ghost" id="mCustClear">Quitar</button>`;
+  note.innerHTML = `✓ <b>Cliente anterior</b> · ${c.count} pedido${c.count > 1 ? "s" : ""} · último ${esc(shortDay(c.last))} <button type="button" class="btn small ghost" id="mCustClear">Quitar</button>`;
   note.hidden = false;
   $("#mCustClear").onclick = () => clearCustomer(true);
   $("#mForm").dispatchEvent(new Event("input")); // actualiza el borrador si hay uno abierto
@@ -189,7 +189,7 @@ function drawSteps() {
     b.classList.toggle("done", ok);
     b.querySelector("i").textContent = ok ? "✓" : n;
     const [t, v] = label[n];
-    b.querySelector("span").innerHTML = `${esc(t)}${v ? `<small>${esc(v)}</small>` : ""}`;
+    b.querySelector("span").innerHTML = `<b>${esc(t)}</b>${v ? `<small>${esc(v)}</small>` : ""}`;
   }
 }
 function goStep(n) {
@@ -298,9 +298,9 @@ export async function renderManual(view, draft = null) {
       <section class="panel mstep" id="mStep1">
         <h2 class="mtitle"><span>1</span> Cliente</h2>
         <div class="form-grid">
-          <div><label class="f" for="mName">Nombre <span class="hint">(si ya compró, elíjalo de la lista)</span></label><div class="ac"><input class="in" id="mName" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="mNameAc"><ul class="ac-list" id="mNameAc" role="listbox" hidden></ul></div></div>
+          <div><label class="f" for="mName">Nombre</label><div class="ac"><input class="in" id="mName" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="mNameAc"><ul class="ac-list" id="mNameAc" role="listbox" hidden></ul></div></div>
           <div><label class="f" for="mPhone">WhatsApp</label><div class="ac"><input class="in" id="mPhone" type="tel" inputmode="tel" placeholder="0991234567" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="mPhoneAc"><ul class="ac-list" id="mPhoneAc" role="listbox" hidden></ul></div></div>
-          <div><label class="f" for="mEmail">Correo <span class="hint">(opcional, para avisarle cada paso)</span></label><input class="in" id="mEmail" type="email" inputmode="email" autocomplete="off"></div>
+          <div><label class="f" for="mEmail">Correo <span class="hint">(opcional)</span></label><input class="in" id="mEmail" type="email" inputmode="email" autocomplete="off"></div>
         </div>
         <p class="muted small" id="mCustNote" hidden style="margin:8px 0 0"></p>
       </section>
@@ -321,7 +321,7 @@ export async function renderManual(view, draft = null) {
         <div id="mDeliv">
         <div class="mloc" id="mLocCard" hidden></div>
         <div id="mLocEdit">
-        <label class="f" for="mPaste">Ubicación que te mandó <span class="hint">(pega el enlace de Google Maps o la ubicación de WhatsApp)</span></label>
+        <label class="f" for="mPaste">Ubicación <span class="hint">(enlace de Maps o de WhatsApp)</span></label>
         <div class="row-btns"><input class="in" id="mPaste" placeholder="https://maps.app.goo.gl/… o -2.17, -79.90" style="flex:1;min-width:200px"><button class="btn" type="button" id="mFind">Ubicar</button></div>
         <p class="muted small" style="margin:8px 0">O busca la zona y mueve el mapa hasta el punto exacto.</p>
         <div class="search" id="mSearchSlot"></div>
@@ -643,7 +643,7 @@ function drawCopy() {
   box.hidden = !ready; if (!ready) return;
   const hasBank = st.bank && st.bank.accounts.length;
   box.innerHTML = `
-    <p class="mcopy-t">Para mandarle al cliente <span class="muted small">— copie y pegue en WhatsApp</span></p>
+    <p class="mcopy-t">Para mandarle al cliente</p>
     <div class="row-btns">
       <button class="btn small" type="button" data-cp="res">Copiar resumen</button>
       ${hasBank ? `<button class="btn small" type="button" data-cp="banks">Copiar cuentas</button>` : ""}

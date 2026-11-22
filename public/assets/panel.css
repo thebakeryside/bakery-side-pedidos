@@ -622,3 +622,31 @@ body.panel .mbar .btn:not(.primary) { background: transparent; color: #F6F7DE; b
   .mbar { display: none !important; }
   .mprods { max-height: 460px; }
 }
+
+/* Pedido por WhatsApp · pulido visual (22 nov): pasos en una sola barra, títulos livianos y menos bordes */
+body.panel .msteps { padding: 4px; gap: 4px; margin: 4px 0 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 -10px 0 0 var(--bg), 0 6px 16px rgb(28 23 20 / .07); }
+body.panel .msteps button { border: 0; border-radius: 10px; background: transparent; min-height: 42px; color: var(--cacao, #4A3B33); }
+body.panel .msteps button:hover { background: var(--surface-2); }
+body.panel .msteps button b { font-weight: 700; color: inherit; }
+body.panel .msteps button i { width: 22px; height: 22px; font-size: 12px; background: var(--surface-2); color: var(--cacao, #4A3B33); }
+body.panel .msteps button.done i { background: var(--tostado); color: var(--tinta); }
+body.panel .msteps button.on { background: var(--tinta); color: var(--crema); box-shadow: none; }
+body.panel .msteps button.on small { color: var(--tostado-2); }
+body.panel .msteps button.on i { background: rgb(246 247 222 / .16); color: var(--crema); }
+body.panel .msteps button.on.done i { background: var(--tostado); color: var(--tinta); }
+.manual .mtitle { font-size: 22px; margin: 0 0 12px; }
+.manual .mtitle span { display: none; }
+body.panel .manual .mprod { border-color: transparent; background: #F7F6F2; }
+body.panel .manual .mprod.on { background: var(--crema); border-color: var(--tostado); }
+body.panel .manual .mcat { border-bottom-width: 1px; font-size: 18px; margin-top: 12px; }
+body.panel .manual .chip { border-color: var(--line); }
+body.panel .manual .chip:has(input:checked) { border-color: var(--tostado); background: rgb(198 138 78 / .16); color: var(--tinta); }
+@media (max-width: 560px) {
+  body.panel .msteps { gap: 2px; margin-inline: 0; }
+  body.panel .msteps button { min-height: 44px; padding: 4px 2px; }
+  body.panel .msteps button i { display: none; }
+  body.panel .msteps button span { gap: 0; }
+  body.panel .msteps button.done small::before { content: "✓ "; }
+  body.panel .msteps button b { font-size: 12.5px; }
+  .manual .mtitle { font-size: 21px; }
+}
