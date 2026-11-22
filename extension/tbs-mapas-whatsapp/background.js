@@ -1,7 +1,7 @@
 // TBS · Mapas de WhatsApp
 // La app de WhatsApp para computadora abre las ubicaciones en el navegador (Google Maps o Bing Maps).
 // Esta extensión detecta esos mapas y, en su lugar, abre Cocina → "＋ Pedido WhatsApp" con la ubicación.
-// Solo actúa en pestañas que abrió OTRA aplicación (sin pestaña de origen) (no en mapas que se abren desde una pestaña de Chrome,
+// Solo actúa en mapas que abrió OTRA aplicación (la petición no viene de una página) (no en mapas que se abren desde una pestaña de Chrome,
 // como el botón "Mapa" de Cocina) y solo con coordenadas de Ecuador.
 
 const SITE = "https://thebakeryside.com";
@@ -54,26 +54,31 @@ async function toCocina(mapTabId, c) {
       });
       await chrome.tabs.update(tab.id, { active: true });
       await chrome.windows.update(tab.windowId, { focused: true });
-      await chrome.tabs.remove(mapTabId);
-      return;
+      await chrome.tabs.remove(mapTabId).catch(() => {});
+      return "enviado a la pestaña de Cocina";
     } catch { /* si Cocina no responde, se abre en la misma pestaña del mapa */ }
   }
-  await chrome.tabs.update(mapTabId, { url: `${SITE}/cocina?ubicacion=${encodeURIComponent(text)}` });
+  await chrome.tabs.update(mapTabId, { url: `${SITE}/cocina?ubicacion=${encodeURIComponent(text)}`, active: true });
+  return "Cocina abierta en la pestaña del mapa";
 }
 
-async function handle(tabId, url, why) {
-  const c = coordsFrom(url);
-  chrome.storage.local.set({ last: { at: new Date().toLocaleString("es-EC"), url, why, coords: c } });
-  if (!c || done.has(tabId)) return;
-  done.set(tabId, url); setTimeout(() => done.delete(tabId), 30000); // antes de esperar: evita enviarlo dos veces
-  let tab; try { tab = await chrome.tabs.get(tabId); } catch { return; }
-  if (tab.openerTabId != null) return; // se abrió desde otra pestaña de Chrome: se deja el mapa normal
-  if (!(await enabled())) return;
-  await toCocina(tabId, c);
-}
-// Chrome puede avisar la navegación antes de avisar que creó la pestaña: se revisan los dos momentos
-chrome.webNavigation.onBeforeNavigate.addListener((d) => { if (d.frameId === 0) handle(d.tabId, d.url, "navegacion"); });
-chrome.tabs.onCreated.addListener((t) => { const u = t.pendingUrl || t.url; if (u && t.openerTabId == null) handle(t.id, u, "pestana nueva"); });
+const log = (last) => chrome.storage.local.set({ last: { at: new Date().toLocaleString("es-EC"), ...last } });
+
+// Se decide con la petición de la página: si la abrió una página (ej.: el botón "Mapa" de Cocina) trae "initiator";
+// si llegó desde otra aplicación (WhatsApp) no lo trae.
+chrome.webRequest.onBeforeRequest.addListener((d) => {
+  if (d.tabId < 0) return;
+  const c = coordsFrom(d.url);
+  if (!c) return;
+  if (d.initiator) { log({ url: d.url, coords: c, result: `abierto desde ${d.initiator}: se deja el mapa` }); return; }
+  if (done.has(d.tabId)) return;
+  done.set(d.tabId, d.url); setTimeout(() => done.delete(d.tabId), 30000); // las redirecciones de Google no lo repiten
+  (async () => {
+    if (!(await enabled())) return log({ url: d.url, coords: c, result: "en pausa" });
+    try { const how = await toCocina(d.tabId, c); log({ url: d.url, coords: c, result: how }); }
+    catch (e) { log({ url: d.url, coords: c, result: "error: " + (e?.message || e) }); }
+  })();
+}, { urls: ["*://*.google.com/*", "*://*.google.com.ec/*", "*://*.bing.com/*", "*://maps.apple.com/*"], types: ["main_frame"] });
 
 // ---------- clic en el ícono: pausar / activar ----------
 async function paint() {
@@ -81,7 +86,7 @@ async function paint() {
   chrome.action.setBadgeText({ text: on ? "" : "OFF" });
   chrome.action.setBadgeBackgroundColor({ color: "#C68A4E" });
   const { last } = await chrome.storage.local.get("last");
-  const tail = last ? `\nÚltimo mapa (${last.at}): ${last.coords ? "ubicación leída" : "sin coordenadas"}\n${String(last.url).slice(0, 180)}` : "";
+  const tail = last ? `\nÚltimo mapa (${last.at}): ${last.result || (last.coords ? "ubicación leída" : "sin coordenadas")}\n${String(last.url).slice(0, 180)}` : "";
   chrome.action.setTitle({ title: (on ? "TBS · Mapas de WhatsApp: activado (clic para pausar)" : "TBS · Mapas de WhatsApp: en pausa (clic para activar)") + tail });
 }
 chrome.action.onClicked.addListener(async () => { await chrome.storage.local.set({ off: await enabled() }); paint(); });

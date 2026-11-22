@@ -15,3 +15,6 @@ Instalar (una sola vez):
 Pausar: clic en el ícono de TBS en la barra de extensiones (sale "OFF"). Otro clic la activa.
 Solo cambia los mapas que abre otra aplicación con coordenadas de Ecuador; el botón "Mapa" de Cocina y
 los mapas que abras dentro de Chrome siguen normales.
+
+Revisar: pasa el mouse sobre el ícono de TBS (sin hacer clic) para ver el último mapa que recibió y qué hizo con él.
+Actualizar: reemplaza los archivos de la carpeta y toca la flechita circular de la extensión en chrome://extensions.
