@@ -69,6 +69,97 @@ function applyDraft(d) {
   drawProds(); quote();
 }
 
+// ---------- clientes anteriores (de los pedidos web y WhatsApp; los de PedidosYa no se guardan) ----------
+const MAP_SEP = " · Ubicación del mapa: ";
+const shortDay = (iso) => new Date(iso).toLocaleDateString("es-EC", { day: "numeric", month: "short", timeZone: "America/Guayaquil" }).replace(/\./g, "");
+async function loadCustomers() {
+  const rows = [];
+  for (let from = 0; from < 6000; from += 1000) { // de 1000 en 1000 (límite de Supabase)
+    const { data, error } = await sb.from("orders")
+      .select("customer_name,customer_phone,customer_email,address,reference,lat,lng,fulfillment,status,created_at")
+      .neq("status", "cancelado").order("created_at", { ascending: false }).range(from, from + 999);
+    if (error) { console.warn("clientes", error.message); break; }
+    rows.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+  const by = new Map();
+  for (const o of rows) { // vienen del más nuevo al más viejo: lo primero que se ve es lo último que usó
+    const phone = normPhoneEC(o.customer_phone || ""); if (phone.replace(/\D/g, "").length < 10) continue;
+    let c = by.get(phone);
+    if (!c) by.set(phone, (c = { phone, name: (o.customer_name || "").trim(), names: new Set(), email: null, loc: null, count: 0, last: o.created_at }));
+    c.count++;
+    if (o.customer_name) c.names.add(o.customer_name.trim());
+    if (!c.email && o.customer_email) c.email = o.customer_email.trim();
+    if (!c.loc && o.fulfillment !== "pickup" && o.lat != null && o.lng != null) {
+      const [addr, label] = String(o.address || "").split(MAP_SEP);
+      c.loc = { lat: Number(o.lat), lng: Number(o.lng), addr: (addr || "").trim(), label: (label || "").trim(), ref: o.reference || "", at: o.created_at };
+    }
+  }
+  for (const c of by.values()) c.hay = fold([...c.names].join(" "));
+  return [...by.values()];
+}
+function findCustomers(list, q, kind) {
+  if (kind === "phone") {
+    let d = q.replace(/\D/g, ""); if (d.startsWith("593")) d = "0" + d.slice(3);
+    if (d.length < 4) return [];
+    return list.filter((c) => c.phone.replace(/\D/g, "").includes(d)).slice(0, 6);
+  }
+  const words = fold(q.trim()).split(/\s+/).filter(Boolean);
+  if (!words.length || q.trim().length < 2) return [];
+  return list.filter((c) => words.every((w) => c.hay.includes(w)))
+    .sort((a, b) => (Number(fold(b.name).startsWith(words[0])) - Number(fold(a.name).startsWith(words[0]))) || (b.count - a.count) || (b.last > a.last ? 1 : -1))
+    .slice(0, 6);
+}
+function custAc(input, ul, kind) {
+  let hits = [], sel = -1;
+  const close = () => { ul.hidden = true; ul.innerHTML = ""; hits = []; sel = -1; input.setAttribute("aria-expanded", "false"); };
+  const draw = () => {
+    ul.innerHTML = hits.map((c, i) => `<li role="option" data-i="${i}" aria-selected="${i === sel}"><b>${esc(c.name)}</b><span>${esc(c.phone)} · ${c.count} pedido${c.count > 1 ? "s" : ""} · último ${esc(shortDay(c.last))}${c.loc?.addr ? ` · ${esc(c.loc.addr.slice(0, 50))}` : ""}</span></li>`).join("");
+    ul.hidden = !hits.length; input.setAttribute("aria-expanded", String(Boolean(hits.length)));
+  };
+  input.addEventListener("input", async () => {
+    const q = input.value, list = await st.custP;
+    if (input.value !== q) return; // ya escribió otra cosa
+    if (st.cust && kind === "name" && fold(q) !== fold(st.cust.name)) clearCustomer(false);
+    hits = findCustomers(list, q, kind); sel = -1; draw();
+  });
+  input.addEventListener("keydown", (e) => {
+    if (ul.hidden) return;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); sel = (sel + (e.key === "ArrowDown" ? 1 : -1) + hits.length) % hits.length; draw(); }
+    else if (e.key === "Enter" && sel >= 0) { e.preventDefault(); const c = hits[sel]; close(); useCustomer(c); }
+    else if (e.key === "Escape") close();
+  });
+  ul.addEventListener("mousedown", (e) => e.preventDefault()); // que no se cierre antes del clic
+  ul.addEventListener("click", (e) => { const li = e.target.closest("[data-i]"); if (!li) return; const c = hits[+li.dataset.i]; close(); useCustomer(c); });
+  input.addEventListener("blur", () => setTimeout(close, 150));
+}
+function useCustomer(c) {
+  st.cust = c;
+  $("#mName").value = c.name; $("#mPhone").value = c.phone;
+  if (c.email) $("#mEmail").value = c.email;
+  const l = c.loc;
+  if (l) {
+    $("#mAddr").value = l.addr.slice(0, 130); $("#mRef").value = l.ref; $("#mPaste").value = "";
+    st.map?.setView(l.lat, l.lng, 18);
+    st.loc = { lat: l.lat, lng: l.lng }; st.locLabel = l.label; quote();
+  }
+  const note = $("#mCustNote");
+  note.innerHTML = `✓ <b>Cliente anterior</b> · ${c.count} pedido${c.count > 1 ? "s" : ""}, el último el ${esc(shortDay(c.last))}.${l ? ` Se cargó su última ubicación (${esc(shortDay(l.at))}). Confírmela con el cliente; si ahora es otra, cámbiela en Entrega.` : " No tiene una ubicación guardada (solo retiró en la cocina)."} <button type="button" class="btn small ghost" id="mCustClear">Quitar</button>`;
+  note.hidden = false;
+  $("#mCustClear").onclick = () => clearCustomer(true);
+  $("#mForm").dispatchEvent(new Event("input")); // actualiza el borrador si hay uno abierto
+  toast(l ? "Cliente cargado con su última ubicación" : "Cliente cargado");
+}
+function clearCustomer(wipe) {
+  const c = st.cust; st.cust = null;
+  $("#mCustNote").hidden = true;
+  if (!wipe || !c) return;
+  $("#mName").value = ""; $("#mPhone").value = "";
+  if ($("#mEmail").value === c.email) $("#mEmail").value = "";
+  if (c.loc && $("#mAddr").value === c.loc.addr.slice(0, 130)) { $("#mAddr").value = ""; $("#mRef").value = ""; st.loc = null; st.locLabel = ""; st.quote = null; $("#mQuote").textContent = "Marca la ubicación para calcular el envío."; drawSum(); }
+  $("#mName").focus();
+}
+
 export async function renderManual(view, draft = null) {
   st = { cart: new Map(), loc: null, locLabel: "", quote: null, cfg: null, prods: [], cats: [], map: null, filter: "", view, draftId: null };
   view.innerHTML = `<p class="muted">Cargando…</p>`;
@@ -107,10 +198,11 @@ export async function renderManual(view, draft = null) {
       <section class="panel">
         <h2 class="mtitle"><span>1</span> Cliente</h2>
         <div class="form-grid">
-          <div><label class="f" for="mName">Nombre</label><input class="in" id="mName" autocomplete="off"></div>
-          <div><label class="f" for="mPhone">WhatsApp</label><input class="in" id="mPhone" type="tel" inputmode="tel" placeholder="0991234567" autocomplete="off"></div>
+          <div><label class="f" for="mName">Nombre <span class="hint">(si ya compró, elíjalo de la lista)</span></label><div class="ac"><input class="in" id="mName" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="mNameAc"><ul class="ac-list" id="mNameAc" role="listbox" hidden></ul></div></div>
+          <div><label class="f" for="mPhone">WhatsApp</label><div class="ac"><input class="in" id="mPhone" type="tel" inputmode="tel" placeholder="0991234567" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="mPhoneAc"><ul class="ac-list" id="mPhoneAc" role="listbox" hidden></ul></div></div>
           <div><label class="f" for="mEmail">Correo <span class="hint">(opcional, para avisarle cada paso)</span></label><input class="in" id="mEmail" type="email" inputmode="email" autocomplete="off"></div>
         </div>
+        <p class="muted small" id="mCustNote" hidden style="margin:8px 0 0"></p>
       </section>
 
       <section class="panel">
@@ -201,13 +293,18 @@ export async function renderManual(view, draft = null) {
   const fixPhone = () => { const el = $("#mPhone"), v = el.value; if (/\+/.test(v) || v.replace(/\D/g, "").length >= 12) { const n = normPhoneEC(v); if (n !== v) el.value = n; } };
   $("#mPhone").addEventListener("input", fixPhone);
   $("#mPhone").addEventListener("blur", () => { $("#mPhone").value = normPhoneEC($("#mPhone").value); });
+  // clientes anteriores: sugerencias al escribir el nombre o el número
+  st.custP = loadCustomers();
+  custAc($("#mName"), $("#mNameAc"), "name");
+  custAc($("#mPhone"), $("#mPhoneAc"), "phone");
   // buscador: sin tildes, todas las palabras, también por categoría, descripción y opciones; Enter agrega si hay un solo producto
   $("#mSearch").oninput = () => { st.filter = fold($("#mSearch").value.trim()); drawProds(); };
   $("#mSearch").onkeydown = (e) => {
     if (e.key === "Escape") { $("#mSearch").value = ""; st.filter = ""; drawProds(); return; }
     if (e.key !== "Enter") return;
     e.preventDefault();
-    const hits = st.prods.filter(matches);
+    const all = st.prods.filter(matches), named = all.filter(nameHit);
+    const hits = named.length ? named : all; // Enter agrega el producto que se llama así aunque también salga en combos
     if (hits.length === 1 && !(st.opts[hits[0].id] || []).length) {
       const k = String(hits[0].id); st.cart.set(k, (st.cart.get(k) || 0) + 1);
       $("#mSearch").value = ""; st.filter = ""; drawProds(); quote(); toast(`+1 ${hits[0].name}`);
@@ -301,10 +398,21 @@ function matches(p) {
   const hay = fold(`${p.name} ${cat} ${p.description || ""} ${opts}`);
   return words.every((w) => hay.includes(w));
 }
+// ¿Lo buscado está en el NOMBRE del producto? Esos van primero (ej.: "brownie mint" muestra la lata antes que el combo que la incluye)
+function nameHit(p) {
+  const words = (st.filter || "").split(/\s+/).filter(Boolean);
+  if (!words.length) return false;
+  const n = fold(p.name);
+  return words.every((w) => n.includes(w));
+}
 function drawProds() {
   const f = st.filter;
-  const html = st.cats.map((c) => {
+  // al buscar: primero las categorías con un producto que se llama así, y dentro de cada una, esos productos primero
+  const rank = (p) => (nameHit(p) ? 0 : 1);
+  const cats = f ? st.cats.map((c, i) => ({ c, i, hit: st.prods.some((p) => p.category_id === c.id && nameHit(p)) })).sort((a, b) => (b.hit - a.hit) || (a.i - b.i)).map((x) => x.c) : st.cats;
+  const html = cats.map((c) => {
     const items = st.prods.filter((p) => p.category_id === c.id && matches(p));
+    if (f) items.sort((a, b) => rank(a) - rank(b));
     if (!items.length) return "";
     const row = (k, label, price) => {
       const q = st.cart.get(k) || 0;
