@@ -303,8 +303,8 @@ export async function renderManual(view, draft = null) {
     if (e.key === "Escape") { $("#mSearch").value = ""; st.filter = ""; drawProds(); return; }
     if (e.key !== "Enter") return;
     e.preventDefault();
-    const all = st.prods.filter(matches), named = all.filter(nameHit);
-    const hits = named.length ? named : all; // Enter agrega el producto que se llama así aunque también salga en combos
+    const all = st.prods.filter(matches), named = all.filter(nameHit), solo = named.filter((p) => !isCombo(p));
+    const hits = solo.length ? solo : named.length ? named : all; // Enter agrega el producto que se llama así, no el combo
     if (hits.length === 1 && !(st.opts[hits[0].id] || []).length) {
       const k = String(hits[0].id); st.cart.set(k, (st.cart.get(k) || 0) + 1);
       $("#mSearch").value = ""; st.filter = ""; drawProds(); quote(); toast(`+1 ${hits[0].name}`);
@@ -405,11 +405,15 @@ function nameHit(p) {
   const n = fold(p.name);
   return words.every((w) => n.includes(w));
 }
+const isComboCat = (c) => Boolean(c) && fold(c.name).startsWith("combo");
+const isCombo = (p) => isComboCat(st.cats.find((c) => c.id === p.category_id));
 function drawProds() {
   const f = st.filter;
   // al buscar: primero las categorías con un producto que se llama así, y dentro de cada una, esos productos primero
   const rank = (p) => (nameHit(p) ? 0 : 1);
-  const cats = f ? st.cats.map((c, i) => ({ c, i, hit: st.prods.some((p) => p.category_id === c.id && nameHit(p)) })).sort((a, b) => (b.hit - a.hit) || (a.i - b.i)).map((x) => x.c) : st.cats;
+  // la categoría Combos siempre va al final al buscar (si busca "brownie mint" quiere la lata, no el combo)
+  const cats = f ? st.cats.map((c, i) => ({ c, i, combo: isComboCat(c), hit: st.prods.some((p) => p.category_id === c.id && nameHit(p)) }))
+    .sort((a, b) => (a.combo - b.combo) || (b.hit - a.hit) || (a.i - b.i)).map((x) => x.c) : st.cats;
   const html = cats.map((c) => {
     const items = st.prods.filter((p) => p.category_id === c.id && matches(p));
     if (f) items.sort((a, b) => rank(a) - rank(b));
