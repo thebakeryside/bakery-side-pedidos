@@ -681,6 +681,19 @@ async function findPasted() {
   $("#mFind").disabled = false;
 }
 
+// Ubicación que llega de afuera (extensión "TBS · Mapas de WhatsApp" o /cocina?ubicacion=…).
+// Si el formulario ya tiene un cliente con ubicación, ese pedido pasa a Borradores y se abre uno nuevo;
+// si solo tiene nombre, número o productos (aún sin ubicación), la ubicación se agrega a ese mismo pedido.
+export async function manualIncoming(view, url) {
+  const here = st && st.view === view && view.contains($("#mForm"));
+  const busy = here && (st.cart.size || $("#mName").value.trim() || $("#mPhone").value.trim());
+  if (here && busy && st.loc) { if (storeDraft()) toast("El pedido que estaba armando quedó en Borradores.", 4000); }
+  if (!here || (busy && st.loc)) await renderManual(view);
+  $("#mPaste").value = url;
+  await findPasted();
+  goStep(1); // listo para escribir el nombre o pegar el número
+}
+
 // Días y horas para agendar (según el horario de cada día)
 function hoursFor(date) {
   const d = st.cfg.days?.find((x) => x.day === date);

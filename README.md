@@ -42,3 +42,7 @@ Cocina → Cotizaciones (y Master → Cotizaciones), solo para la cuenta master 
 - **Meta** (60 %): precio sugerido para lo que no está en el menú (desde una receta de Costos + envase).
 - **Piso** (45 %): ningún descuento automático deja menos; bajarlo a mano pide confirmación.
 - **Tramos** por cantidad (se suma la categoría) y **tope por producto** (`products.quote_max_disc`; bebidas 10 %). Se editan en Cotizaciones → Reglas de descuento (tabla `quote_rules`).
+
+## Extensión "TBS · Mapas de WhatsApp"
+
+`extension/tbs-mapas-whatsapp/` (Chrome, se carga como extensión descomprimida en la laptop de cocina). Cuando la app de WhatsApp para computadora abre una ubicación en el navegador, la extensión la manda a Cocina: si `/cocina` ya está abierta le envía el evento `tbs-ubicacion`; si no, abre `/cocina?ubicacion=lat,lng`. Cocina abre "＋ Pedido WhatsApp" (`manualIncoming` en `manual.js`) con la ubicación y el envío calculado; si el formulario ya tenía un cliente con ubicación, ese pedido pasa a Borradores. Instrucciones en `LEEME.txt`.

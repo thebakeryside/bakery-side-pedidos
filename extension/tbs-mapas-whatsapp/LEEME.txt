@@ -1,0 +1,17 @@
+TBS · Mapas de WhatsApp (extensión de Chrome para la laptop)
+
+Qué hace: cuando haces clic en una ubicación dentro de la app de WhatsApp, en vez de abrir el mapa
+se abre Cocina → "＋ Pedido WhatsApp" con la ubicación puesta y el envío calculado. Si Cocina ya está
+abierta, usa esa misma pestaña (no abre otra, así el timbre no suena doble).
+
+Instalar (una sola vez):
+1. Descomprime esta carpeta y déjala en un lugar fijo (por ejemplo Documentos). No la borres después.
+2. En Chrome abre chrome://extensions
+3. Activa "Modo de desarrollador" (arriba a la derecha).
+4. Toca "Cargar descomprimida" y elige la carpeta tbs-mapas-whatsapp.
+5. Chrome tiene que ser el navegador predeterminado de Windows
+   (Configuración → Aplicaciones → Aplicaciones predeterminadas → Google Chrome → Establecer como predeterminado).
+
+Pausar: clic en el ícono de TBS en la barra de extensiones (sale "OFF"). Otro clic la activa.
+Solo cambia los mapas que abre otra aplicación con coordenadas de Ecuador; el botón "Mapa" de Cocina y
+los mapas que abras dentro de Chrome siguen normales.

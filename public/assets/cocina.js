@@ -1,6 +1,6 @@
 import { sb, api, $, $$, money, esc, hhmm, when, dayLabel, orderRange, toast, waLink, waAttrs, waMode, setWaMode, waAuto, setWaAuto, openWa, fold, STATUS, todayLocal , tableSearch, localToISO } from "./common.js";
 import { requireLogin, loginHTML } from "./auth.js";
-import { renderManual } from "./manual.js?v=6";
+import { renderManual, manualIncoming } from "./manual.js?v=7";
 import { renderQuotes } from "./cotizaciones.js";
 
 $("#loginSlot").innerHTML = loginHTML("Panel de cocina");
@@ -27,11 +27,30 @@ requireLogin(async (user) => {
     if (fresh) { startRing(o); flashTitle(`🔔 Pedido ${o.code}`); toast(`Pedido ${o.code}: ${STATUS[o.status]}`); }
     render();
   }).subscribe();
+  S.ready = true;
+  if (S.incoming) { const u = S.incoming; S.incoming = null; openIncoming(u); }
   uberAlerts();
   setInterval(() => { uberAlerts(); if (S.tab === "pedidos") render(); }, 30000); // refresca tiempos y avisa cuándo pedir el Uber
 });
 
 $$(".tabs [data-tab]").forEach((b) => b.addEventListener("click", () => { S.tab = b.dataset.tab; S.editing = null; render(); }));
+
+// ---------- ubicación del cliente que llega desde el mapa de WhatsApp ----------
+// La extensión de Chrome "TBS · Mapas de WhatsApp" abre /cocina?ubicacion=<enlace> o, si Cocina ya está abierta,
+// le manda el evento "tbs-ubicacion". Se abre "＋ Pedido WhatsApp" con la ubicación y el envío calculado.
+async function openIncoming(url) {
+  if (!S.ready) { S.incoming = url; return; }
+  S.tab = "nuevo"; S.editing = null;
+  const v = $("#view");
+  if (v.dataset.on !== "nuevo") v.innerHTML = "";
+  v.dataset.on = "nuevo"; render();
+  try { await manualIncoming(v, url); } catch (e) { toast(e.message || "No se pudo abrir la ubicación."); }
+}
+window.addEventListener("tbs-ubicacion", (e) => { if (e.detail) { window.focus(); openIncoming(String(e.detail)); } });
+{
+  const q = new URLSearchParams(location.search), u = q.get("ubicacion");
+  if (u) { q.delete("ubicacion"); history.replaceState(null, "", location.pathname + (q.size ? "?" + q : "") + location.hash); openIncoming(u); }
+}
 
 // ---------- datos ----------
 async function loadOrders() {
