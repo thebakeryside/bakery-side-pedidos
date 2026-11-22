@@ -1,5 +1,5 @@
 // Pedido por WhatsApp: cocina o master lo registran con lo mínimo y le mandan al cliente el enlace de pago
-import { sb, api, $, $$, money, esc, hhmm, when, toast, waLink, waAttrs, normPhoneEC, fold, localToISO, todayLocal, parseBank } from "./common.js";
+import { sb, api, $, $$, money, esc, hhmm, when, toast, waLink, waAttrs, openWa, normPhoneEC, fold, localToISO, todayLocal, parseBank } from "./common.js";
 import { createMap } from "./mapa.js";
 
 const SITE = "https://thebakeryside.com";
@@ -135,7 +135,7 @@ function custAc(input, ul, kind) {
 }
 function useCustomer(c) {
   st.cust = c;
-  $("#mName").value = c.name; $("#mPhone").value = c.phone;
+  $("#mName").value = c.name; $("#mPhone").value = c.phone; drawCopy(); barCopyLabel();
   if (c.email) $("#mEmail").value = c.email;
   const l = c.loc;
   if (l) {
@@ -390,7 +390,9 @@ export async function renderManual(view, draft = null) {
     <div class="mbar" id="mBar" hidden><span class="tabnum" id="mBarTot"></span><button class="btn small" type="button" id="mBarCopy" hidden title="Copiar el resumen para WhatsApp">Copiar</button><button class="btn small" type="button" data-draft>Guardar</button><button class="btn small primary" type="button" id="mBarGo">Registrar</button></div>
     <div id="mDone"></div>`;
   $("#mBarGo").onclick = () => $("#mGo").click();
-  $("#mBarCopy").onclick = () => copy(summaryText());
+  $("#mBarCopy").onclick = () => { const ph = custPhone(); if (ph) openWa(ph, summaryText()); else copy(summaryText()); };
+  // al escribir o pegar el número aparecen los botones para enviar directo
+  $("#mPhone").addEventListener("input", () => { drawCopy(); barCopyLabel(); });
   $("#mSteps").onclick = (e) => { const b = e.target.closest("[data-step]"); if (b) goStep(+b.dataset.step); };
   $("#mLocCard").onclick = (e) => { if (e.target.closest("[data-locedit]")) openLocEdit(); };
   $("#mLocDone").onclick = () => closeLocEdit();
@@ -480,6 +482,8 @@ export async function renderManual(view, draft = null) {
   $("#mForm").addEventListener("input", () => drawSteps());
   $("#mForm").addEventListener("input", () => { if (st.draftId) { clearTimeout(st.autoT); st.autoT = setTimeout(() => st.draftId && storeDraft(), 800); } });
   $("#mCopyBox").onclick = (e) => {
+    const w = e.target.closest("[data-wa]");
+    if (w) { const ph = custPhone(); if (ph) openWa(ph, w.dataset.wa === "res" ? summaryText() : banksText()); return; }
     const b = e.target.closest("[data-cp]"); if (!b) return;
     const k = b.dataset.cp;
     copy(k === "res" ? summaryText() : k === "banks" ? banksText() : st.bank.accounts[+k].number);
@@ -616,7 +620,7 @@ function drawSum() {
   drawCopy();
   // un borrador abierto se va actualizando solo mientras se edita
   if (st.draftId && !st.saving) { clearTimeout(st.autoT); st.autoT = setTimeout(() => { if (st.draftId && $("#mForm") && !$("#mForm").hidden) storeDraft(); }, 800); }
-  if ($("#mBarCopy")) $("#mBarCopy").hidden = !(st.cart.size && fee != null);
+  if ($("#mBarCopy")) { $("#mBarCopy").hidden = !(st.cart.size && fee != null); barCopyLabel(); }
   if ($("#mBar")) { $("#mBar").hidden = !lines.length; $("#mBarTot").innerHTML = `<em>Total</em> <b>${money(t)}</b>${isDeposit() ? `<em> · anticipo ${money(depNow())}</em>` : ""}`; }
   drawSteps(); drawLoc();
   $("#mGo").textContent = lines.length && fee != null ? (isDone() ? (pastDay() && pastDay() !== todayStr() ? `Registrar venta del ${dayShort(pastDay())} · ${money(t)}` : `Registrar como entregado · ${money(t)}`) : isDeposit() ? `Registrar evento · anticipo ${money(depNow())}` : paid ? `Registrar pedido pagado · ${money(t)}` : `Registrar y crear enlace · ${money(t)}`) : "Registrar pedido";
@@ -637,16 +641,29 @@ function banksText() {
   const accs = b.accounts.map((a) => `${bank(a.bank)}\nCuenta de ${String(a.type || "ahorros").toLowerCase()} (${a.number})`).join("\n.\n");
   return `Transferencia Directa\n👤 ${b.holder}${b.email ? `\n📩 ${b.email}` : ""}\n.\n${accs}`;
 }
+// número del cliente listo para WhatsApp (10 dígitos, 09…); si no, null
+const custPhone = () => { const n = normPhoneEC($("#mPhone")?.value || ""); return /^09\d{8}$/.test(n) ? n : null; };
+function barCopyLabel() {
+  const b = $("#mBarCopy"); if (!b) return;
+  const ph = custPhone();
+  b.textContent = ph ? "Enviar" : "Copiar";
+  b.title = ph ? `Enviar el resumen por WhatsApp a ${ph}` : "Copiar el resumen para WhatsApp";
+}
 function drawCopy() {
   const box = $("#mCopyBox"); if (!box) return;
   const ready = st.cart.size && feeNow() != null;
   box.hidden = !ready; if (!ready) return;
   const hasBank = st.bank && st.bank.accounts.length;
+  const ph = custPhone();
   box.innerHTML = `
-    <p class="mcopy-t">Para mandarle al cliente</p>
+    <p class="mcopy-t">Para mandarle al cliente${ph ? ` <span class="muted small">· ${esc(ph)}</span>` : ""}</p>
+    ${ph ? `<div class="row-btns">
+      <button class="btn small primary" type="button" data-wa="res">Enviar resumen por WhatsApp</button>
+      ${hasBank ? `<button class="btn small" type="button" data-wa="banks">Enviar cuentas</button>` : ""}
+    </div>` : `<p class="muted small" style="margin:0 0 6px">Escriba el número del cliente para enviárselo directo por WhatsApp.</p>`}
     <div class="row-btns">
-      <button class="btn small" type="button" data-cp="res">Copiar resumen</button>
-      ${hasBank ? `<button class="btn small" type="button" data-cp="banks">Copiar cuentas</button>` : ""}
+      <button class="btn small${ph ? " ghost" : ""}" type="button" data-cp="res">Copiar resumen</button>
+      ${hasBank ? `<button class="btn small${ph ? " ghost" : ""}" type="button" data-cp="banks">Copiar cuentas</button>` : ""}
     </div>
     ${hasBank ? `<details class="mcopy-more"><summary class="muted small">Copiar solo un número de cuenta</summary>
       <div class="mcopy-nums">${st.bank.accounts.map((a, i) => `<button class="btn small ghost" type="button" data-cp="${i}">${esc(a.bank.replace(/^banco\s+(del?\s+)?/i, ""))} · ${esc(a.number)}</button>`).join("")}</div>
