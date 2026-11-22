@@ -534,9 +534,10 @@ function drawProds() {
   const f = st.filter;
   // al buscar: primero las categorías con un producto que se llama así, y dentro de cada una, esos productos primero
   const rank = (p) => (nameHit(p) ? 0 : 1);
-  // la categoría Combos siempre va al final al buscar (si busca "brownie mint" quiere la lata, no el combo)
-  const cats = f ? st.cats.map((c, i) => ({ c, i, combo: isComboCat(c), hit: st.prods.some((p) => p.category_id === c.id && nameHit(p)) }))
-    .sort((a, b) => (a.combo - b.combo) || (b.hit - a.hit) || (a.i - b.i)).map((x) => x.c) : st.cats;
+  // la categoría Combos siempre va al final, con o sin búsqueda: por WhatsApp casi nadie pide combos
+  // (si busca "brownie mint" quiere la lata, no el combo)
+  const cats = st.cats.map((c, i) => ({ c, i, combo: isComboCat(c), hit: f ? st.prods.some((p) => p.category_id === c.id && nameHit(p)) : false }))
+    .sort((a, b) => (a.combo - b.combo) || (b.hit - a.hit) || (a.i - b.i)).map((x) => x.c);
   const html = cats.map((c) => {
     const items = st.prods.filter((p) => p.category_id === c.id && matches(p));
     if (f) items.sort((a, b) => rank(a) - rank(b));
