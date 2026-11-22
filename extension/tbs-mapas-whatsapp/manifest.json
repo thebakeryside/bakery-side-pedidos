@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "TBS · Mapas de WhatsApp",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Al hacer clic en una ubicación de WhatsApp, abre ＋ Pedido WhatsApp en Cocina de The Bakery Side con la ubicación y el envío calculado.",
   "icons": { "16": "icon-16.png", "48": "icon-48.png", "128": "icon-128.png" },
   "action": { "default_title": "TBS · Mapas de WhatsApp: activado (clic para pausar)", "default_icon": { "16": "icon-16.png", "48": "icon-48.png" } },
