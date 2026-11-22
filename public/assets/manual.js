@@ -639,8 +639,12 @@ function banksText() {
   const b = st.bank;
   const bank = (n) => (/^banco/i.test(n) ? n : `Banco ${n}`);
   // el número va solo en su línea: así se selecciona entero en WhatsApp (los que empiezan con 00 no salen como enlace)
-  const accs = b.accounts.map((a) => `${bank(a.bank)}\nCuenta de ${String(a.type || "ahorros").toLowerCase()}\n${a.number}`).join("\n.\n");
-  return `Transferencia Directa\n👤 ${b.holder}${b.email ? `\n📩 ${b.email}` : ""}\n.\n${accs}`;
+  const type = (a) => String(a.type || "ahorros").toLowerCase();
+  // si todas son del mismo tipo, se dice una sola vez arriba
+  const same = b.accounts.every((a) => type(a) === type(b.accounts[0]));
+  const accs = b.accounts.map((a) => `${bank(a.bank)}${same ? "" : `\nCuenta de ${type(a)}`}\n${a.number}`).join("\n.\n");
+  const head = same && b.accounts.length ? `\n🏦 ${b.accounts.length > 1 ? "Cuentas" : "Cuenta"} de ${type(b.accounts[0])}` : "";
+  return `Transferencia Directa\n👤 ${b.holder}${b.email ? `\n📩 ${b.email}` : ""}${head}\n.\n${accs}`;
 }
 // número del cliente listo para WhatsApp (10 dígitos, 09…); si no, null
 const custPhone = () => { const n = normPhoneEC($("#mPhone")?.value || ""); return /^09\d{8}$/.test(n) ? n : null; };

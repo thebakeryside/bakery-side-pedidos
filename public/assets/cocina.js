@@ -1,6 +1,6 @@
 import { sb, api, $, $$, money, esc, hhmm, when, dayLabel, orderRange, toast, waLink, waAttrs, waMode, setWaMode, waAuto, setWaAuto, openWa, fold, STATUS, todayLocal , tableSearch, localToISO } from "./common.js";
 import { requireLogin, loginHTML } from "./auth.js";
-import { renderManual, manualIncoming } from "./manual.js?v=9";
+import { renderManual, manualIncoming } from "./manual.js?v=10";
 import { renderQuotes } from "./cotizaciones.js";
 
 $("#loginSlot").innerHTML = loginHTML("Panel de cocina");
