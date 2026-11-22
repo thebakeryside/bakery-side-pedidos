@@ -644,7 +644,7 @@ function banksText() {
   const same = b.accounts.length > 0 && b.accounts.every((a) => type(a) === type(b.accounts[0]));
   const accs = b.accounts.map((a) => same ? `${bank(a.bank)} (${a.number})` : `${bank(a.bank)}\nCuenta de ${type(a)} (${a.number})`).join("\n.\n");
   const head = same ? `\n🏦 ${b.accounts.length > 1 ? "Cuentas" : "Cuenta"} de ${type(b.accounts[0])}` : "";
-  return `Transferencia Directa\n👤 ${b.holder}${b.email ? `\n📩 ${b.email}` : ""}${head}\n.\n${accs}`;
+  return `*Transferencia Directa*\n👤 ${b.holder}${b.email ? `\n📩 ${b.email}` : ""}${head}\n.\n${accs}`;
 }
 // número del cliente listo para WhatsApp (10 dígitos, 09…); si no, null
 const custPhone = () => { const n = normPhoneEC($("#mPhone")?.value || ""); return /^09\d{8}$/.test(n) ? n : null; };
