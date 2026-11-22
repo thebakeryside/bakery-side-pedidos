@@ -40,191 +40,275 @@ function confirmRow(btn, text, onYes) {
 }
 
 // ---------- ventas ----------
+// Todos los canales juntos (web, WhatsApp, PedidosYa y las apps que se sumen en channel_orders).
+// Regla de Boris (20 nov): se cuenta por el día en que se HIZO el pedido (created_at / placed_at), nunca por pago o entrega.
+// «Vendido» = productos con los descuentos del negocio. «Te queda» = vendido − comisión de la app (con IVA) − tarifa Payphone − envío gratis que puso el negocio.
+const DAY = 86400000;
+const ldMs = (s) => Date.UTC(+s.slice(0, 4), +s.slice(5, 7) - 1, +s.slice(8, 10));
+const isoD = (ms) => new Date(ms).toISOString().slice(0, 10);
+const addD = (s, k) => isoD(ldMs(s) + k * DAY);
+const localDay = (t) => isoD(new Date(t).getTime() - 5 * 3600000);
+const mondayOf = (s) => addD(s, -((new Date(ldMs(s)).getUTCDay() + 6) % 7));
+const monthStartOf = (s) => s.slice(0, 7) + "-01";
+const monthEndOf = (s) => { const d = new Date(ldMs(s)); return isoD(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)); };
+const addMonths = (s, k) => { const d = new Date(ldMs(s)); return isoD(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + k, 1)); };
+const utcStart = (s) => new Date(ldMs(s) + 5 * 3600000).toISOString();
+const fmtL = (s, o) => new Date(s + "T12:00:00Z").toLocaleDateString("es-EC", { ...o, timeZone: "UTC" }).replace(/\./g, "");
+const CH = { web: { n: "Web", c: "#C68A4E" }, whatsapp: { n: "WhatsApp", c: "#5E8C61" }, pedidosya: { n: "PedidosYa", c: "#D33A4C" } };
+const CH_EXTRA = ["#2F5C8C", "#7A5BA6", "#3B8C8C", "#8C6A2F"];
+const chInfo = (k) => CH[k] || (CH[k] = { n: k.charAt(0).toUpperCase() + k.slice(1), c: CH_EXTRA[(Object.keys(CH).length - 3) % CH_EXTRA.length] });
+const PRESETS = [["hoy", "Hoy"], ["ayer", "Ayer"], ["semana", "Esta semana"], ["semana_pasada", "Semana pasada"], ["mes", "Este mes"], ["mes_pasado", "Mes pasado"], ["30d", "Últimos 30 días"], ["anio", "Este año"]];
+function presetRange(p) {
+  const t = todayGye(), mon = mondayOf(t);
+  return ({
+    hoy: [t, t], ayer: [addD(t, -1), addD(t, -1)], semana: [mon, t], semana_pasada: [addD(mon, -7), addD(mon, -1)],
+    mes: [monthStartOf(t), t], mes_pasado: [addMonths(t, -1), monthEndOf(addMonths(t, -1))], "30d": [addD(t, -29), t], anio: [t.slice(0, 4) + "-01-01", t],
+  })[p];
+}
+S.v ||= { preset: "mes", from: presetRange("mes")[0], to: presetRange("mes")[1], group: "auto", metric: "sold" };
+const isMonthRange = (f, t) => f === monthStartOf(f) && (t === monthEndOf(f) || (t === todayGye() && t.slice(0, 7) === f.slice(0, 7)));
+const isWeekRange = (f, t) => f === mondayOf(f) && (t === addD(f, 6) || (t === todayGye() && mondayOf(t) === f));
+const nDays = (f, t) => Math.round((ldMs(t) - ldMs(f)) / DAY) + 1;
+function rangeLabel(f, t) {
+  const today = todayGye();
+  if (f === t) return f === today ? `Hoy · ${fmtL(f, { weekday: "long", day: "numeric", month: "long" })}` : fmtL(f, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  if (isMonthRange(f, t)) return fmtL(f, { month: "long", year: "numeric" }) + (t === today && t !== monthEndOf(f) ? ` · hasta hoy` : "");
+  const sameY = f.slice(0, 4) === t.slice(0, 4);
+  return `${fmtL(f, { day: "numeric", month: "short", ...(sameY ? {} : { year: "numeric" }) })} – ${fmtL(t, { day: "numeric", month: "short", year: "numeric" })}`;
+}
+function prevRange(f, t) {
+  if (isMonthRange(f, t)) { const pf = addMonths(f, -1); const pt = addD(pf, nDays(f, t) - 1); return [pf, pt > monthEndOf(pf) ? monthEndOf(pf) : pt]; }
+  const n = nDays(f, t); return [addD(f, -n), addD(f, -1)];
+}
+async function fetchAll(q) { // PostgREST devuelve máx. 1000 filas por consulta
+  const out = []; for (let i = 0; ; i += 1000) { const { data, error } = await q().range(i, i + 999); if (error) throw error; out.push(...data); if (data.length < 1000) return out; }
+}
+async function loadSales(from, to) {
+  const a = utcStart(from), b = utcStart(addD(to, 1));
+  const [web, apps] = await Promise.all([
+    fetchAll(() => sb.from("orders").select("id,code,created_at,channel,subtotal,discount,delivery_fee,rider_fee,total,payment_method,status,rider_id,riders(full_name),order_items(name,quantity,line_total)")
+      .eq("payment_status", "pagado").neq("status", "cancelado").gte("created_at", a).lt("created_at", b).order("created_at")),
+    fetchAll(() => sb.from("channel_orders").select("channel,external_id,placed_at,status,subtotal,local_discount,net")
+      .neq("status", "cancelado").gte("placed_at", a).lt("placed_at", b).order("placed_at")),
+  ]);
+  // productos de cada pedido de app (en tandas, para no armar URLs gigantes)
+  const ids = [...new Set(apps.map((o) => o.external_id))], its = {};
+  for (let i = 0; i < ids.length; i += 150) {
+    const part = await fetchAll(() => sb.from("channel_order_items").select("channel,external_id,qty,name,amount").in("external_id", ids.slice(i, i + 150)).order("id"));
+    part.forEach((it) => (its[it.channel + "|" + it.external_id] ||= []).push(it));
+  }
+  apps.forEach((o) => (o.channel_order_items = its[o.channel + "|" + o.external_id] || []));
+  const rows = [];
+  for (const o of web) {
+    const sold = Number(o.subtotal) - Number(o.discount || 0);
+    const card = o.payment_method === "tarjeta" ? Number(o.total) * 0.0575 : 0;
+    const gift = Math.max(0, Number(o.rider_fee ?? o.delivery_fee) - Number(o.delivery_fee));
+    rows.push({ ch: o.channel === "whatsapp" ? "whatsapp" : "web", at: o.created_at, day: localDay(o.created_at), code: o.code, sold, kept: sold - card - gift, card, gift,
+      fee: Number(o.delivery_fee), status: o.status, rider: o.status === "entregado" && o.rider_id ? (o.riders?.full_name || "Sin nombre") : null, riderFee: Number(o.rider_fee ?? o.delivery_fee),
+      pay: o.payment_method, items: o.order_items.filter((i) => Number(i.line_total) > 0).map((i) => ({ n: i.name, q: i.quantity, v: Number(i.line_total) })) });
+  }
+  for (const o of apps) {
+    const sold = Number(o.subtotal) - Number(o.local_discount || 0);
+    const kept = o.net != null ? Number(o.net) : sold * 0.701;
+    rows.push({ ch: o.channel, at: o.placed_at, day: localDay(o.placed_at), code: o.external_id, sold, kept, com: sold - kept, app: true,
+      items: (o.channel_order_items || []).map((i) => ({ n: i.name, q: i.qty, v: Number(i.amount), app: o.channel })) });
+  }
+  return rows;
+}
+const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+const sumBy = (rows, f) => rows.reduce((s, r) => s + f(r), 0);
+const pctTxt = (cur, prev, ok) => {
+  if (ok === false) return "";
+  if (!prev) return `<span class="muted small">antes: $0</span>`;
+  const c = Math.round((cur / prev - 1) * 100);
+  return `<span class="small" style="color:${c >= 0 ? "var(--st-ok)" : "var(--st-error)"};font-weight:600">${c >= 0 ? "▲" : "▼"} ${Math.abs(c)} %</span>`;
+};
+
 async function ventas() {
-  const isDay = S.mode === "dia";
-  if (isDay) S.month = S.day.slice(0, 7);
-  const [y, m] = S.month.split("-").map(Number), dd = Number(S.day.slice(8, 10));
-  // límites en hora de Guayaquil (UTC−5)
-  const from = isDay ? new Date(Date.UTC(y, m - 1, dd, 5)).toISOString() : new Date(Date.UTC(y, m - 1, 1, 5)).toISOString();
-  const to = isDay ? new Date(Date.UTC(y, m - 1, dd + 1, 5)).toISOString() : new Date(Date.UTC(y, m, 1, 5)).toISOString();
-  const periodo = isDay ? "del día" : "del mes";
+  const V = S.v, today = todayGye();
+  if (V.preset !== "custom") [V.from, V.to] = presetRange(V.preset);
+  if (V.to > today) V.to = today;
+  if (V.from > V.to) V.from = V.to;
+  const n = nDays(V.from, V.to);
+  const group = V.group !== "auto" ? V.group : n <= 1 ? "hora" : n <= 35 ? "dia" : n <= 120 ? "semana" : "mes";
+  const [pf, pt] = prevRange(V.from, V.to);
   $("#view").innerHTML = `<p class="muted">Cargando…</p>`;
-  const { data: orders, error } = await sb.from("orders")
-    .select("id,code,paid_at,channel,subtotal,discount,delivery_fee,rider_fee,total,payment_method,rider_id,status,riders(full_name),order_items(name,quantity,line_total)")
-    .eq("payment_status", "pagado").gte("paid_at", from).lt("paid_at", to).order("paid_at");
-  if (error) return ($("#view").innerHTML = `<p class="err">${esc(error.message)}</p>`);
-  // Liquidaciones semanales de PedidosYa (las registra Claude cada viernes; cuentan en el mes en que se liquidan)
-  const { data: chAll } = await sb.from("channel_settlements").select("*").in("channel", ["pedidosya", "payphone"]).order("period_from", { ascending: false });
-  const py = (chAll || []).filter((w) => w.channel === "pedidosya"), pp = (chAll || []).filter((w) => w.channel === "payphone"), monthStart = S.month + "-01", monthEnd = new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10);
-  const pyMonth = isDay ? [] : py.filter((w) => (w.settled_on || w.period_to) >= monthStart && (w.settled_on || w.period_to) < monthEnd);
-  const pyNet = pyMonth.reduce((s, w) => s + Number(w.net), 0), pyOrders = pyMonth.reduce((s, w) => s + Number(w.orders || 0), 0);
+  let rows, prev, chAll, lastApp, pmap;
+  try {
+    [rows, prev, { data: chAll }, { data: lastApp }, { data: pmap }] = await Promise.all([
+      loadSales(V.from, V.to), loadSales(pf, pt),
+      sb.from("channel_settlements").select("*").in("channel", ["pedidosya", "payphone"]).order("period_from", { ascending: false }),
+      sb.from("channel_orders").select("channel,placed_at").order("placed_at", { ascending: false }).limit(200),
+      sb.from("channel_product_map").select("channel,app_name,factor,products(name)"),
+    ]);
+  } catch (e) { $("#view").innerHTML = `<p class="err">${esc(e.message)}</p>`; return; }
+  const py = (chAll || []).filter((w) => w.channel === "pedidosya"), pp = (chAll || []).filter((w) => w.channel === "payphone");
   const ppLast = pp.filter((w) => w.balance_at).sort((a, b) => b.balance_at.localeCompare(a.balance_at))[0];
   const pyPending = py.filter((w) => w.status !== "pagado").reduce((s, w) => s + Number(w.net), 0);
-  const sum = (f) => orders.reduce((s, o) => s + Number(f(o)), 0);
-  const products = sum((o) => o.subtotal - o.discount), fees = sum((o) => o.delivery_fee), total = sum((o) => o.total);
-  // envío completo de cada pedido (lo que cuesta el motorizado) y lo que pusiste por envíos gratis
-  const riderCost = sum((o) => o.rider_fee ?? o.delivery_fee), shipGift = Math.max(0, riderCost - fees);
-  const card = orders.filter((o) => o.payment_method === "tarjeta");
-  const cardFee = card.reduce((s, o) => s + Number(o.total), 0) * 0.0575;
-  const riders = {}; orders.filter((o) => o.status === "entregado" && o.rider_id).forEach((o) => {
-    const k = o.riders?.full_name || "Sin nombre"; riders[k] ||= { n: 0, fees: 0 }; riders[k].n++; riders[k].fees += Number(o.rider_fee ?? o.delivery_fee);
-  });
-  const prods = {}; orders.forEach((o) => o.order_items.forEach((i) => { if (Number(i.line_total) > 0) { prods[i.name] ||= { q: 0, v: 0 }; prods[i.name].q += i.quantity; prods[i.name].v += Number(i.line_total); } }));
-  const top = Object.entries(prods).sort((a, b) => b[1].v - a[1].v).slice(0, 10);
+  // canales: siempre los 3 de siempre + cualquier app que tenga datos
+  const lastBy = {}; (lastApp || []).forEach((r) => { if (!lastBy[r.channel]) lastBy[r.channel] = r.placed_at; });
+  const chans = [...new Set(["web", "whatsapp", "pedidosya", ...Object.keys(lastBy), ...rows.map((r) => r.ch)])];
+  chans.forEach(chInfo);
+  const M = V.metric === "kept" ? "kept" : "sold", mName = M === "kept" ? "Te queda" : "Vendido";
+
+  const sold = sumBy(rows, (r) => r.sold), kept = sumBy(rows, (r) => r.kept), nOrd = rows.length;
+  const pSold = sumBy(prev, (r) => r.sold), pKept = sumBy(prev, (r) => r.kept), pN = prev.length;
+  const prevLbl = rangeLabel(pf, pt);
+  const cmpOk = pN >= 5; // con muy pocos pedidos antes (p. ej. antes del relanzamiento) el % no dice nada
+
+  // por canal
+  const byCh = chans.map((k) => { const r = rows.filter((x) => x.ch === k); return { k, n: r.length, sold: sumBy(r, (x) => x.sold), kept: sumBy(r, (x) => x.kept) }; });
+
+  // cubetas
+  const keyOf = (r) => group === "hora" ? new Date(new Date(r.at).getTime() - 5 * 3600000).getUTCHours() : group === "dia" ? r.day : group === "semana" ? mondayOf(r.day) : r.day.slice(0, 7);
+  const keys = [];
+  if (group === "hora") { const hs = rows.map(keyOf); const lo = Math.min(9, ...hs), hi = Math.max(21, ...hs); for (let h = lo; h <= hi; h++) keys.push(h); }
+  else if (group === "dia") for (let d = V.from; d <= V.to; d = addD(d, 1)) keys.push(d);
+  else if (group === "semana") for (let d = mondayOf(V.from); d <= V.to; d = addD(d, 7)) keys.push(d);
+  else for (let d = monthStartOf(V.from); d <= V.to; d = addMonths(d, 1)) keys.push(d.slice(0, 7));
+  const B = keys.map((k) => ({ k, n: 0, sold: 0, kept: 0, ch: Object.fromEntries(chans.map((c) => [c, { n: 0, sold: 0, kept: 0 }])) }));
+  const bIdx = new Map(keys.map((k, i) => [k, i]));
+  for (const r of rows) { const b = B[bIdx.get(keyOf(r))]; if (!b) continue; b.n++; b.sold += r.sold; b.kept += r.kept; const c = b.ch[r.ch]; c.n++; c.sold += r.sold; c.kept += r.kept; }
+  const bLabel = (k, long) => group === "hora" ? `${k}:00` : group === "dia" ? (long ? fmtL(k, { weekday: "short", day: "numeric", month: "short" }) : fmtL(k, { day: "numeric" }))
+    : group === "semana" ? (long ? `${fmtL(k, { day: "numeric", month: "short" })} – ${fmtL(addD(k, 6), { day: "numeric", month: "short" })}` : fmtL(k, { day: "numeric", month: "short" }))
+    : fmtL(k + "-01", long ? { month: "long", year: "numeric" } : { month: "short" });
+  const bRange = (k) => group === "dia" ? [k, k] : group === "semana" ? [k, addD(k, 6)] : group === "mes" ? [k + "-01", monthEndOf(k + "-01")] : null;
+
+  // productos (los nombres de la app se pasan al nombre del menú cuando el producto es uno solo)
+  const appName = {}; const cnt = {};
+  (pmap || []).forEach((m) => { const key = m.channel + "|" + m.app_name.toLowerCase(); (cnt[key] ||= []).push(m); });
+  Object.entries(cnt).forEach(([key, ms]) => { if (ms.length === 1 && Number(ms[0].factor) === 1 && ms[0].products?.name) appName[key] = ms[0].products.name; });
+  const prods = {};
+  for (const r of rows) for (const i of r.items) {
+    const nm = r.app ? (appName[r.ch + "|" + i.n.toLowerCase()] || i.n) : i.n; const key = nm.toLowerCase().trim();
+    const p = (prods[key] ||= { n: nm, q: 0, v: 0, ch: {} }); p.q += i.q; p.v += i.v; p.ch[r.ch] = (p.ch[r.ch] || 0) + i.q;
+  }
+  const top = Object.values(prods).sort((a, b) => b.v - a.v).slice(0, 12);
+
+  // motorizados
+  const riders = {}; rows.filter((r) => r.rider).forEach((r) => { riders[r.rider] ||= { n: 0, fees: 0 }; riders[r.rider].n++; riders[r.rider].fees += r.riderFee; });
+
+  // aviso: apps cargadas hasta…
+  const stale = chans.filter((c) => !["web", "whatsapp"].includes(c)).map((c) => ({ c, last: lastBy[c] })).filter((x) => !x.last || localDay(x.last) < V.to);
+  const whenTxt = (t) => new Date(t).toLocaleString("es-EC", { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: "America/Guayaquil" }).replace(/\./g, "");
+
+  const dot = (c) => `<span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${CH[c].c};margin-right:6px;vertical-align:-1px"></span>`;
+  const maxB = Math.max(0.01, ...B.map((b) => b[M]));
+  const labelEvery = B.length > 16 ? Math.ceil(B.length / 10) : 1;
+  const showVals = B.length <= 12;
+  const chart = `<div class="vchart" role="img" aria-label="${esc(mName)} por ${group === "hora" ? "hora" : group}">
+      ${B.map((b, i) => `<button type="button" class="vcol" ${bRange(b.k) ? `data-drill="${bRange(b.k).join("|")}"` : "disabled"} title="${esc(bLabel(b.k, true))}: ${money(b[M])} · ${b.n} pedidos${chans.filter((c) => b.ch[c].n).map((c) => `\n${CH[c].n}: ${money(b.ch[c][M])} (${b.ch[c].n})`).join("")}">
+        <span class="vval">${showVals && b[M] > 0 ? "$" + Math.round(b[M]) : ""}</span>
+        <span class="vstack" style="height:calc((100% - 38px) * ${(b[M] / maxB).toFixed(4)})">${chans.filter((c) => b.ch[c][M] > 0).map((c) => `<span style="flex:${b.ch[c][M].toFixed(2)};background:${CH[c].c}"></span>`).join("")}</span>
+        <span class="vlab">${i % labelEvery === 0 ? esc(bLabel(b.k)) : ""}</span></button>`).join("")}
+    </div>`;
+
+  const kpi = (lbl, val, cmp, sub = "") => `<div class="vkpi"><span class="muted small">${lbl}</span><b>${val}</b><span>${cmp}${sub ? ` <span class="muted small">${sub}</span>` : ""}</span></div>`;
+  const groupOpts = [["auto", "Automático"], ["hora", "Hora"], ["dia", "Día"], ["semana", "Semana"], ["mes", "Mes"]];
+  const ordersList = [...rows].sort((a, b) => b.at.localeCompare(a.at));
+  const hora = (t) => new Date(t).toLocaleTimeString("es-EC", { hour: "numeric", minute: "2-digit", timeZone: "America/Guayaquil" });
+  const ordersTbl = `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Cuándo</th><th>Canal</th><th>Pedido</th><th>Productos</th><th>Vendido</th><th>Te queda</th></tr></thead><tbody>
+    ${ordersList.map((r) => `<tr><td class="tabnum small">${n > 1 ? fmtL(r.day, { day: "numeric", month: "short" }) + " · " : ""}${hora(r.at)}</td><td class="small" style="white-space:nowrap">${dot(r.ch)}${esc(CH[r.ch].n)}</td><td class="small">${esc(r.code || "")}</td>
+      <td class="small">${r.items.map((i) => `${i.q}× ${esc(i.n)}`).join(", ")}</td><td class="tabnum">${money(r.sold)}</td><td class="tabnum"><b>${money(r.kept)}</b></td></tr>`).join("") || `<tr><td colspan="6" class="muted">Sin pedidos.</td></tr>`}
+    </tbody></table></div>`;
+
   $("#view").innerHTML = `
     <div class="panel" style="display:grid;gap:14px">
-      <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;justify-content:space-between">
-        <h2 class="display" style="font-size:30px">Ventas ${periodo}</h2>
-        <div style="display:flex;gap:6px;align-items:end;flex-wrap:wrap">
-          <div><label class="f" for="vMode" style="margin-top:0">Ver</label><select class="in" id="vMode" style="width:auto"><option value="mes"${isDay ? "" : " selected"}>Mes</option><option value="dia"${isDay ? " selected" : ""}>Día</option></select></div>
-          <button class="btn small ghost" type="button" id="vPrev" aria-label="Anterior" style="margin-bottom:4px">‹</button>
-          <div>${isDay
-            ? `<label class="f" for="day" style="margin-top:0">Día</label><input class="in" type="date" id="day" value="${S.day}" max="${todayGye()}" style="width:auto">`
-            : `<label class="f" for="month" style="margin-top:0">Mes</label><input class="in" type="month" id="month" value="${S.month}" style="width:auto">`}</div>
-          <button class="btn small ghost" type="button" id="vNext" aria-label="Siguiente" style="margin-bottom:4px">›</button>
-          ${isDay && S.day !== todayGye() ? `<button class="btn small ghost" type="button" id="vToday" style="margin-bottom:4px">Hoy</button>` : ""}
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:space-between">
+        <h2 class="display" style="font-size:30px;margin:0">Ventas</h2>
+        <div class="ctabs" style="display:flex;gap:6px" role="group" aria-label="Qué mostrar">
+          <button type="button" class="chip-btn" data-metric="sold" aria-pressed="${M === "sold"}">Vendido</button>
+          <button type="button" class="chip-btn" data-metric="kept" aria-pressed="${M === "kept"}">Te queda</button>
         </div>
       </div>
-      ${isDay ? `<p class="muted small" style="margin:0;text-transform:capitalize">${new Date(S.day + "T12:00:00Z").toLocaleDateString("es-EC", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })}</p>` : ""}
-      <div class="stats">
-        <div><b>${orders.length}</b>pedidos pagados</div>
-        <div><b>${money(products)}</b>ventas en productos</div>
-        <div><b>${money(fees)}</b>envíos cobrados</div>
-        ${shipGift > 0.004 ? `<div><b>${money(shipGift)}</b>envíos gratis que pusiste</div>` : ""}
-        <div><b>${money(total)}</b>cobrado en total</div>
-        <div><b>${money(cardFee)}</b>comisión Payphone aprox.</div>
-        ${isDay ? "" : `<div><b>${money(pyNet)}</b>liquidado por PedidosYa${pyOrders ? ` · ${pyOrders} pedidos` : ""}</div>`}
-        ${pyPending > 0.004 ? `<div><b>${money(pyPending)}</b>PedidosYa por depositarte</div>` : ""}
-        ${ppLast && Number(ppLast.balance_end) > 0.004 ? `<div><b>${money(Number(ppLast.balance_end))}</b>en Payphone sin retirar</div>` : ""}
-        ${isDay ? (orders.length ? `<div><b>${money(products / orders.length)}</b>ticket promedio</div>` : "") : `<div><b>${money(products + pyNet)}</b>web (productos) + PedidosYa</div>`}
+      <div class="ctabs vpresets">
+        ${PRESETS.map(([k, l]) => `<button type="button" class="chip-btn" data-preset="${k}" aria-pressed="${V.preset === k}">${l}</button>`).join("")}
       </div>
-      <p class="muted small" style="margin:0">${card.length} con tarjeta · ${orders.length - card.length} por transferencia. La comisión es un estimado del 5,75% sobre lo cobrado con tarjeta.${isDay ? " PedidosYa se liquida por semana, así que no sale en la vista por día." : ""}</p>
+      <div class="vrange">
+        <div><label class="f" for="vFrom" style="margin-top:0">Desde</label><input class="in" type="date" id="vFrom" value="${V.from}" max="${today}"></div>
+        <div><label class="f" for="vTo" style="margin-top:0">Hasta</label><input class="in" type="date" id="vTo" value="${V.to}" max="${today}"></div>
+        <div class="vgroup"><label class="f" for="vGroup" style="margin-top:0">Agrupar por</label><select class="in" id="vGroup">${groupOpts.map(([k, l]) => `<option value="${k}" ${V.group === k ? "selected" : ""}>${l}${k === "auto" && V.group === "auto" ? ` (${({ hora: "hora", dia: "día", semana: "semana", mes: "mes" })[group]})` : ""}</option>`).join("")}</select></div>
+      </div>
+      <div class="vnav">
+        <button class="btn small ghost" type="button" id="vPrev" aria-label="Periodo anterior">‹</button>
+        <b>${esc(cap(rangeLabel(V.from, V.to)))}</b>
+        <button class="btn small ghost" type="button" id="vNext" aria-label="Periodo siguiente" ${V.to >= today ? "disabled" : ""}>›</button>
+      </div>
+      <div class="vkpis">
+        ${kpi("Vendido", money(sold), pctTxt(sold, pSold, cmpOk))}
+        ${kpi("Te queda", money(kept), pctTxt(kept, pKept, cmpOk), sold ? `${Math.round(kept / sold * 100)} % de lo vendido` : "")}
+        ${kpi("Pedidos", String(nOrd), pctTxt(nOrd, pN, cmpOk), "")}
+        ${kpi("Ticket promedio", nOrd ? money(sold / nOrd) : "—", nOrd ? pctTxt(sold / nOrd, pN ? pSold / pN : 0, cmpOk) : "", "")}
+      </div>
+      <p class="muted small" style="margin:-6px 0 0">${cmpOk ? `Las flechas comparan con ${esc(prevLbl)}.` : `No hay suficientes pedidos en ${esc(prevLbl)} para comparar.`}</p>
+      ${stale.length ? `<p class="small" style="margin:0;padding:8px 12px;border-radius:10px;background:rgb(240 195 91 / .22)">⚠️ ${stale.map((x) => `<b>${esc(CH[x.c].n)}</b> ${x.last ? `está cargado hasta el ${esc(whenTxt(x.last))}` : "aún no tiene pedidos cargados"}`).join(" · ")}. Lo posterior aparece cuando Claude lo carga desde el portal de la app.</p>` : ""}
+      <div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:6px" class="small">${chans.map((c) => `<span>${dot(c)}${esc(CH[c].n)}</span>`).join("")}<span class="muted">· ${mName} por ${({ hora: "hora", dia: "día", semana: "semana", mes: "mes" })[group]}${group !== "hora" ? ". Toca una barra para ver el detalle" : ""}</span></div>
+        ${chart}
+      </div>
     </div>
-    ${isDay ? dayOrdersPanel(orders) : dailyPanel(orders, y, m)}
-    <div class="panel" style="margin-top:14px" id="weekly"><p class="muted small">Cargando ventas por semana…</p></div>
-    ${pyPanel(py, monthStart, monthEnd)}
-    ${ppPanel(pp, ppLast)}
+
+    <div class="panel" style="margin-top:14px">
+      <h3 class="group-title" style="margin:0 0 10px">Por canal</h3>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Canal</th><th>Pedidos</th><th>Vendido</th><th>Comisiones y envíos</th><th>Te queda</th><th>Ticket</th><th>Parte de la venta</th></tr></thead><tbody>
+      ${byCh.map((c) => `<tr><td>${dot(c.k)}<b>${esc(CH[c.k].n)}</b></td><td class="tabnum">${c.n}</td><td class="tabnum">${money(c.sold)}</td>
+        <td class="tabnum">${c.sold - c.kept > 0.004 ? "−" + money(c.sold - c.kept) : "—"}</td><td class="tabnum"><b>${money(c.kept)}</b></td><td class="tabnum">${c.n ? money(c.sold / c.n) : "—"}</td>
+        <td><div style="display:flex;align-items:center;gap:8px"><span style="flex:1;min-width:60px;height:8px;border-radius:4px;background:var(--surface-2);overflow:hidden"><span style="display:block;height:100%;width:${sold ? (c.sold / sold * 100).toFixed(1) : 0}%;background:${CH[c.k].c}"></span></span><span class="tabnum small">${sold ? Math.round(c.sold / sold * 100) : 0} %</span></div></td></tr>`).join("")}
+      <tr style="font-weight:700"><td>Total</td><td class="tabnum">${nOrd}</td><td class="tabnum">${money(sold)}</td><td class="tabnum">${sold - kept > 0.004 ? "−" + money(sold - kept) : "—"}</td><td class="tabnum">${money(kept)}</td><td class="tabnum">${nOrd ? money(sold / nOrd) : "—"}</td><td></td></tr>
+      </tbody></table></div>
+      <p class="muted small" style="margin:8px 0 0">Se cuenta por el día en que se hizo el pedido. Web y WhatsApp: pedidos pagados, sin cancelados. Apps: pedidos no cancelados. <b>Vendido</b> = productos con sus descuentos (en apps, precio de lista menos los descuentos que paga usted; los que pone la app no cuentan). <b>Te queda</b> = vendido menos la comisión de la app con IVA, la tarifa de Payphone (5,75 % aprox. en tarjeta) y el envío gratis que puso usted. Todavía no resta el costo de los productos ni el empaque.</p>
+      ${pyPending > 0.004 || (ppLast && Number(ppLast.balance_end) > 0.004) ? `<p class="small" style="margin:8px 0 0">Dinero por llegar: ${pyPending > 0.004 ? `<b>${money(pyPending)}</b> de PedidosYa por depositar` : ""}${pyPending > 0.004 && ppLast && Number(ppLast.balance_end) > 0.004 ? " · " : ""}${ppLast && Number(ppLast.balance_end) > 0.004 ? `<b>${money(Number(ppLast.balance_end))}</b> en Payphone sin retirar` : ""}</p>` : ""}
+    </div>
+
+    ${group !== "hora" ? `<div class="panel" style="margin-top:14px">
+      <h3 class="group-title" style="margin:0 0 4px">${mName} por ${({ dia: "día", semana: "semana", mes: "mes" })[group]}</h3>
+      <p class="muted small" style="margin:0 0 10px">Toca una fila para ver ese ${({ dia: "día", semana: "semana", mes: "mes" })[group]}.</p>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>${({ dia: "Día", semana: "Semana", mes: "Mes" })[group]}</th><th>Pedidos</th>${chans.map((c) => `<th>${dot(c)}${esc(CH[c].n)}</th>`).join("")}<th>Total</th><th>Ticket</th></tr></thead><tbody>
+      ${[...B].reverse().filter((b) => b.n || group !== "dia").map((b) => `<tr data-drill="${bRange(b.k).join("|")}" style="cursor:pointer${(group === "dia" && b.k === today) || (group === "semana" && b.k === mondayOf(today)) || (group === "mes" && b.k === today.slice(0, 7)) ? ";background:var(--crema)" : ""}">
+        <td style="text-transform:capitalize">${esc(bLabel(b.k, true))}</td><td class="tabnum">${b.n}</td>
+        ${chans.map((c) => `<td class="tabnum">${b.ch[c].n ? money(b.ch[c][M]) + ` <span class="muted small">· ${b.ch[c].n}</span>` : `<span class="muted">—</span>`}</td>`).join("")}
+        <td class="tabnum"><b>${money(b[M])}</b></td><td class="tabnum">${b.n ? money(b.sold / b.n) : "—"}</td></tr>`).join("") || `<tr><td colspan="${chans.length + 4}" class="muted">Sin ventas en este periodo.</td></tr>`}
+      </tbody></table></div>
+      ${group === "dia" && B.some((b) => !b.n) ? `<p class="muted small" style="margin:8px 0 0">Los días sin pedidos no salen en la tabla (sí en el gráfico).</p>` : ""}
+    </div>` : ""}
+
+    <div class="panel" style="margin-top:14px">
+      ${n <= 1 ? `<h3 class="group-title" style="margin:0 0 10px">Pedidos del día (${nOrd})</h3>${ordersTbl}` : `<details><summary class="group-title" style="cursor:pointer;margin:0">Ver los ${nOrd} pedidos</summary><div style="margin-top:10px">${ordersTbl}</div></details>`}
+    </div>
+
     <div class="cards" style="margin-top:14px">
+      <div class="panel"><h3 class="group-title" style="margin-top:0">Productos más vendidos</h3>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Producto</th><th>Unidades</th><th>Vendido</th></tr></thead><tbody>
+        ${top.map((p) => `<tr><td>${esc(p.n)}<br><span class="muted small">${Object.entries(p.ch).map(([c, q]) => `${dot(c)}${q}`).join(" &nbsp;")}</span></td><td class="tabnum">${p.q}</td><td class="tabnum">${money(p.v)}</td></tr>`).join("") || `<tr><td colspan="3" class="muted">Sin ventas en este periodo.</td></tr>`}
+        </tbody></table></div>
+        <p class="muted small" style="margin:8px 0 0">En apps se usa el precio de lista. Un combo cuenta como un producto.</p></div>
       <div class="panel"><h3 class="group-title" style="margin-top:0">Pago a motorizados</h3>
         <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Motorizado</th><th>Entregas</th><th>Envíos a pagar</th></tr></thead><tbody>
-        ${Object.entries(riders).map(([n, r]) => `<tr><td>${esc(n)}</td><td class="tabnum">${r.n}</td><td class="tabnum">${money(r.fees)}</td></tr>`).join("") || `<tr><td colspan="3" class="muted">Sin entregas ${isDay ? "este día" : "este mes"}.</td></tr>`}
+        ${Object.entries(riders).map(([nm, r]) => `<tr><td>${esc(nm)}</td><td class="tabnum">${r.n}</td><td class="tabnum">${money(r.fees)}</td></tr>`).join("") || `<tr><td colspan="3" class="muted">Sin entregas con motorizado en este periodo.</td></tr>`}
         </tbody></table></div></div>
-      <div class="panel"><h3 class="group-title" style="margin-top:0">Productos más vendidos</h3>
-        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Producto</th><th>Unidades</th><th>Ventas</th></tr></thead><tbody>
-        ${top.map(([n, p]) => `<tr><td>${esc(n)}</td><td class="tabnum">${p.q}</td><td class="tabnum">${money(p.v)}</td></tr>`).join("") || `<tr><td colspan="3" class="muted">Sin ventas ${isDay ? "este día" : "este mes"}.</td></tr>`}
-        </tbody></table></div></div>
-    </div>`;
-  $("#vMode").onchange = (e) => {
-    S.mode = e.target.value;
-    // al pasar a día: hoy si es el mes en curso, si no el día 1 del mes elegido
-    if (S.mode === "dia") S.day = S.month === todayGye().slice(0, 7) ? todayGye() : S.month + "-01";
-    ventas();
-  };
-  if (isDay) $("#day").onchange = (e) => { if (e.target.value) { S.day = e.target.value; ventas(); } };
-  else $("#month").onchange = (e) => { S.month = e.target.value || S.month; ventas(); };
+    </div>
+    ${pyPanel(py, V.from, addD(V.to, 1))}
+    ${ppPanel(pp, ppLast)}`;
+
+  const go = (patch) => { Object.assign(S.v, patch); ventas(); };
+  $$("[data-metric]").forEach((b) => (b.onclick = () => go({ metric: b.dataset.metric })));
+  $$("[data-preset]").forEach((b) => (b.onclick = () => go({ preset: b.dataset.preset, group: "auto" })));
+  $("#vFrom").onchange = (e) => e.target.value && go({ preset: "custom", from: e.target.value, to: e.target.value > V.to ? e.target.value : V.to });
+  $("#vTo").onchange = (e) => e.target.value && go({ preset: "custom", to: e.target.value, from: e.target.value < V.from ? e.target.value : V.from });
+  $("#vGroup").onchange = (e) => go({ group: e.target.value });
   const shift = (k) => {
-    if (isDay) { const d = new Date(S.day + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + k); S.day = d.toISOString().slice(0, 10); }
-    else { const d = new Date(Date.UTC(y, m - 1 + k, 1)); S.month = d.toISOString().slice(0, 7); }
-    ventas();
+    let f, t;
+    if (isMonthRange(V.from, V.to)) { f = addMonths(V.from, k); t = monthEndOf(f); }
+    else if (isWeekRange(V.from, V.to)) { f = addD(V.from, 7 * k); t = addD(f, 6); }
+    else { const len = nDays(V.from, V.to); f = addD(V.from, k * len); t = addD(V.to, k * len); }
+    if (f > today) return;
+    const p = f === today && t >= today ? "hoy" : f === monthStartOf(today) && t >= today ? "mes" : f === mondayOf(today) && t >= today ? "semana" : "custom";
+    go({ preset: p, from: f, to: t > today ? today : t });
   };
   $("#vPrev").onclick = () => shift(-1);
   $("#vNext").onclick = () => shift(1);
-  if ($("#vToday")) $("#vToday").onclick = () => { S.day = todayGye(); ventas(); };
-  $$("[data-day]").forEach((r) => (r.onclick = () => { S.mode = "dia"; S.day = r.dataset.day; ventas(); window.scrollTo({ top: 0, behavior: "smooth" }); }));
+  $$("[data-drill]").forEach((el) => (el.onclick = () => { const [f, t] = el.dataset.drill.split("|"); go({ preset: "custom", from: f, to: t > today ? today : t, group: "auto" }); window.scrollTo({ top: 0, behavior: "smooth" }); }));
   bindPyForm();
-  weekly(py);
-}
-
-// Mes: una fila por día con ventas (tocar el día abre la vista de ese día)
-function dailyPanel(orders, y, m) {
-  const days = {};
-  for (const o of orders) {
-    const k = new Date(new Date(o.paid_at).getTime() - 5 * 3600000).toISOString().slice(0, 10);
-    const d = (days[k] ||= { n: 0, wa: 0, prod: 0, fee: 0, total: 0 });
-    d.n++; if (o.channel === "whatsapp") d.wa++;
-    d.prod += Number(o.subtotal) - Number(o.discount || 0); d.fee += Number(o.delivery_fee); d.total += Number(o.total);
-  }
-  const rows = Object.entries(days).sort((a, b) => b[0].localeCompare(a[0]));
-  const max = Math.max(1, ...rows.map(([, d]) => d.prod));
-  const wd = (k) => new Date(k + "T12:00:00Z").toLocaleDateString("es-EC", { weekday: "short", timeZone: "UTC" }).replace(".", "");
-  return `<div class="panel" style="margin-top:14px">
-    <h3 class="group-title" style="margin:0">Ventas por día</h3>
-    <p class="muted small" style="margin:6px 0 10px">Solo los días con pedidos pagados (web + WhatsApp), según el día en que se pagó. Toca un día para ver su detalle.</p>
-    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Día</th><th>Pedidos</th><th>Productos</th><th>Ticket</th><th>Envíos cobrados</th><th>Cobrado</th></tr></thead><tbody>
-    ${rows.map(([k, d]) => `<tr data-day="${k}" style="cursor:pointer${k === todayGye() ? ";background:var(--crema)" : ""}">
-      <td><span class="muted small" style="text-transform:capitalize">${wd(k)}</span> ${dShort(k)}</td>
-      <td class="tabnum">${d.n}${d.wa ? ` <span class="muted small">· ${d.wa} WA</span>` : ""}</td>
-      <td class="tabnum"><div style="display:flex;align-items:center;gap:6px;justify-content:flex-end"><span style="display:inline-block;height:8px;border-radius:4px;background:#C68A4E;width:${Math.round(d.prod / max * 60)}px"></span><b>${money(d.prod)}</b></div></td>
-      <td class="tabnum">${money(d.prod / d.n)}</td>
-      <td class="tabnum">${money(d.fee)}</td>
-      <td class="tabnum">${money(d.total)}</td></tr>`).join("") || `<tr><td colspan="6" class="muted">Sin ventas este mes.</td></tr>`}
-    </tbody></table></div></div>`;
-}
-
-// Día: lista de los pedidos pagados ese día
-function dayOrdersPanel(orders) {
-  const hora = (t) => new Date(t).toLocaleTimeString("es-EC", { hour: "2-digit", minute: "2-digit", timeZone: "America/Guayaquil" });
-  const items = (o) => o.order_items.map((i) => `${i.quantity}× ${esc(i.name)}`).join(", ");
-  return `<div class="panel" style="margin-top:14px">
-    <h3 class="group-title" style="margin:0">Pedidos del día</h3>
-    <p class="muted small" style="margin:6px 0 10px">Pedidos pagados ese día (web + WhatsApp), por hora de pago.</p>
-    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Hora</th><th>Pedido</th><th>Productos</th><th>Venta</th><th>Envío</th><th>Total</th><th>Pago</th></tr></thead><tbody>
-    ${orders.map((o) => `<tr>
-      <td class="tabnum">${hora(o.paid_at)}</td>
-      <td>${esc(o.code || "")}${o.channel === "whatsapp" ? ` <span class="muted small">WA</span>` : ""}</td>
-      <td class="small">${items(o)}</td>
-      <td class="tabnum">${money(Number(o.subtotal) - Number(o.discount || 0))}</td>
-      <td class="tabnum">${money(o.delivery_fee)}</td>
-      <td class="tabnum"><b>${money(o.total)}</b></td>
-      <td class="small">${({ tarjeta: "Tarjeta", transferencia: "Transferencia", efectivo: "Efectivo" })[o.payment_method] || esc(o.payment_method || "—")}</td></tr>`).join("") || `<tr><td colspan="7" class="muted">Sin pedidos pagados este día.</td></tr>`}
-    </tbody></table></div></div>`;
-}
-
-// Ventas por semana (lunes a domingo, hora de Guayaquil): web + WhatsApp pagados y lo que liquidó PedidosYa esa semana
-async function weekly(py, n = S.weeks || 12) {
-  const box = $("#weekly"); if (!box) return;
-  const DAY = 86400000, local = (t) => new Date(new Date(t).getTime() - 5 * 3600000); // campos UTC = hora local
-  const t = local(Date.now()), dow = (t.getUTCDay() + 6) % 7; // 0 = lunes
-  const thisMon = Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate() - dow);
-  const firstMon = thisMon - (n - 1) * 7 * DAY;
-  const { data: rows, error } = await sb.from("orders").select("subtotal,discount,delivery_fee,rider_fee,total,paid_at,channel,user_id")
-    .eq("payment_status", "pagado").gte("paid_at", new Date(firstMon + 5 * 3600000).toISOString()).limit(5000);
-  if (error) { box.innerHTML = `<p class="err">${esc(error.message)}</p>`; return; }
-  const iso = (ms) => new Date(ms).toISOString().slice(0, 10);
-  const weeks = Array.from({ length: n }, (_, i) => ({ from: thisMon - i * 7 * DAY, n: 0, wa: 0, prod: 0, fee: 0, gift: 0, total: 0 }));
-  for (const o of rows || []) {
-    const l = local(o.paid_at), d = Date.UTC(l.getUTCFullYear(), l.getUTCMonth(), l.getUTCDate());
-    const w = weeks.find((x) => d >= x.from && d < x.from + 7 * DAY); if (!w) continue;
-    w.n++; if (o.channel === "whatsapp") w.wa++;
-    w.prod += Number(o.subtotal) - Number(o.discount || 0); w.fee += Number(o.delivery_fee); w.total += Number(o.total);
-    w.gift += Math.max(0, Number(o.rider_fee ?? o.delivery_fee) - Number(o.delivery_fee));
-  }
-  for (const w of weeks) { const y = py.find((x) => x.period_from === iso(w.from)); w.py = y ? Number(y.net) : null; w.pyN = y?.orders ?? null; }
-  // las semanas antes de la primera venta no se muestran
-  while (weeks.length > 1 && !weeks[weeks.length - 1].n && weeks[weeks.length - 1].py == null) weeks.pop();
-  const wk = (w) => `${dShort(iso(w.from))} – ${dShort(iso(w.from + 6 * DAY))}`;
-  const max = Math.max(1, ...weeks.map((w) => w.prod + (w.py || 0)));
-  const prev = (i) => weeks[i + 1];
-  const delta = (w, i) => { const p = prev(i); if (!p || !p.prod) return ""; const c = Math.round((w.prod / p.prod - 1) * 100); return `<span class="small" style="color:${c >= 0 ? "#2e7d32" : "#b3202a"}">${c >= 0 ? "▲" : "▼"} ${Math.abs(c)} %</span>`; };
-  box.innerHTML = `
-    <div style="display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;justify-content:space-between">
-      <h3 class="group-title" style="margin:0">Ventas por semana</h3>
-      <label class="muted small">Ver <select class="in" id="wkN" style="width:auto;padding:4px 8px">${[8, 12, 26].map((x) => `<option ${x === n ? "selected" : ""}>${x}</option>`).join("")}</select> semanas</label>
-    </div>
-    <p class="muted small" style="margin:6px 0 10px">De lunes a domingo, según el día en que se pagó. Web incluye los pedidos por WhatsApp. PedidosYa es lo liquidado esa semana (sale cuando Claude registra el estado de cuenta). La flecha compara los productos web con la semana anterior.</p>
-    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Semana</th><th>Pedidos web</th><th>Productos web</th><th>Ticket</th><th>Envíos cobrados</th><th>Envío que pusiste</th><th>Cobrado web</th><th>PedidosYa</th><th>Web + PedidosYa</th></tr></thead><tbody>
-    ${weeks.map((w, i) => `<tr${i === 0 ? ' style="background:var(--crema)"' : ""}>
-      <td>${wk(w)}${i === 0 ? ` <span class="muted small">(en curso)</span>` : ""}</td>
-      <td class="tabnum">${w.n}${w.wa ? ` <span class="muted small">· ${w.wa} WA</span>` : ""}</td>
-      <td class="tabnum"><b>${money(w.prod)}</b> ${delta(w, i)}</td>
-      <td class="tabnum">${w.n ? money(w.prod / w.n) : "—"}</td>
-      <td class="tabnum">${money(w.fee)}</td>
-      <td class="tabnum">${w.gift > 0.004 ? money(w.gift) : "—"}</td>
-      <td class="tabnum">${money(w.total)}</td>
-      <td class="tabnum">${w.py == null ? "—" : `${money(w.py)}${w.pyN ? ` <span class="muted small">· ${w.pyN}</span>` : ""}`}</td>
-      <td class="tabnum"><div style="display:flex;align-items:center;gap:6px;justify-content:flex-end"><span style="display:inline-block;height:8px;border-radius:4px;background:#C68A4E;width:${Math.round((w.prod + (w.py || 0)) / max * 60)}px"></span><b>${money(w.prod + (w.py || 0))}</b></div></td></tr>`).join("")}
-    </tbody></table></div>`;
-  $("#wkN").onchange = (e) => { S.weeks = Number(e.target.value); weekly(py, S.weeks); };
 }
 
 // PedidosYa: tabla de semanas liquidadas (de lunes a domingo; el estado de cuenta llega el jueves)
