@@ -77,8 +77,10 @@ function rangeLabel(f, t) {
   return `${fmtL(f, { day: "numeric", month: "short", ...(sameY ? {} : { year: "numeric" }) })} – ${fmtL(t, { day: "numeric", month: "short", year: "numeric" })}`;
 }
 function prevRange(f, t) {
-  if (isMonthRange(f, t)) { const pf = addMonths(f, -1); const pt = addD(pf, nDays(f, t) - 1); return [pf, pt > monthEndOf(pf) ? monthEndOf(pf) : pt]; }
-  const n = nDays(f, t); return [addD(f, -n), addD(f, -1)];
+  const n = nDays(f, t);
+  if (n === 1) return [addD(f, -7), addD(f, -7)]; // un día: el mismo día de la semana pasada (como Square)
+  if (isMonthRange(f, t)) { const pf = addMonths(f, -1); const pt = addD(pf, n - 1); return [pf, pt > monthEndOf(pf) ? monthEndOf(pf) : pt]; }
+  return [addD(f, -n), addD(f, -1)];
 }
 async function fetchAll(q) { // PostgREST devuelve máx. 1000 filas por consulta
   const out = []; for (let i = 0; ; i += 1000) { const { data, error } = await q().range(i, i + 999); if (error) throw error; out.push(...data); if (data.length < 1000) return out; }
@@ -88,7 +90,7 @@ async function loadSales(from, to) {
   const [web, apps] = await Promise.all([
     fetchAll(() => sb.from("orders").select("id,code,created_at,channel,subtotal,discount,delivery_fee,rider_fee,total,payment_method,status,rider_id,riders(full_name),order_items(name,quantity,line_total)")
       .eq("payment_status", "pagado").neq("status", "cancelado").gte("created_at", a).lt("created_at", b).order("created_at")),
-    fetchAll(() => sb.from("channel_orders").select("channel,external_id,placed_at,status,subtotal,local_discount,net")
+    fetchAll(() => sb.from("channel_orders").select("channel,external_id,placed_at,status,subtotal,local_discount,net,confirmed_at")
       .neq("status", "cancelado").gte("placed_at", a).lt("placed_at", b).order("placed_at")),
   ]);
   // productos de cada pedido de app (en tandas, para no armar URLs gigantes)
@@ -103,26 +105,45 @@ async function loadSales(from, to) {
     const sold = Number(o.subtotal) - Number(o.discount || 0);
     const card = o.payment_method === "tarjeta" ? Number(o.total) * 0.0575 : 0;
     const gift = Math.max(0, Number(o.rider_fee ?? o.delivery_fee) - Number(o.delivery_fee));
-    rows.push({ ch: o.channel === "whatsapp" ? "whatsapp" : "web", at: o.created_at, day: localDay(o.created_at), code: o.code, sold, kept: sold - card - gift, card, gift,
-      fee: Number(o.delivery_fee), status: o.status, rider: o.status === "entregado" && o.rider_id ? (o.riders?.full_name || "Sin nombre") : null, riderFee: Number(o.rider_fee ?? o.delivery_fee),
-      pay: o.payment_method, items: o.order_items.filter((i) => Number(i.line_total) > 0).map((i) => ({ n: i.name, q: i.quantity, v: Number(i.line_total) })) });
+    rows.push({ ch: o.channel === "whatsapp" ? "whatsapp" : "web", at: o.created_at, day: localDay(o.created_at), code: o.code, sold, kept: sold - card - gift, disc: Number(o.discount || 0),
+      status: o.status, rider: o.status === "entregado" && o.rider_id ? (o.riders?.full_name || "Sin nombre") : null, riderFee: Number(o.rider_fee ?? o.delivery_fee),
+      items: o.order_items.filter((i) => Number(i.line_total) > 0).map((i) => ({ n: i.name, q: i.quantity, v: Number(i.line_total) })) });
   }
   for (const o of apps) {
     const sold = Number(o.subtotal) - Number(o.local_discount || 0);
     const kept = o.net != null ? Number(o.net) : sold * 0.701;
-    rows.push({ ch: o.channel, at: o.placed_at, day: localDay(o.placed_at), code: o.external_id, sold, kept, com: sold - kept, app: true,
-      items: (o.channel_order_items || []).map((i) => ({ n: i.name, q: i.qty, v: Number(i.amount), app: o.channel })) });
+    rows.push({ ch: o.channel, at: o.placed_at, day: localDay(o.placed_at), code: o.external_id, sold, kept, disc: Number(o.local_discount || 0), app: true, pending: !o.confirmed_at,
+      items: (o.channel_order_items || []).map((i) => ({ n: i.name, q: i.qty, v: Number(i.amount) })) });
   }
   return rows;
 }
 const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
 const sumBy = (rows, f) => rows.reduce((s, r) => s + f(r), 0);
-const pctTxt = (cur, prev, ok) => {
-  if (ok === false) return "";
-  if (!prev) return `<span class="muted small">antes: $0</span>`;
+const m0 = (v) => "$" + (Math.abs(v) >= 1000 ? Math.round(v).toLocaleString("es-EC") : Math.round(v));
+const pctPill = (cur, prev, ok) => {
+  if (!ok) return "";
+  if (!prev) return `<span class="vpill">nuevo</span>`;
   const c = Math.round((cur / prev - 1) * 100);
-  return `<span class="small" style="color:${c >= 0 ? "var(--st-ok)" : "var(--st-error)"};font-weight:600">${c >= 0 ? "▲" : "▼"} ${Math.abs(c)} %</span>`;
+  return `<span class="vpill ${c > 0 ? "up" : c < 0 ? "down" : ""}">${c > 0 ? "▲" : c < 0 ? "▼" : "="} ${Math.abs(c)} %</span>`;
 };
+const niceStep = (max, n = 3) => { const raw = max / n, p = 10 ** Math.floor(Math.log10(raw || 1)); return [1, 2, 2.5, 5, 10].map((k) => k * p).find((s) => s >= raw) || p * 10; };
+function spark(vals, color) { // línea mini para las tarjetas
+  if (vals.length < 2) return "";
+  const mx = Math.max(...vals, 0.01), W = 100, H = 30, st = W / (vals.length - 1);
+  const pts = vals.map((v, i) => `${(i * st).toFixed(1)},${(H - 2 - (v / mx) * (H - 6)).toFixed(1)}`);
+  return `<svg class="vspark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><polygon points="0,${H} ${pts.join(" ")} ${W},${H}" fill="${color}" opacity=".14"/><polyline points="${pts.join(" ")}" fill="none" stroke="${color}" stroke-width="1.8" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
+}
+function donut(parts, center, sub) {
+  const r = 42, C = 2 * Math.PI * r, tot = parts.reduce((s, p) => s + p.v, 0) || 1; let off = 0;
+  return `<svg viewBox="0 0 110 110" class="vdonut" role="img" aria-label="Parte de la venta por canal">
+    <circle cx="55" cy="55" r="${r}" fill="none" stroke="var(--surface-2)" stroke-width="14"/>
+    ${parts.filter((p) => p.v > 0).map((p) => { const len = p.v / tot * C; const s = `<circle cx="55" cy="55" r="${r}" fill="none" stroke="${p.c}" stroke-width="14" stroke-dasharray="${Math.max(0, len - 1.5).toFixed(2)} ${(C - Math.max(0, len - 1.5)).toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}" transform="rotate(-90 55 55)"/>`; off += len; return s; }).join("")}
+    <text x="55" y="54" text-anchor="middle" class="vdonut-n">${center}</text><text x="55" y="70" text-anchor="middle" class="vdonut-s">${sub}</text></svg>`;
+}
+const WD = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+const hourTxt = (h) => `${((h + 11) % 12) + 1}${h < 12 ? " a. m." : " p. m."}`;
+const localHour = (t) => new Date(new Date(t).getTime() - 5 * 3600000).getUTCHours();
+const wdIdx = (day) => (new Date(ldMs(day)).getUTCDay() + 6) % 7;
 
 async function ventas() {
   const V = S.v, today = todayGye();
@@ -131,8 +152,10 @@ async function ventas() {
   if (V.from > V.to) V.from = V.to;
   const n = nDays(V.from, V.to);
   const group = V.group !== "auto" ? V.group : n <= 1 ? "hora" : n <= 35 ? "dia" : n <= 120 ? "semana" : "mes";
+  const gName = { hora: "hora", dia: "día", semana: "semana", mes: "mes" }[group];
   const [pf, pt] = prevRange(V.from, V.to);
-  $("#view").innerHTML = `<p class="muted">Cargando…</p>`;
+  if (!$("#vroot")) $("#view").innerHTML = `<div id="vroot"><div class="panel vskel"><div></div><div></div><div></div></div></div>`;
+  $("#vroot").classList.add("vloading");
   let rows, prev, chAll, lastApp, pmap;
   try {
     [rows, prev, { data: chAll }, { data: lastApp }, { data: pmap }] = await Promise.all([
@@ -145,7 +168,6 @@ async function ventas() {
   const py = (chAll || []).filter((w) => w.channel === "pedidosya"), pp = (chAll || []).filter((w) => w.channel === "payphone");
   const ppLast = pp.filter((w) => w.balance_at).sort((a, b) => b.balance_at.localeCompare(a.balance_at))[0];
   const pyPending = py.filter((w) => w.status !== "pagado").reduce((s, w) => s + Number(w.net), 0);
-  // canales: siempre los 3 de siempre + cualquier app que tenga datos
   const lastBy = {}; (lastApp || []).forEach((r) => { if (!lastBy[r.channel]) lastBy[r.channel] = r.placed_at; });
   const chans = [...new Set(["web", "whatsapp", "pedidosya", ...Object.keys(lastBy), ...rows.map((r) => r.ch)])];
   chans.forEach(chInfo);
@@ -153,142 +175,216 @@ async function ventas() {
 
   const sold = sumBy(rows, (r) => r.sold), kept = sumBy(rows, (r) => r.kept), nOrd = rows.length;
   const pSold = sumBy(prev, (r) => r.sold), pKept = sumBy(prev, (r) => r.kept), pN = prev.length;
-  const prevLbl = rangeLabel(pf, pt);
-  const cmpOk = pN >= 5; // con muy pocos pedidos antes (p. ej. antes del relanzamiento) el % no dice nada
+  const prevLbl = n === 1 ? `el ${fmtL(pf, { weekday: "long", day: "numeric", month: "short" })}` : rangeLabel(pf, pt);
+  const cmpOk = pN >= (n === 1 ? 1 : 5); // con muy pocos pedidos antes (p. ej. antes del relanzamiento) el % no dice nada
 
-  // por canal
-  const byCh = chans.map((k) => { const r = rows.filter((x) => x.ch === k); return { k, n: r.length, sold: sumBy(r, (x) => x.sold), kept: sumBy(r, (x) => x.kept) }; });
-
-  // cubetas
-  const keyOf = (r) => group === "hora" ? new Date(new Date(r.at).getTime() - 5 * 3600000).getUTCHours() : group === "dia" ? r.day : group === "semana" ? mondayOf(r.day) : r.day.slice(0, 7);
-  const keys = [];
-  if (group === "hora") { const hs = rows.map(keyOf); const lo = Math.min(9, ...hs), hi = Math.max(21, ...hs); for (let h = lo; h <= hi; h++) keys.push(h); }
-  else if (group === "dia") for (let d = V.from; d <= V.to; d = addD(d, 1)) keys.push(d);
-  else if (group === "semana") for (let d = mondayOf(V.from); d <= V.to; d = addD(d, 7)) keys.push(d);
-  else for (let d = monthStartOf(V.from); d <= V.to; d = addMonths(d, 1)) keys.push(d.slice(0, 7));
-  const B = keys.map((k) => ({ k, n: 0, sold: 0, kept: 0, ch: Object.fromEntries(chans.map((c) => [c, { n: 0, sold: 0, kept: 0 }])) }));
-  const bIdx = new Map(keys.map((k, i) => [k, i]));
-  for (const r of rows) { const b = B[bIdx.get(keyOf(r))]; if (!b) continue; b.n++; b.sold += r.sold; b.kept += r.kept; const c = b.ch[r.ch]; c.n++; c.sold += r.sold; c.kept += r.kept; }
-  const bLabel = (k, long) => group === "hora" ? `${k}:00` : group === "dia" ? (long ? fmtL(k, { weekday: "short", day: "numeric", month: "short" }) : fmtL(k, { day: "numeric" }))
+  // cubetas (y las mismas del periodo anterior, alineadas por posición)
+  const keyOf = (r) => group === "hora" ? localHour(r.at) : group === "dia" ? r.day : group === "semana" ? mondayOf(r.day) : r.day.slice(0, 7);
+  const keysFor = (f, t, rs) => {
+    const ks = [];
+    if (group === "hora") { const hs = rs.map(keyOf); const lo = Math.min(9, ...hs), hi = Math.max(21, ...hs); for (let h = lo; h <= hi; h++) ks.push(h); }
+    else if (group === "dia") for (let d = f; d <= t; d = addD(d, 1)) ks.push(d);
+    else if (group === "semana") for (let d = mondayOf(f); d <= t; d = addD(d, 7)) ks.push(d);
+    else for (let d = monthStartOf(f); d <= t; d = addMonths(d, 1)) ks.push(d.slice(0, 7));
+    return ks;
+  };
+  const bucket = (ks, rs) => {
+    const B = ks.map((k) => ({ k, n: 0, sold: 0, kept: 0, pend: 0, ch: Object.fromEntries(chans.map((c) => [c, { n: 0, sold: 0, kept: 0 }])) }));
+    const idx = new Map(ks.map((k, i) => [k, i]));
+    for (const r of rs) { const b = B[idx.get(keyOf(r))]; if (!b) continue; b.n++; b.sold += r.sold; b.kept += r.kept; if (r.pending) b.pend++; const c = b.ch[r.ch]; c.n++; c.sold += r.sold; c.kept += r.kept; }
+    return B;
+  };
+  const keys = keysFor(V.from, V.to, rows), B = bucket(keys, rows);
+  const PB = group === "hora" ? bucket(keys, prev) : bucket(keysFor(pf, pt, prev), prev);
+  const bLabel = (k, long) => group === "hora" ? (long ? `${hourTxt(k)} – ${hourTxt((k + 1) % 24)}` : `${((k + 11) % 12) + 1}${k < 12 ? "a" : "p"}`)
+    : group === "dia" ? (long ? fmtL(k, { weekday: "long", day: "numeric", month: "short" }) : fmtL(k, { day: "numeric" }))
     : group === "semana" ? (long ? `${fmtL(k, { day: "numeric", month: "short" })} – ${fmtL(addD(k, 6), { day: "numeric", month: "short" })}` : fmtL(k, { day: "numeric", month: "short" }))
     : fmtL(k + "-01", long ? { month: "long", year: "numeric" } : { month: "short" });
   const bRange = (k) => group === "dia" ? [k, k] : group === "semana" ? [k, addD(k, 6)] : group === "mes" ? [k + "-01", monthEndOf(k + "-01")] : null;
 
+  // por canal
+  const byCh = chans.map((k) => { const r = rows.filter((x) => x.ch === k), p = prev.filter((x) => x.ch === k);
+    return { k, n: r.length, sold: sumBy(r, (x) => x.sold), kept: sumBy(r, (x) => x.kept), disc: sumBy(r, (x) => x.disc), pend: r.filter((x) => x.pending).length, pSold: sumBy(p, (x) => x.sold),
+      spark: B.map((b) => b.ch[k][M]) }; });
+
   // productos (los nombres de la app se pasan al nombre del menú cuando el producto es uno solo)
-  const appName = {}; const cnt = {};
-  (pmap || []).forEach((m) => { const key = m.channel + "|" + m.app_name.toLowerCase(); (cnt[key] ||= []).push(m); });
+  const appName = {}, cnt = {};
+  (pmap || []).forEach((m) => { (cnt[m.channel + "|" + m.app_name.toLowerCase()] ||= []).push(m); });
   Object.entries(cnt).forEach(([key, ms]) => { if (ms.length === 1 && Number(ms[0].factor) === 1 && ms[0].products?.name) appName[key] = ms[0].products.name; });
   const prods = {};
   for (const r of rows) for (const i of r.items) {
     const nm = r.app ? (appName[r.ch + "|" + i.n.toLowerCase()] || i.n) : i.n; const key = nm.toLowerCase().trim();
     const p = (prods[key] ||= { n: nm, q: 0, v: 0, ch: {} }); p.q += i.q; p.v += i.v; p.ch[r.ch] = (p.ch[r.ch] || 0) + i.q;
   }
-  const top = Object.values(prods).sort((a, b) => b.v - a.v).slice(0, 12);
+  const allProds = Object.values(prods), prodTotal = allProds.reduce((s, p) => s + p.v, 0);
+  const top = allProds.sort((a, b) => b.v - a.v).slice(0, 10), topMax = Math.max(0.01, ...top.map((p) => p.v));
+
+  // lo destacado
+  const byDay = {}; rows.forEach((r) => (byDay[r.day] = (byDay[r.day] || 0) + r[M]));
+  const bestDay = Object.entries(byDay).sort((a, b) => b[1] - a[1])[0];
+  const byHour = {}; rows.forEach((r) => { const h = localHour(r.at); byHour[h] = (byHour[h] || 0) + 1; });
+  const peak = Object.entries(byHour).sort((a, b) => b[1] - a[1])[0];
+  const grow = cmpOk ? byCh.filter((c) => c.pSold > 0 && c.sold > 0).map((c) => ({ ...c, g: c.sold / c.pSold - 1 })).sort((a, b) => b.g - a.g)[0] : null;
+  const mainCh = [...byCh].sort((a, b) => b.sold - a.sold)[0];
+  const insights = nOrd ? [
+    n > 1 && bestDay ? ["📅", "Mejor día", cap(fmtL(bestDay[0], { weekday: "long", day: "numeric", month: "short" })), money(bestDay[1]) + " " + mName.toLowerCase()] : null,
+    peak ? ["⏰", "Hora pico", `${hourTxt(+peak[0])} – ${hourTxt((+peak[0] + 1) % 24)}`, `${peak[1]} pedidos (${Math.round(peak[1] / nOrd * 100)} %)`] : null,
+    top[0] ? ["⭐", "Producto estrella", esc(top[0].n), `${top[0].q} unidades · ${money(top[0].v)}`] : null,
+    grow && grow.g > 0 ? ["🚀", "El que más crece", esc(CH[grow.k].n), `▲ ${Math.round(grow.g * 100)} % vs. el periodo anterior`]
+      : mainCh?.sold ? ["🏆", "Canal principal", esc(CH[mainCh.k].n), `${Math.round(mainCh.sold / sold * 100)} % de lo vendido`] : null,
+  ].filter(Boolean) : [];
+
+  // ¿cuándo te compran? (día de la semana × hora)
+  const heat = n >= 7 && nOrd >= 10 ? (() => {
+    // la madrugada (0–5 h) va al final, como continuación de la noche
+    const hx = (r) => { const h = localHour(r.at); return h < 6 ? h + 24 : h; };
+    const hs = rows.map(hx), lo = Math.min(10, ...hs), hi = Math.max(22, ...hs), H = [];
+    for (let h = lo; h <= hi; h++) H.push(h % 24);
+    const g = WD.map(() => H.map(() => ({ n: 0, v: 0 })));
+    rows.forEach((r) => { const c = g[wdIdx(r.day)][hx(r) - lo]; c.n++; c.v += r.sold; });
+    const mx = Math.max(1, ...g.flat().map((c) => c.n));
+    const dayTot = g.map((row) => row.reduce((s, c) => s + c.n, 0)), bestWd = dayTot.indexOf(Math.max(...dayTot));
+    return `<div class="panel" style="margin-top:14px">
+      <h3 class="group-title" style="margin:0 0 4px">¿Cuándo le compran?</h3>
+      <p class="muted small" style="margin:0 0 12px">Pedidos por día de la semana y hora, todos los canales. Más oscuro = más pedidos. El día más fuerte es el <b>${["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"][bestWd]}</b>.</p>
+      <div class="vheat" style="grid-template-columns:38px repeat(${H.length},minmax(0,1fr)) 34px">
+        <span></span>${H.map((h) => `<span class="vh-h">${h % 2 === 0 ? ((h + 11) % 12) + 1 + (h < 12 ? "a" : "p") : ""}</span>`).join("")}<span class="vh-h">Total</span>
+        ${g.map((row, d) => `<span class="vh-d">${WD[d]}</span>${row.map((c, i) => `<span class="vh-c" style="background:${c.n ? `rgb(198 138 78 / ${(0.15 + 0.85 * c.n / mx).toFixed(2)})` : "var(--surface-2)"}${c.n / mx > 0.6 ? ";color:#fff" : ""}" title="${WD[d]} ${hourTxt(H[i])}: ${c.n} pedidos · ${money(c.v)}">${c.n || ""}</span>`).join("")}<span class="vh-t">${dayTot[d]}</span>`).join("")}
+      </div></div>`;
+  })() : "";
 
   // motorizados
   const riders = {}; rows.filter((r) => r.rider).forEach((r) => { riders[r.rider] ||= { n: 0, fees: 0 }; riders[r.rider].n++; riders[r.rider].fees += r.riderFee; });
 
-  // aviso: apps cargadas hasta…
-  const stale = chans.filter((c) => !["web", "whatsapp"].includes(c)).map((c) => ({ c, last: lastBy[c] })).filter((x) => !x.last || localDay(x.last) < V.to);
+  // avisos de las apps: hasta cuándo están cargadas y cuántos pedidos faltan confirmar con la factura
   const whenTxt = (t) => new Date(t).toLocaleString("es-EC", { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: "America/Guayaquil" }).replace(/\./g, "");
+  const appCh = chans.filter((c) => !["web", "whatsapp"].includes(c));
+  const notes = appCh.map((c) => {
+    const last = lastBy[c], pend = rows.filter((r) => r.ch === c && r.pending).length, parts = [];
+    if (!last) parts.push("aún no tiene pedidos cargados");
+    else if (localDay(last) < V.to) parts.push(`está cargado hasta el ${esc(whenTxt(last))}${V.to === today ? " (los pedidos de ayer se cargan cada mañana)" : ""}`);
+    if (pend) parts.push(`<b>${pend}</b> pedido${pend > 1 ? "s" : ""} por confirmar con la factura del viernes`);
+    return parts.length ? `<b>${esc(CH[c].n)}</b>: ${parts.join(" · ")}` : "";
+  }).filter(Boolean);
 
-  const dot = (c) => `<span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${CH[c].c};margin-right:6px;vertical-align:-1px"></span>`;
-  const maxB = Math.max(0.01, ...B.map((b) => b[M]));
-  const labelEvery = B.length > 16 ? Math.ceil(B.length / 10) : 1;
-  const showVals = B.length <= 12;
-  const chart = `<div class="vchart" role="img" aria-label="${esc(mName)} por ${group === "hora" ? "hora" : group}">
-      ${B.map((b, i) => `<button type="button" class="vcol" ${bRange(b.k) ? `data-drill="${bRange(b.k).join("|")}"` : "disabled"} title="${esc(bLabel(b.k, true))}: ${money(b[M])} · ${b.n} pedidos${chans.filter((c) => b.ch[c].n).map((c) => `\n${CH[c].n}: ${money(b.ch[c][M])} (${b.ch[c].n})`).join("")}">
-        <span class="vval">${showVals && b[M] > 0 ? "$" + Math.round(b[M]) : ""}</span>
-        <span class="vstack" style="height:calc((100% - 38px) * ${(b[M] / maxB).toFixed(4)})">${chans.filter((c) => b.ch[c][M] > 0).map((c) => `<span style="flex:${b.ch[c][M].toFixed(2)};background:${CH[c].c}"></span>`).join("")}</span>
+  const dot = (c) => `<span class="vdot" style="background:${CH[c].c}"></span>`;
+  // gráfico
+  const maxB = Math.max(0.01, ...B.map((b) => b[M]), ...(cmpOk ? PB.map((b) => b[M]) : [0]));
+  const step = niceStep(maxB), top_ = Math.ceil(maxB / step) * step, ticks = []; for (let v = step; v <= top_ + 0.001; v += step) ticks.push(v);
+  const labelEvery = B.length > 16 ? Math.ceil(B.length / 10) : 1, showVals = B.length <= 14;
+  const bestI = B.reduce((bi, b, i) => (b[M] > (B[bi]?.[M] ?? -1) ? i : bi), 0);
+  const ratio = (v) => (v / top_).toFixed(4);
+  const chart = `<div class="vchart-wrap">
+    <div class="vgrid">${ticks.map((v) => `<span style="bottom:calc(${ratio(v)} * 100%)"><i>${m0(v)}</i></span>`).join("")}</div>
+    <div class="vchart" role="img" aria-label="${esc(mName)} por ${gName}">
+      ${B.map((b, i) => `<button type="button" class="vcol${i === bestI && b[M] > 0 ? " best" : ""}" data-i="${i}" aria-label="${esc(bLabel(b.k, true))}: ${money(b[M])}, ${b.n} pedidos">
+        <span class="vval">${b[M] > 0 ? (showVals ? (i === bestI ? "★ " : "") + m0(b[M]) : i === bestI ? "★" : "") : ""}</span>
+        <span class="vstack" style="height:calc((100% - 38px) * ${ratio(b[M])})">${chans.filter((c) => b.ch[c][M] > 0).map((c) => `<span style="flex-grow:${b.ch[c][M].toFixed(2)};background:${CH[c].c}"></span>`).join("")}</span>
+        ${cmpOk && PB[i] && PB[i][M] > 0 ? `<span class="vprev" style="bottom:calc(20px + (100% - 38px) * ${ratio(PB[i][M])})"></span>` : ""}
         <span class="vlab">${i % labelEvery === 0 ? esc(bLabel(b.k)) : ""}</span></button>`).join("")}
-    </div>`;
+    </div>
+    <div class="vtip" id="vtip" hidden></div>
+  </div>`;
 
-  const kpi = (lbl, val, cmp, sub = "") => `<div class="vkpi"><span class="muted small">${lbl}</span><b>${val}</b><span>${cmp}${sub ? ` <span class="muted small">${sub}</span>` : ""}</span></div>`;
+  const kpi = (lbl, val, pill, before, sp, extra = "") => `<div class="vkpi"><div class="vkpi-top"><span class="muted small">${lbl}</span>${pill}</div><b>${val}</b>
+    <span class="muted small">${extra}${extra && before ? " · " : ""}${before}</span>${sp}</div>`;
   const groupOpts = [["auto", "Automático"], ["hora", "Hora"], ["dia", "Día"], ["semana", "Semana"], ["mes", "Mes"]];
-  const ordersList = [...rows].sort((a, b) => b.at.localeCompare(a.at));
   const hora = (t) => new Date(t).toLocaleTimeString("es-EC", { hour: "numeric", minute: "2-digit", timeZone: "America/Guayaquil" });
+  const ordersList = [...rows].sort((a, b) => b.at.localeCompare(a.at));
   const ordersTbl = `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Cuándo</th><th>Canal</th><th>Pedido</th><th>Productos</th><th>Vendido</th><th>Te queda</th></tr></thead><tbody>
-    ${ordersList.map((r) => `<tr><td class="tabnum small">${n > 1 ? fmtL(r.day, { day: "numeric", month: "short" }) + " · " : ""}${hora(r.at)}</td><td class="small" style="white-space:nowrap">${dot(r.ch)}${esc(CH[r.ch].n)}</td><td class="small">${esc(r.code || "")}</td>
+    ${ordersList.map((r) => `<tr><td class="tabnum small" style="white-space:nowrap">${n > 1 ? fmtL(r.day, { day: "numeric", month: "short" }) + " · " : ""}${hora(r.at)}</td><td class="small" style="white-space:nowrap">${dot(r.ch)}${esc(CH[r.ch].n)}${r.pending ? `<br><span class="vtag">por confirmar</span>` : ""}</td><td class="small">${esc(r.code || "")}</td>
       <td class="small">${r.items.map((i) => `${i.q}× ${esc(i.n)}`).join(", ")}</td><td class="tabnum">${money(r.sold)}</td><td class="tabnum"><b>${money(r.kept)}</b></td></tr>`).join("") || `<tr><td colspan="6" class="muted">Sin pedidos.</td></tr>`}
     </tbody></table></div>`;
+  const totalSpark = B.map((b) => b[M]);
 
-  $("#view").innerHTML = `
-    <div class="panel" style="display:grid;gap:14px">
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:space-between">
+  $("#view").innerHTML = `<div id="vroot">
+    <div class="panel vhead">
+      <div class="vhead-row">
         <h2 class="display" style="font-size:30px;margin:0">Ventas</h2>
-        <div class="ctabs" style="display:flex;gap:6px" role="group" aria-label="Qué mostrar">
-          <button type="button" class="chip-btn" data-metric="sold" aria-pressed="${M === "sold"}">Vendido</button>
-          <button type="button" class="chip-btn" data-metric="kept" aria-pressed="${M === "kept"}">Te queda</button>
+        <div class="vseg" role="group" aria-label="Qué mostrar">
+          <button type="button" data-metric="sold" aria-pressed="${M === "sold"}">Vendido</button>
+          <button type="button" data-metric="kept" aria-pressed="${M === "kept"}">Te queda</button>
         </div>
       </div>
-      <div class="ctabs vpresets">
-        ${PRESETS.map(([k, l]) => `<button type="button" class="chip-btn" data-preset="${k}" aria-pressed="${V.preset === k}">${l}</button>`).join("")}
-      </div>
+      <div class="ctabs vpresets">${PRESETS.map(([k, l]) => `<button type="button" class="chip-btn" data-preset="${k}" aria-pressed="${V.preset === k}">${l}</button>`).join("")}</div>
       <div class="vrange">
         <div><label class="f" for="vFrom" style="margin-top:0">Desde</label><input class="in" type="date" id="vFrom" value="${V.from}" max="${today}"></div>
         <div><label class="f" for="vTo" style="margin-top:0">Hasta</label><input class="in" type="date" id="vTo" value="${V.to}" max="${today}"></div>
-        <div class="vgroup"><label class="f" for="vGroup" style="margin-top:0">Agrupar por</label><select class="in" id="vGroup">${groupOpts.map(([k, l]) => `<option value="${k}" ${V.group === k ? "selected" : ""}>${l}${k === "auto" && V.group === "auto" ? ` (${({ hora: "hora", dia: "día", semana: "semana", mes: "mes" })[group]})` : ""}</option>`).join("")}</select></div>
+        <div class="vgroup"><label class="f" for="vGroup" style="margin-top:0">Agrupar por</label><select class="in" id="vGroup">${groupOpts.map(([k, l]) => `<option value="${k}" ${V.group === k ? "selected" : ""}>${l}${k === "auto" && V.group === "auto" ? ` (${gName})` : ""}</option>`).join("")}</select></div>
       </div>
       <div class="vnav">
         <button class="btn small ghost" type="button" id="vPrev" aria-label="Periodo anterior">‹</button>
-        <b>${esc(cap(rangeLabel(V.from, V.to)))}</b>
+        <div><b>${esc(cap(rangeLabel(V.from, V.to)))}</b><span class="muted small">${cmpOk ? `comparado con ${esc(prevLbl)}` : `sin pedidos suficientes en ${esc(prevLbl)} para comparar`}</span></div>
         <button class="btn small ghost" type="button" id="vNext" aria-label="Periodo siguiente" ${V.to >= today ? "disabled" : ""}>›</button>
       </div>
       <div class="vkpis">
-        ${kpi("Vendido", money(sold), pctTxt(sold, pSold, cmpOk))}
-        ${kpi("Te queda", money(kept), pctTxt(kept, pKept, cmpOk), sold ? `${Math.round(kept / sold * 100)} % de lo vendido` : "")}
-        ${kpi("Pedidos", String(nOrd), pctTxt(nOrd, pN, cmpOk), "")}
-        ${kpi("Ticket promedio", nOrd ? money(sold / nOrd) : "—", nOrd ? pctTxt(sold / nOrd, pN ? pSold / pN : 0, cmpOk) : "", "")}
+        ${kpi("Vendido", money(sold), pctPill(sold, pSold, cmpOk), cmpOk ? `antes ${money(pSold)}` : "", M === "sold" ? spark(totalSpark, "#C68A4E") : "")}
+        ${kpi("Te queda", money(kept), pctPill(kept, pKept, cmpOk), cmpOk ? `antes ${money(pKept)}` : "", M === "kept" ? spark(totalSpark, "#C68A4E") : "", sold ? `${Math.round(kept / sold * 100)} % de lo vendido` : "")}
+        ${kpi("Pedidos", String(nOrd), pctPill(nOrd, pN, cmpOk), cmpOk ? `antes ${pN}` : "", spark(B.map((b) => b.n), "#1C1714"))}
+        ${kpi("Ticket promedio", nOrd ? money(sold / nOrd) : "—", nOrd && pN ? pctPill(sold / nOrd, pSold / pN, cmpOk) : "", cmpOk && pN ? `antes ${money(pSold / pN)}` : "", spark(B.filter((b) => b.n).map((b) => b.sold / b.n), "#5C5049"))}
       </div>
-      <p class="muted small" style="margin:-6px 0 0">${cmpOk ? `Las flechas comparan con ${esc(prevLbl)}.` : `No hay suficientes pedidos en ${esc(prevLbl)} para comparar.`}</p>
-      ${stale.length ? `<p class="small" style="margin:0;padding:8px 12px;border-radius:10px;background:rgb(240 195 91 / .22)">⚠️ ${stale.map((x) => `<b>${esc(CH[x.c].n)}</b> ${x.last ? `está cargado hasta el ${esc(whenTxt(x.last))}` : "aún no tiene pedidos cargados"}`).join(" · ")}. Lo posterior aparece cuando Claude lo carga desde el portal de la app.</p>` : ""}
+      ${notes.length ? `<p class="vnote">${notes.join("<br>")}</p>` : ""}
+      ${insights.length ? `<div class="vins">${insights.map(([ic, t, v, s]) => `<div><span class="vins-ic" aria-hidden="true">${ic}</span><span class="muted small">${t}</span><b>${v}</b><span class="small">${s}</span></div>`).join("")}</div>` : ""}
       <div>
-        <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:6px" class="small">${chans.map((c) => `<span>${dot(c)}${esc(CH[c].n)}</span>`).join("")}<span class="muted">· ${mName} por ${({ hora: "hora", dia: "día", semana: "semana", mes: "mes" })[group]}${group !== "hora" ? ". Toca una barra para ver el detalle" : ""}</span></div>
+        <div class="vlegend small">${chans.map((c) => `<span>${dot(c)}${esc(CH[c].n)}</span>`).join("")}${cmpOk ? `<span><span class="vprev-key"></span>${n === 1 ? "mismo día semana pasada" : "periodo anterior"}</span>` : ""}<span class="muted">${mName} por ${gName}</span></div>
         ${chart}
       </div>
     </div>
 
     <div class="panel" style="margin-top:14px">
-      <h3 class="group-title" style="margin:0 0 10px">Por canal</h3>
-      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Canal</th><th>Pedidos</th><th>Vendido</th><th>Comisiones y envíos</th><th>Te queda</th><th>Ticket</th><th>Parte de la venta</th></tr></thead><tbody>
-      ${byCh.map((c) => `<tr><td>${dot(c.k)}<b>${esc(CH[c.k].n)}</b></td><td class="tabnum">${c.n}</td><td class="tabnum">${money(c.sold)}</td>
-        <td class="tabnum">${c.sold - c.kept > 0.004 ? "−" + money(c.sold - c.kept) : "—"}</td><td class="tabnum"><b>${money(c.kept)}</b></td><td class="tabnum">${c.n ? money(c.sold / c.n) : "—"}</td>
-        <td><div style="display:flex;align-items:center;gap:8px"><span style="flex:1;min-width:60px;height:8px;border-radius:4px;background:var(--surface-2);overflow:hidden"><span style="display:block;height:100%;width:${sold ? (c.sold / sold * 100).toFixed(1) : 0}%;background:${CH[c.k].c}"></span></span><span class="tabnum small">${sold ? Math.round(c.sold / sold * 100) : 0} %</span></div></td></tr>`).join("")}
-      <tr style="font-weight:700"><td>Total</td><td class="tabnum">${nOrd}</td><td class="tabnum">${money(sold)}</td><td class="tabnum">${sold - kept > 0.004 ? "−" + money(sold - kept) : "—"}</td><td class="tabnum">${money(kept)}</td><td class="tabnum">${nOrd ? money(sold / nOrd) : "—"}</td><td></td></tr>
-      </tbody></table></div>
-      <p class="muted small" style="margin:8px 0 0">Se cuenta por el día en que se hizo el pedido. Web y WhatsApp: pedidos pagados, sin cancelados. Apps: pedidos no cancelados. <b>Vendido</b> = productos con sus descuentos (en apps, precio de lista menos los descuentos que paga usted; los que pone la app no cuentan). <b>Te queda</b> = vendido menos la comisión de la app con IVA, la tarifa de Payphone (5,75 % aprox. en tarjeta) y el envío gratis que puso usted. Todavía no resta el costo de los productos ni el empaque.</p>
-      ${pyPending > 0.004 || (ppLast && Number(ppLast.balance_end) > 0.004) ? `<p class="small" style="margin:8px 0 0">Dinero por llegar: ${pyPending > 0.004 ? `<b>${money(pyPending)}</b> de PedidosYa por depositar` : ""}${pyPending > 0.004 && ppLast && Number(ppLast.balance_end) > 0.004 ? " · " : ""}${ppLast && Number(ppLast.balance_end) > 0.004 ? `<b>${money(Number(ppLast.balance_end))}</b> en Payphone sin retirar` : ""}</p>` : ""}
+      <h3 class="group-title" style="margin:0 0 12px">Por canal</h3>
+      <div class="vchs">
+        <div class="vch vch-donut">${donut(byCh.map((c) => ({ v: c.sold, c: CH[c.k].c })), m0(sold), "vendido")}
+          <div class="small">${byCh.filter((c) => c.sold > 0).map((c) => `<div>${dot(c.k)}${esc(CH[c.k].n)} <b>${Math.round(c.sold / (sold || 1) * 100)} %</b></div>`).join("") || `<span class="muted">Sin ventas</span>`}</div></div>
+        ${byCh.map((c) => `<div class="vch" style="--c:${CH[c.k].c}">
+          <div class="vch-top"><span>${dot(c.k)}<b>${esc(CH[c.k].n)}</b></span>${pctPill(c.sold, c.pSold, cmpOk)}</div>
+          <b class="vch-big">${money(c.sold)}</b>
+          <span class="muted small">${c.n} pedido${c.n === 1 ? "" : "s"} · ticket ${c.n ? money(c.sold / c.n) : "—"}${c.disc > 0.004 ? ` · descuentos −${money(c.disc)}` : ""}</span>
+          <div class="vkeep" title="De ${money(c.sold)} vendidos le quedan ${money(c.kept)}"><span style="width:${c.sold ? (c.kept / c.sold * 100).toFixed(1) : 0}%"></span></div>
+          <span class="small">Te queda <b>${money(c.kept)}</b>${c.sold - c.kept > 0.004 ? ` <span class="muted">· comisiones y envíos −${money(c.sold - c.kept)}</span>` : ""}</span>
+          ${c.pend ? `<span class="vtag">${c.pend} por confirmar</span>` : ""}
+          ${spark(c.spark, CH[c.k].c)}
+        </div>`).join("")}
+      </div>
+      <details class="vhow"><summary class="small">¿Cómo se calcula?</summary>
+        <p class="muted small">Se cuenta por el día en que se hizo el pedido. Web y WhatsApp: pedidos pagados, sin cancelados. Apps: pedidos no cancelados. <b>Vendido</b> = productos con sus descuentos (en apps, precio de lista menos los descuentos que paga usted; los que pone la app no cuentan). <b>Te queda</b> = vendido menos la comisión de la app con IVA, la tarifa de Payphone (5,75 % aprox. en tarjeta) y el envío gratis que puso usted. Todavía no resta el costo de los productos ni el empaque. Los pedidos de apps salen <b>por confirmar</b> hasta que la tarea del viernes los cuadra con la factura.</p></details>
+      ${pyPending > 0.004 || (ppLast && Number(ppLast.balance_end) > 0.004) ? `<div class="vmoney">💰 Dinero por llegar: ${pyPending > 0.004 ? `<b>${money(pyPending)}</b> de PedidosYa por depositar` : ""}${pyPending > 0.004 && ppLast && Number(ppLast.balance_end) > 0.004 ? " · " : ""}${ppLast && Number(ppLast.balance_end) > 0.004 ? `<b>${money(Number(ppLast.balance_end))}</b> en Payphone sin retirar` : ""}</div>` : ""}
     </div>
 
+    ${heat}
+
     ${group !== "hora" ? `<div class="panel" style="margin-top:14px">
-      <h3 class="group-title" style="margin:0 0 4px">${mName} por ${({ dia: "día", semana: "semana", mes: "mes" })[group]}</h3>
-      <p class="muted small" style="margin:0 0 10px">Toca una fila para ver ese ${({ dia: "día", semana: "semana", mes: "mes" })[group]}.</p>
-      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>${({ dia: "Día", semana: "Semana", mes: "Mes" })[group]}</th><th>Pedidos</th>${chans.map((c) => `<th>${dot(c)}${esc(CH[c].n)}</th>`).join("")}<th>Total</th><th>Ticket</th></tr></thead><tbody>
-      ${[...B].reverse().filter((b) => b.n || group !== "dia").map((b) => `<tr data-drill="${bRange(b.k).join("|")}" style="cursor:pointer${(group === "dia" && b.k === today) || (group === "semana" && b.k === mondayOf(today)) || (group === "mes" && b.k === today.slice(0, 7)) ? ";background:var(--crema)" : ""}">
-        <td style="text-transform:capitalize">${esc(bLabel(b.k, true))}</td><td class="tabnum">${b.n}</td>
+      <h3 class="group-title" style="margin:0 0 4px">${mName} por ${gName}</h3>
+      <p class="muted small" style="margin:0 0 10px">Toque una fila para ver ese ${gName}.</p>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>${cap(gName)}</th><th>Pedidos</th>${chans.map((c) => `<th style="white-space:nowrap">${dot(c)}${esc(CH[c].n)}</th>`).join("")}<th>Total</th><th>Ticket</th></tr></thead><tbody>
+      ${[...B].map((b, i) => ({ b, p: PB[i] })).reverse().filter(({ b }) => b.n || group !== "dia").map(({ b }) => `<tr data-drill="${bRange(b.k).join("|")}" style="cursor:pointer${(group === "dia" && b.k === today) || (group === "semana" && b.k === mondayOf(today)) || (group === "mes" && b.k === today.slice(0, 7)) ? ";background:var(--crema)" : ""}">
+        <td style="text-transform:capitalize;white-space:nowrap">${esc(bLabel(b.k, true))}${b.pend ? ` <span class="vtag" title="${b.pend} pedidos de apps por confirmar">•</span>` : ""}</td><td class="tabnum">${b.n}</td>
         ${chans.map((c) => `<td class="tabnum">${b.ch[c].n ? money(b.ch[c][M]) + ` <span class="muted small">· ${b.ch[c].n}</span>` : `<span class="muted">—</span>`}</td>`).join("")}
         <td class="tabnum"><b>${money(b[M])}</b></td><td class="tabnum">${b.n ? money(b.sold / b.n) : "—"}</td></tr>`).join("") || `<tr><td colspan="${chans.length + 4}" class="muted">Sin ventas en este periodo.</td></tr>`}
       </tbody></table></div>
       ${group === "dia" && B.some((b) => !b.n) ? `<p class="muted small" style="margin:8px 0 0">Los días sin pedidos no salen en la tabla (sí en el gráfico).</p>` : ""}
     </div>` : ""}
 
-    <div class="panel" style="margin-top:14px">
-      ${n <= 1 ? `<h3 class="group-title" style="margin:0 0 10px">Pedidos del día (${nOrd})</h3>${ordersTbl}` : `<details><summary class="group-title" style="cursor:pointer;margin:0">Ver los ${nOrd} pedidos</summary><div style="margin-top:10px">${ordersTbl}</div></details>`}
-    </div>
-
     <div class="cards" style="margin-top:14px">
       <div class="panel"><h3 class="group-title" style="margin-top:0">Productos más vendidos</h3>
-        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Producto</th><th>Unidades</th><th>Vendido</th></tr></thead><tbody>
-        ${top.map((p) => `<tr><td>${esc(p.n)}<br><span class="muted small">${Object.entries(p.ch).map(([c, q]) => `${dot(c)}${q}`).join(" &nbsp;")}</span></td><td class="tabnum">${p.q}</td><td class="tabnum">${money(p.v)}</td></tr>`).join("") || `<tr><td colspan="3" class="muted">Sin ventas en este periodo.</td></tr>`}
-        </tbody></table></div>
-        <p class="muted small" style="margin:8px 0 0">En apps se usa el precio de lista. Un combo cuenta como un producto.</p></div>
+        <div class="vprods">${top.map((p, i) => `<div class="vprod">
+          <span class="vprod-n"><b>${i + 1}.</b> ${esc(p.n)}</span><span class="tabnum small"><b>${money(p.v)}</b> · ${p.q} u.</span>
+          <div class="vprod-bar"><span style="width:${(p.v / topMax * 100).toFixed(1)}%"></span></div>
+          <span class="muted small">${Math.round(p.v / (prodTotal || 1) * 100)} % de la venta · ${Object.entries(p.ch).map(([c, q]) => `${dot(c)}${q}`).join(" &nbsp;")}</span>
+        </div>`).join("") || `<p class="muted">Sin ventas en este periodo.</p>`}</div>
+        <p class="muted small" style="margin:10px 0 0">En apps se usa el precio de lista. Un combo cuenta como un producto.</p></div>
       <div class="panel"><h3 class="group-title" style="margin-top:0">Pago a motorizados</h3>
         <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Motorizado</th><th>Entregas</th><th>Envíos a pagar</th></tr></thead><tbody>
         ${Object.entries(riders).map(([nm, r]) => `<tr><td>${esc(nm)}</td><td class="tabnum">${r.n}</td><td class="tabnum">${money(r.fees)}</td></tr>`).join("") || `<tr><td colspan="3" class="muted">Sin entregas con motorizado en este periodo.</td></tr>`}
         </tbody></table></div></div>
     </div>
+
+    <div class="panel" style="margin-top:14px">
+      ${n <= 1 ? `<h3 class="group-title" style="margin:0 0 10px">Pedidos del día (${nOrd})</h3>${ordersTbl}` : `<details><summary class="group-title" style="cursor:pointer;margin:0">Ver los ${nOrd} pedidos</summary><div style="margin-top:10px">${ordersTbl}</div></details>`}
+    </div>
     ${pyPanel(py, V.from, addD(V.to, 1))}
-    ${ppPanel(pp, ppLast)}`;
+    ${ppPanel(pp, ppLast)}
+  </div>`;
 
   const go = (patch) => { Object.assign(S.v, patch); ventas(); };
   $$("[data-metric]").forEach((b) => (b.onclick = () => go({ metric: b.dataset.metric })));
@@ -302,12 +398,39 @@ async function ventas() {
     else if (isWeekRange(V.from, V.to)) { f = addD(V.from, 7 * k); t = addD(f, 6); }
     else { const len = nDays(V.from, V.to); f = addD(V.from, k * len); t = addD(V.to, k * len); }
     if (f > today) return;
-    const p = f === today && t >= today ? "hoy" : f === monthStartOf(today) && t >= today ? "mes" : f === mondayOf(today) && t >= today ? "semana" : "custom";
+    const p = f === today && t >= today ? "hoy" : f === addD(today, -1) && t === f ? "ayer" : f === monthStartOf(today) && t >= today ? "mes" : f === mondayOf(today) && t >= today ? "semana" : "custom";
     go({ preset: p, from: f, to: t > today ? today : t });
   };
   $("#vPrev").onclick = () => shift(-1);
   $("#vNext").onclick = () => shift(1);
-  $$("[data-drill]").forEach((el) => (el.onclick = () => { const [f, t] = el.dataset.drill.split("|"); go({ preset: "custom", from: f, to: t > today ? today : t, group: "auto" }); window.scrollTo({ top: 0, behavior: "smooth" }); }));
+  const drill = (f, t) => { go({ preset: "custom", from: f, to: t > today ? today : t, group: "auto" }); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  $$("tr[data-drill]").forEach((el) => (el.onclick = () => { const [f, t] = el.dataset.drill.split("|"); drill(f, t); }));
+  // tooltip del gráfico: con mouse se ve al pasar y el clic abre el detalle; en el celular el toque muestra el detalle con un botón
+  const tip = $("#vtip"), wrap = $(".vchart-wrap"), hover = matchMedia("(hover: hover)").matches;
+  let tipI = -1;
+  const showTip = (i, el) => {
+    const b = B[i], p = PB[i], r = bRange(b.k);
+    tip.innerHTML = `<b style="text-transform:capitalize">${esc(bLabel(b.k, true))}</b>
+      <div class="vtip-big">${money(b[M])} <span class="muted small">${mName.toLowerCase()} · ${b.n} pedido${b.n === 1 ? "" : "s"}</span></div>
+      ${chans.filter((c) => b.ch[c].n).map((c) => `<div class="vtip-row">${dot(c)}${esc(CH[c].n)}<span>${money(b.ch[c][M])} · ${b.ch[c].n}</span></div>`).join("")}
+      ${cmpOk && p ? `<div class="vtip-row muted"><span class="vprev-key"></span>Antes<span>${money(p[M])} · ${p.n}</span></div>` : ""}
+      ${b.pend ? `<div class="small" style="margin-top:4px">${b.pend} de apps por confirmar</div>` : ""}
+      ${r && !hover ? `<button class="btn small primary block" type="button" id="vtipGo" style="margin-top:8px">Ver detalle →</button>` : ""}`;
+    tip.hidden = false;
+    const wr = wrap.getBoundingClientRect(), cr = el.getBoundingClientRect(), tw = tip.offsetWidth;
+    // al lado de la barra (a la derecha, o a la izquierda si no cabe) para no taparla
+    let x = cr.right - wr.left + 8; if (x + tw > wr.width) x = cr.left - wr.left - tw - 8; if (x < 0) x = Math.max(0, Math.min(cr.left - wr.left + cr.width / 2 - tw / 2, wr.width - tw));
+    tip.style.left = x + "px"; tip.style.top = "0px"; tipI = i;
+    $$(".vcol").forEach((c) => c.classList.toggle("on", c === el));
+    const go2 = $("#vtipGo"); if (go2) go2.onclick = () => drill(r[0], r[1]);
+  };
+  const hideTip = () => { tip.hidden = true; tipI = -1; $$(".vcol").forEach((c) => c.classList.remove("on")); };
+  $$(".vcol").forEach((el) => {
+    const i = +el.dataset.i;
+    if (hover) { el.onmouseenter = () => showTip(i, el); el.onfocus = () => showTip(i, el); }
+    el.onclick = () => { const r = bRange(B[i].k); if (hover && r) return drill(r[0], r[1]); if (tipI === i) return hideTip(); showTip(i, el); };
+  });
+  if (hover) wrap.onmouseleave = hideTip;
   bindPyForm();
 }
 
