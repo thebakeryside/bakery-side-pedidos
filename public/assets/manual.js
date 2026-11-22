@@ -146,7 +146,14 @@ export async function renderManual(view, draft = null) {
         <div class="chips" style="margin-top:12px" role="radiogroup" aria-label="Cuándo">
           <label class="chip"><input type="radio" name="mWhen" value="now" ${cfg.open_now ? "checked" : "disabled"}> Lo antes posible</label>
           <label class="chip"><input type="radio" name="mWhen" value="later" ${cfg.open_now ? "" : "checked"}> Agendar</label>
-          <label class="chip"><input type="radio" name="mWhen" value="done"> Ya se entregó (solo registrar)</label>
+          <label class="chip"><input type="radio" name="mWhen" value="done"> Ya se entregó / venta de otro día (solo registrar)</label>
+        </div>
+        <div id="mPast" hidden style="margin-top:10px;padding:12px;border-radius:12px;background:var(--surface-2)">
+          <div class="form-grid">
+            <div><label class="f" for="mPastDate">¿Qué día fue la venta?</label><input class="in" type="date" id="mPastDate" value="${todayLocal()}" min="${todayLocal(-60)}" max="${todayLocal()}"></div>
+            <div><label class="f" for="mPastTime">¿A qué hora, más o menos?</label><input class="in" type="time" id="mPastTime" value="${new Date(Date.now() - 5 * 3600000).toISOString().slice(11, 16)}"></div>
+          </div>
+          <p class="muted small" style="margin:6px 0 0">Se guarda como pagada y entregada en ese día, y aparece en Ventas en esa fecha. Usa los precios actuales del menú (el envío lo puede cambiar abajo). Si es de otro día, no descuenta el stock de hoy.</p>
         </div>
         <div class="form-grid" id="mSched" ${cfg.open_now ? "hidden" : ""}>
           <div><label class="f" for="mDate">Día</label><select class="in" id="mDate"></select></div>
@@ -239,6 +246,7 @@ export async function renderManual(view, draft = null) {
   };
   $$('input[name="mWhen"]').forEach((r) => (r.onchange = () => {
     $("#mSched").hidden = !$('input[name="mWhen"][value="later"]').checked;
+    $("#mPast").hidden = !isDone();
     if (isDone()) { $('input[name="mPay"][value="paid"]').checked = true; $("#mDepBox").hidden = true; }
     drawSum();
   }));
@@ -254,6 +262,7 @@ export async function renderManual(view, draft = null) {
   $("#mFeeReset").onclick = () => { $("#mFee").value = ""; drawSum(); };
   $("#mDep75").onclick = () => { st.depManual = false; setDep75(); drawSum(); };
   $("#mDate").onchange = fillTimes; $("#mTime").onchange = drawSum;
+  $("#mPastDate").onchange = drawSum;
   $("#mFind").onclick = findPasted;
   $("#mPaste").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); findPasted(); } });
   $("#mForm").onsubmit = submit;
@@ -280,6 +289,7 @@ function copy(text) {
 
 // Agotado hoy (lo marcó cocina o se acabaron las porciones del día)
 const todayStr = () => todayLocal();
+const localDayOf = (iso) => new Date(new Date(iso).getTime() - 5 * 3600000).toISOString().slice(0, 10);
 const isOutToday = (p) => p && (p.sold_out_day === todayStr() || (p.stock_day === todayStr() && p.stock_left !== null && p.stock_left <= 0));
 const outTag = (p) => (isOutToday(p) ? ` <span class="err small">· agotado hoy</span>` : "");
 // ¿El producto coincide con lo buscado? Todas las palabras deben aparecer en el nombre, la categoría, la descripción o sus opciones
@@ -329,6 +339,8 @@ function drawProds() {
 
 // Pedido que ya se entregó y solo se registra: queda pagado y entregado, sin revisar horarios
 const isDone = () => Boolean($('input[name="mWhen"][value="done"]')?.checked);
+const pastDay = () => $("#mPastDate")?.value || "";
+const dayShort = (d) => new Date(d + "T12:00:00Z").toLocaleDateString("es-EC", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).replace(/\./g, "");
 const isDeposit = () => Boolean($('input[name="mPay"][value="deposit"]')?.checked);
 const totalNow = () => subtotal() + (feeNow() || 0);
 const setDep75 = () => { const t = totalNow(); $("#mDep").value = t ? (Math.round(t * 75) / 100).toFixed(2) : ""; };
@@ -373,7 +385,7 @@ function drawSum() {
   // un borrador abierto se va actualizando solo mientras se edita
   if (st.draftId && !st.saving) { clearTimeout(st.autoT); st.autoT = setTimeout(() => { if (st.draftId && $("#mForm") && !$("#mForm").hidden) storeDraft(); }, 800); }
   if ($("#mBar")) { $("#mBar").hidden = !lines.length; $("#mBarTot").innerHTML = `Total <b>${money(t)}</b>${isDeposit() ? ` · anticipo ${money(depNow())}` : ""}`; }
-  $("#mGo").textContent = lines.length && fee != null ? (isDone() ? `Registrar como entregado · ${money(t)}` : isDeposit() ? `Registrar evento · anticipo ${money(depNow())}` : paid ? `Registrar pedido pagado · ${money(t)}` : `Registrar y crear enlace · ${money(t)}`) : "Registrar pedido";
+  $("#mGo").textContent = lines.length && fee != null ? (isDone() ? (pastDay() && pastDay() !== todayStr() ? `Registrar venta del ${dayShort(pastDay())} · ${money(t)}` : `Registrar como entregado · ${money(t)}`) : isDeposit() ? `Registrar evento · anticipo ${money(depNow())}` : paid ? `Registrar pedido pagado · ${money(t)}` : `Registrar y crear enlace · ${money(t)}`) : "Registrar pedido";
 }
 
 // Textos para mandarle al cliente por WhatsApp (siempre de "usted")
@@ -490,6 +502,14 @@ async function submit(e) {
     }
   }
   const delivered = isDone();
+  let soldAt = null;
+  if (delivered) {
+    const d = pastDay(), tm = $("#mPastTime").value || "12:00";
+    if (!d) return bad("Elige el día de la venta.", $("#mPastDate"));
+    soldAt = localToISO(d, tm);
+    if (new Date(soldAt) > new Date(Date.now() + 5 * 60000)) return bad("La venta no puede ser en el futuro: revisa el día y la hora.", $("#mPastTime"));
+    if (d < todayLocal(-60)) return bad("Solo se pueden registrar ventas de los últimos 60 días.", $("#mPastDate"));
+  }
   const paid = delivered || $('input[name="mPay"][value="paid"]').checked;
   const deposit = !delivered && isDeposit() ? depNow() : null;
   if (deposit != null && !(deposit > 0 && deposit < subtotal() + (feeNow() || 0))) return bad("El anticipo debe ser mayor a $0 y menor al total.", $("#mDep"));
@@ -513,6 +533,12 @@ async function submit(e) {
   const btn = $("#mGo"); btn.disabled = true; btn.textContent = "Registrando…";
   try {
     const res = await api("crear_manual", body);
+    // venta de otro día (o de otra hora): se deja en su fecha real para que Ventas la cuente ese día
+    if (soldAt && Math.abs(new Date(soldAt).getTime() - Date.now()) > 10 * 60000) {
+      const { error: be } = await sb.rpc("backdate_manual_order", { p_code: res.code, p_sold_at: soldAt });
+      if (be) toast(`La venta ${res.code} quedó registrada con la fecha de hoy: no se pudo cambiar la fecha (${be.message}).`);
+      else body.sold_at = soldAt;
+    }
     if (st.draftId) { clearTimeout(st.autoT); dropDraft(st.draftId); st.draftId = null; }
     done(res, body, paid || deposit != null, delivered);
   } catch (ex) { err.textContent = ex.message; btn.disabled = false; drawSum(); }
@@ -535,7 +561,7 @@ function done(res, body, paid, delivered = false) {
     <div class="panel mdone">
       <p class="eyebrow">Pedido registrado</p>
       <h2 class="display" style="font-size:44px">${esc(res.code)} · ${money(res.total)}</h2>
-      <p class="muted">${res.deposit != null ? `Anticipo ${money(res.deposit)} registrado; ya está en Pedidos de cocina. Saldo por cobrar el día del evento: <b>${money(res.balance_due)}</b>.` : delivered ? "Quedó guardado como pagado y entregado. Lo ves en Historial." : paid ? "Quedó pagado y ya está en Pedidos de cocina." : "Queda «Esperando pago». Pasa a cocina apenas el cliente pague con el enlace."}</p>
+      <p class="muted">${res.deposit != null ? `Anticipo ${money(res.deposit)} registrado; ya está en Pedidos de cocina. Saldo por cobrar el día del evento: <b>${money(res.balance_due)}</b>.` : delivered ? `Quedó guardado como pagado y entregado${body.sold_at && localDayOf(body.sold_at) !== todayStr() ? ` el ${dayShort(localDayOf(body.sold_at))}` : ""}. Lo ves en Historial y en Master → Ventas.` : paid ? "Quedó pagado y ya está en Pedidos de cocina." : "Queda «Esperando pago». Pasa a cocina apenas el cliente pague con el enlace."}</p>
       <pre class="msg">${esc(msg)}</pre>
       <div class="row-btns">
         <a class="btn primary" ${waAttrs(body.customer_phone, msg)}>Enviar por WhatsApp</a>
