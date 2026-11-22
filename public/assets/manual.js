@@ -141,7 +141,7 @@ function useCustomer(c) {
   if (l) {
     $("#mAddr").value = l.addr.slice(0, 130); $("#mRef").value = l.ref; $("#mPaste").value = "";
     st.map?.setView(l.lat, l.lng, 18);
-    st.loc = { lat: l.lat, lng: l.lng }; st.locLabel = l.label; quote();
+    st.loc = { lat: l.lat, lng: l.lng }; st.locLabel = l.label; st.locEditing = false; quote();
   }
   const note = $("#mCustNote");
   note.innerHTML = `✓ <b>Cliente anterior</b> · ${c.count} pedido${c.count > 1 ? "s" : ""}, el último el ${esc(shortDay(c.last))}.${l ? ` Se cargó su última ubicación (${esc(shortDay(l.at))}). Confírmela con el cliente; si ahora es otra, cámbiela en Entrega.` : " No tiene una ubicación guardada (solo retiró en la cocina)."} <button type="button" class="btn small ghost" id="mCustClear">Quitar</button>`;
@@ -149,6 +149,8 @@ function useCustomer(c) {
   $("#mCustClear").onclick = () => clearCustomer(true);
   $("#mForm").dispatchEvent(new Event("input")); // actualiza el borrador si hay uno abierto
   toast(l ? "Cliente cargado con su última ubicación" : "Cliente cargado");
+  drawSteps();
+  if (!st.cart.size) setTimeout(() => goStep(2), 250); // siguiente: buscar los productos
 }
 function clearCustomer(wipe) {
   const c = st.cust; st.cust = null;
@@ -156,9 +158,100 @@ function clearCustomer(wipe) {
   if (!wipe || !c) return;
   $("#mName").value = ""; $("#mPhone").value = "";
   if ($("#mEmail").value === c.email) $("#mEmail").value = "";
-  if (c.loc && $("#mAddr").value === c.loc.addr.slice(0, 130)) { $("#mAddr").value = ""; $("#mRef").value = ""; st.loc = null; st.locLabel = ""; st.quote = null; $("#mQuote").textContent = "Marca la ubicación para calcular el envío."; drawSum(); }
+  if (c.loc && $("#mAddr").value === c.loc.addr.slice(0, 130)) { $("#mAddr").value = ""; $("#mRef").value = ""; st.loc = null; st.locLabel = ""; st.quote = null; st.locEditing = false; $("#mQuote").textContent = "Marca la ubicación para calcular el envío."; drawSum(); }
   $("#mName").focus();
 }
+
+// ---------- pasos arriba (saltar sin scrollear) y tarjeta de ubicación ----------
+const stepOk = {
+  1: () => Boolean($("#mName")?.value.trim()) && $("#mPhone").value.replace(/\D/g, "").length >= 10,
+  2: () => st.cart.size > 0,
+  3: () => {
+    if (isDone()) return isPickup() || Boolean(st.loc && $("#mAddr").value.trim());
+    const later = $('input[name="mWhen"][value="later"]')?.checked;
+    if (later && !$("#mTime").value) return false;
+    return isPickup() || Boolean(st.loc && st.quote && $("#mAddr").value.trim());
+  },
+};
+function drawSteps() {
+  const nav = $("#mSteps"); if (!nav) return;
+  const units = [...st.cart.values()].reduce((a, q) => a + q, 0);
+  const first = ($("#mName").value.trim().split(/\s+/)[0] || "").slice(0, 14);
+  // nombre del paso + dato corto debajo (en el celular no entra en una sola línea)
+  const label = {
+    1: ["Cliente", stepOk[1]() ? first : ""],
+    2: ["Productos", units ? `${units} u.` : ""],
+    3: ["Entrega", isPickup() ? "Pick up" : st.quote ? money(feeNow() ?? st.quote.delivery_fee) : ""],
+    4: ["Pago", st.cart.size ? money(subtotal() + (feeNow() || 0)) : ""],
+  };
+  for (const b of nav.querySelectorAll("[data-step]")) {
+    const n = +b.dataset.step, ok = n < 4 ? stepOk[n]() : stepOk[1]() && stepOk[2]() && stepOk[3]();
+    b.classList.toggle("done", ok);
+    b.querySelector("i").textContent = ok ? "✓" : n;
+    const [t, v] = label[n];
+    b.querySelector("span").innerHTML = `${esc(t)}${v ? `<small>${esc(v)}</small>` : ""}`;
+  }
+}
+function goStep(n) {
+  const sec = $(`#mStep${n}`); if (!sec) return;
+  sec.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+  // el primer campo vacío del paso, para seguir escribiendo
+  const target = n === 1 ? (!$("#mName").value.trim() ? $("#mName") : $("#mPhone").value.replace(/\D/g, "").length < 10 ? $("#mPhone") : null)
+    : n === 2 ? $("#mSearch") : n === 3 && !isPickup() ? (!st.loc ? $("#mPaste") : !$("#mAddr").value.trim() ? $("#mAddr") : null) : null;
+  if (target) setTimeout(() => target.focus({ preventScroll: true }), 350);
+}
+// alturas de la barra de arriba y de los pasos (cambian en el celular) y paso que se está viendo
+let stepsWired = false;
+function watchSteps() {
+  const setVars = () => {
+    const top = document.querySelector(".topbar")?.offsetHeight || 0, nav = $("#mSteps");
+    document.documentElement.style.setProperty("--mtop", `${top}px`);
+    if (nav) document.documentElement.style.setProperty("--msh", `${nav.offsetHeight}px`);
+  };
+  setVars(); setTimeout(setVars, 300);
+  if (stepsWired) return;
+  stepsWired = true;
+  let raf = 0;
+  const onScroll = () => {
+    if (raf) return;
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      const nav = $("#mSteps"); if (!nav) return;
+      const line = (parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--mtop")) || 0) + nav.offsetHeight + 40;
+      const wide = matchMedia("(min-width: 980px)").matches;
+      let cur = 1;
+      for (let n = 1; n <= (wide ? 3 : 4); n++) { const s = $(`#mStep${n}`); if (s && s.getBoundingClientRect().top <= line) cur = n; }
+      if (innerHeight + scrollY >= document.documentElement.scrollHeight - 4) cur = wide ? 3 : 4; // llegó al final
+      nav.querySelectorAll("[data-step]").forEach((b) => b.classList.toggle("on", +b.dataset.step === cur));
+    });
+  };
+  addEventListener("scroll", onScroll, { passive: true });
+  addEventListener("resize", () => { setVars(); onScroll(); });
+  st.onScroll = onScroll;
+}
+// Con la ubicación ya puesta, el mapa se cambia por una tarjeta corta con "Cambiar"
+function drawLoc() {
+  const card = $("#mLocCard"), edit = $("#mLocEdit"); if (!card) return;
+  const show = Boolean(st.loc) && !st.locEditing;
+  card.hidden = !show; edit.hidden = show;
+  $("#mQuote").hidden = show && Boolean(st.quote); // con la tarjeta, el envío ya se ve ahí
+  $("#mLocDone").hidden = !st.loc;
+  if (!show) return;
+  const where = st.locLabel || $("#mAddr").value.trim() || "Punto marcado en el mapa";
+  const q = st.quote, fee = feeNow();
+  const ship = q ? `<span class="mloc-fee">Envío <b>${fee === 0 || freeShip() ? "gratis" : money(fee ?? q.delivery_fee)}</b> · ${q.distance_km.toFixed(1)} km</span>` : `<span class="mloc-fee muted">Calculando envío…</span>`;
+  const isCust = st.cust?.loc && st.cust.loc.lat === st.loc.lat && st.cust.loc.lng === st.loc.lng;
+  const sub = [isCust ? `Última ubicación del cliente (${shortDay(st.cust.loc.at)})` : "", q?.eta_if_now && !isDone() ? `Si sale ahora llega ${hhmm(q.eta_if_now)}` : ""].filter(Boolean).map(esc).join(" · ");
+  card.innerHTML = `<span class="mloc-pin" aria-hidden="true">📍</span><div>${ship}<b>${esc(where)}</b>${sub ? `<span class="muted small">${sub}</span>` : ""}</div><button type="button" class="btn small" data-locedit>Cambiar</button>`;
+}
+function openLocEdit() {
+  st.locEditing = true; drawLoc();
+  st.map?.resize?.();
+  if (st.loc) st.map?.setView(st.loc.lat, st.loc.lng, 18);
+  $("#mPaste").focus({ preventScroll: true });
+  $("#mLocEdit").scrollIntoView({ block: "nearest" });
+}
+function closeLocEdit() { st.locEditing = false; drawLoc(); drawSteps(); }
 
 export async function renderManual(view, draft = null) {
   st = { cart: new Map(), loc: null, locLabel: "", quote: null, cfg: null, prods: [], cats: [], map: null, filter: "", view, draftId: null };
@@ -194,8 +287,15 @@ export async function renderManual(view, draft = null) {
     </details>
 
     <div id="mDrafts"></div>
+    <nav class="msteps" id="mSteps" aria-label="Pasos del pedido">
+      <button type="button" data-step="1"><i>1</i><span>Cliente</span></button>
+      <button type="button" data-step="2"><i>2</i><span>Productos</span></button>
+      <button type="button" data-step="3"><i>3</i><span>Entrega</span></button>
+      <button type="button" data-step="4"><i>4</i><span>Pago</span></button>
+    </nav>
     <form class="manual" id="mForm" novalidate>
-      <section class="panel">
+      <div class="mmain">
+      <section class="panel mstep" id="mStep1">
         <h2 class="mtitle"><span>1</span> Cliente</h2>
         <div class="form-grid">
           <div><label class="f" for="mName">Nombre <span class="hint">(si ya compró, elíjalo de la lista)</span></label><div class="ac"><input class="in" id="mName" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="mNameAc"><ul class="ac-list" id="mNameAc" role="listbox" hidden></ul></div></div>
@@ -205,13 +305,13 @@ export async function renderManual(view, draft = null) {
         <p class="muted small" id="mCustNote" hidden style="margin:8px 0 0"></p>
       </section>
 
-      <section class="panel">
+      <section class="panel mstep" id="mStep2">
         <h2 class="mtitle"><span>2</span> Productos</h2>
         <input class="in" id="mSearch" type="search" placeholder="Buscar producto" style="margin:8px 0 10px">
         <div id="mProds" class="mprods"></div>
       </section>
 
-      <section class="panel">
+      <section class="panel mstep" id="mStep3">
         <h2 class="mtitle"><span>3</span> Entrega</h2>
         <div class="chips" role="radiogroup" aria-label="Tipo de entrega" style="margin-bottom:10px">
           <label class="chip"><input type="radio" name="mMode" value="delivery" checked> Delivery a domicilio</label>
@@ -219,17 +319,22 @@ export async function renderManual(view, draft = null) {
         </div>
         <p class="muted small" id="mPickNote" hidden style="margin:0 0 8px">El cliente pasa a retirar: sin envío ni ubicación. Cuando esté listo, márcalo como entregado al retirarlo.</p>
         <div id="mDeliv">
+        <div class="mloc" id="mLocCard" hidden></div>
+        <div id="mLocEdit">
         <label class="f" for="mPaste">Ubicación que te mandó <span class="hint">(pega el enlace de Google Maps o la ubicación de WhatsApp)</span></label>
         <div class="row-btns"><input class="in" id="mPaste" placeholder="https://maps.app.goo.gl/… o -2.17, -79.90" style="flex:1;min-width:200px"><button class="btn" type="button" id="mFind">Ubicar</button></div>
         <p class="muted small" style="margin:8px 0">O busca la zona y mueve el mapa hasta el punto exacto.</p>
         <div class="search" id="mSearchSlot"></div>
         <div class="map-wrap" style="margin-top:8px"><div id="mMap" class="map"></div><div class="pin" aria-hidden="true"><span></span></div></div>
+        <button type="button" class="btn small" id="mLocDone" hidden style="margin-top:8px">✓ Listo, usar esta ubicación</button>
+        </div>
         <div id="mQuote" class="muted small" style="margin-top:8px">Marca la ubicación para calcular el envío.</div>
-        <div class="mdep" style="margin-top:10px">
-          <label class="f" for="mFee">Envío a cobrar <span class="hint">(déjalo vacío para usar el calculado; cámbialo si quieres cobrar otro valor)</span></label>
+        <details class="mdep mfee" id="mFeeBox" style="margin-top:8px">
+          <summary class="muted small">Cobrar otro valor de envío</summary>
+          <label class="f" for="mFee">Envío a cobrar <span class="hint">(vacío = el calculado)</span></label>
           <div class="mdep-row"><span class="mdep-cur">$</span><input class="in" id="mFee" type="number" inputmode="decimal" min="0" max="100" step="0.25" placeholder="Calculado"><button type="button" class="btn small" id="mFeeReset" hidden>Usar el calculado</button></div>
           <p class="muted small" id="mFeeNote" hidden style="margin:6px 0 0"></p>
-        </div>
+        </details>
         <div class="form-grid">
           <div><label class="f" for="mAddr">Dirección</label><input class="in" id="mAddr" placeholder="Ciudadela, manzana y villa o calle y número"></div>
           <div><label class="f" for="mRef">Referencia <span class="hint">(opcional)</span></label><input class="in" id="mRef"></div>
@@ -259,8 +364,10 @@ export async function renderManual(view, draft = null) {
           <div style="grid-column:1/-1"><label class="f" for="mMsg">Mensaje para la tarjeta <span class="hint">(opcional)</span></label><textarea class="in" id="mMsg" maxlength="300"></textarea></div>
         </div>
       </section>
+      </div>
 
-      <section class="panel">
+      <aside class="mside">
+      <section class="panel mstep" id="mStep4">
         <h2 class="mtitle"><span>4</span> Pago</h2>
         <div class="chips" role="radiogroup" aria-label="Pago">
           <label class="chip"><input type="radio" name="mPay" value="link" checked> Mandarle el enlace de pago</label>
@@ -278,10 +385,16 @@ export async function renderManual(view, draft = null) {
         <button class="btn" type="button" data-draft style="margin-top:8px">Guardar borrador y empezar otra</button>
         <p class="err" id="mErr" role="alert"></p>
       </section>
+      </aside>
     </form>
-    <div class="mbar" id="mBar" hidden><span class="tabnum" id="mBarTot"></span><button class="btn small" type="button" data-draft>Guardar borrador</button><button class="btn small primary" type="button" id="mBarGo">Registrar</button></div>
+    <div class="mbar" id="mBar" hidden><span class="tabnum" id="mBarTot"></span><button class="btn small" type="button" id="mBarCopy" hidden title="Copiar el resumen para WhatsApp">Copiar</button><button class="btn small" type="button" data-draft>Guardar</button><button class="btn small primary" type="button" id="mBarGo">Registrar</button></div>
     <div id="mDone"></div>`;
   $("#mBarGo").onclick = () => $("#mGo").click();
+  $("#mBarCopy").onclick = () => copy(summaryText());
+  $("#mSteps").onclick = (e) => { const b = e.target.closest("[data-step]"); if (b) goStep(+b.dataset.step); };
+  $("#mLocCard").onclick = (e) => { if (e.target.closest("[data-locedit]")) openLocEdit(); };
+  $("#mLocDone").onclick = () => closeLocEdit();
+  watchSteps();
   $$("[data-draft]", view).forEach((b) => (b.onclick = () => {
     const d = storeDraft(); if (!d) return;
     toast(`Borrador guardado: ${d.name.trim() || d.phone || "sin nombre"}. Puede empezar otra cotización.`, 4000);
@@ -364,6 +477,7 @@ export async function renderManual(view, draft = null) {
   $("#mPaste").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); findPasted(); } });
   $("#mForm").onsubmit = submit;
   // nombre, dirección, regalo…: también actualizan el borrador abierto
+  $("#mForm").addEventListener("input", () => drawSteps());
   $("#mForm").addEventListener("input", () => { if (st.draftId) { clearTimeout(st.autoT); st.autoT = setTimeout(() => st.draftId && storeDraft(), 800); } });
   $("#mCopyBox").onclick = (e) => {
     const b = e.target.closest("[data-cp]"); if (!b) return;
@@ -376,8 +490,13 @@ export async function renderManual(view, draft = null) {
   const k = cfg.kitchen?.lat ? { lat: cfg.kitchen.lat, lng: cfg.kitchen.lng } : null;
   st.map = await createMap($("#mMap"), {
     start: draft?.loc || null, center: k, searchSlot: $("#mSearchSlot"),
-    onPick: (lat, lng, addr) => { st.loc = { lat, lng }; st.locLabel = addr || ""; quote(); },
+    onPick: (lat, lng, addr) => {
+      if (!st.locEditing && !$("#mLocEdit").hidden) st.locEditing = true; // moviendo el mapa: no esconderlo hasta que toque "Listo"
+      st.loc = { lat, lng }; st.locLabel = addr || ""; quote();
+    },
   });
+  if (st.loc) closeLocEdit(); // borrador con ubicación: se ve la tarjeta
+  drawSteps();
 }
 
 function copy(text) {
@@ -478,6 +597,7 @@ function drawSum() {
   const lines = [...st.cart].map(([k, q]) => `<div class="line"><span>${q} × ${esc(lName(k))}</span><span class="tabnum">${money(lPrice(k) * q)}</span></div>`);
   const fee = feeNow();
   const ov = feeOverride();
+  if ($("#mFeeBox") && ov != null) $("#mFeeBox").open = true;
   if ($("#mFeeReset")) {
     $("#mFeeReset").hidden = ov == null;
     $("#mFeeNote").hidden = ov == null || !st.quote;
@@ -496,7 +616,9 @@ function drawSum() {
   drawCopy();
   // un borrador abierto se va actualizando solo mientras se edita
   if (st.draftId && !st.saving) { clearTimeout(st.autoT); st.autoT = setTimeout(() => { if (st.draftId && $("#mForm") && !$("#mForm").hidden) storeDraft(); }, 800); }
-  if ($("#mBar")) { $("#mBar").hidden = !lines.length; $("#mBarTot").innerHTML = `Total <b>${money(t)}</b>${isDeposit() ? ` · anticipo ${money(depNow())}` : ""}`; }
+  if ($("#mBarCopy")) $("#mBarCopy").hidden = !(st.cart.size && fee != null);
+  if ($("#mBar")) { $("#mBar").hidden = !lines.length; $("#mBarTot").innerHTML = `<em>Total</em> <b>${money(t)}</b>${isDeposit() ? `<em> · anticipo ${money(depNow())}</em>` : ""}`; }
+  drawSteps(); drawLoc();
   $("#mGo").textContent = lines.length && fee != null ? (isDone() ? (pastDay() && pastDay() !== todayStr() ? `Registrar venta del ${dayShort(pastDay())} · ${money(t)}` : `Registrar como entregado · ${money(t)}`) : isDeposit() ? `Registrar evento · anticipo ${money(depNow())}` : paid ? `Registrar pedido pagado · ${money(t)}` : `Registrar y crear enlace · ${money(t)}`) : "Registrar pedido";
 }
 
@@ -553,8 +675,8 @@ async function findPasted() {
   try {
     const { lat, lng } = await api("ubicar", { url: v });
     st.map?.setView(lat, lng, 18);
-    st.loc = { lat, lng }; quote();
-    toast("Ubicación encontrada. Ajusta el mapa si hace falta.");
+    st.loc = { lat, lng }; st.locLabel = ""; quote(); closeLocEdit();
+    toast("Ubicación encontrada. Si no es el punto exacto, toque Cambiar.");
   } catch (e) { toast(e.message); }
   $("#mFind").disabled = false;
 }
@@ -591,13 +713,13 @@ function fillTimes() { $("#mTime").innerHTML = timesFor($("#mDate").value).map((
 async function submit(e) {
   e.preventDefault();
   const err = $("#mErr"); err.textContent = "";
-  const bad = (m, el) => { err.textContent = m; el?.focus(); };
+  const bad = (m, el) => { err.textContent = m; toast(m, 3500); if (el) { if (el.closest("[hidden]")) el = null; } if (el) { el.scrollIntoView({ block: "center" }); el.focus({ preventScroll: true }); } else err.scrollIntoView({ block: "center" }); };
   if (!$("#mName").value.trim()) return bad("Escribe el nombre del cliente.", $("#mName"));
   if ($("#mPhone").value.replace(/\D/g, "").length < 10) return bad("Escribe el WhatsApp de 10 dígitos.", $("#mPhone"));
   if ($("#mEmail").value.trim() && !/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test($("#mEmail").value.trim())) return bad("Revisa el correo o déjalo vacío.", $("#mEmail"));
   if (!st.cart.size) return bad("Agrega al menos un producto.", $("#mSearch"));
   const pickup = isPickup();
-  if (!pickup && !st.loc) return bad("Marca la ubicación de entrega.", $("#mPaste"));
+  if (!pickup && !st.loc) { openLocEdit(); return bad("Marca la ubicación de entrega.", $("#mPaste")); }
   if (!pickup && !st.quote) return bad("Aún no tenemos el costo de envío para esa ubicación.");
   if (!pickup && $("#mFee").value.trim() && (feeOverride() == null || feeOverride() > 100)) return bad("Revisa el valor del envío (entre $0 y $100) o déjalo vacío.", $("#mFee"));
   if (!pickup && !$("#mAddr").value.trim()) return bad("Escribe la dirección.", $("#mAddr"));

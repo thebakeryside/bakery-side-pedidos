@@ -1,6 +1,6 @@
 import { sb, $, $$, money, esc, toast, parseBank, ALLERGENS, tableSearch, media, mediaPath } from "./common.js";
 import { requireLogin, loginHTML } from "./auth.js";
-import { renderManual } from "./manual.js?v=3";
+import { renderManual } from "./manual.js?v=5";
 import { costos } from "./costos.js";
 import { renderQuotes } from "./cotizaciones.js";
 

@@ -563,3 +563,62 @@ p.warn, span.warn, .small.warn { color: var(--aviso); }
   .vh-c { font-size: 0; aspect-ratio: auto; min-height: 18px; }
   .vh-h { font-size: 9px; }
 }
+
+/* Pedido por WhatsApp: pasos fijos arriba, tarjeta de ubicación y dos columnas en laptop */
+.msteps { position: sticky; top: var(--mtop, 64px); z-index: 15; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 0 0 12px; padding: 8px 0; background: var(--bg); }
+.msteps button { display: flex; align-items: center; gap: 6px; min-width: 0; min-height: 44px; padding: 6px 10px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--surface); color: var(--text); font: 600 14px/1.1 var(--body); cursor: pointer; text-align: left; }
+.msteps button i { flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-style: normal; font-size: 13px; font-weight: 700; background: var(--surface-2); color: var(--text); }
+.msteps button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; gap: 6px; align-items: baseline; }
+.msteps button small { font-size: 12.5px; font-weight: 700; color: var(--accent-ink); overflow: hidden; text-overflow: ellipsis; }
+body.panel .msteps button small { color: #8A5A2B; }
+.msteps button.done i { background: var(--tostado); color: var(--tinta); }
+.msteps button.on { border-color: var(--tinta); box-shadow: inset 0 0 0 1px var(--tinta); }
+.msteps button:focus-visible { outline: 2px solid var(--tostado); outline-offset: 2px; }
+.mmain { display: grid; gap: 14px; min-width: 0; }
+.mside { min-width: 0; }
+.mstep { scroll-margin-top: calc(var(--mtop, 64px) + var(--msh, 60px) + 8px); }
+.mloc { display: flex; align-items: center; gap: 10px; padding: 10px 12px; margin-bottom: 8px; border: 1.5px solid var(--tostado); border-radius: 12px; background: var(--crema); color: var(--tinta); }
+.mloc > div { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.mloc b { overflow-wrap: anywhere; }
+.mloc .muted { color: #5C5049; }
+.mloc-pin { font-size: 22px; line-height: 1; }
+.mloc .btn { flex: none; }
+#mCustNote .btn { margin-left: 6px; }
+.mbar [hidden] { display: none; }
+.mbar #mBarTot, .mbar #mBarTot b { color: #F6F7DE; }
+.mbar #mBarTot em { font-style: normal; color: #CFC9B6; }
+body.panel .mbar .btn.primary { background: var(--tostado); border-color: var(--tostado); color: var(--tinta); }
+body.panel .mbar .btn:not(.primary) { background: transparent; color: #F6F7DE; border-color: rgb(246 247 222 / .4); }
+.mloc-fee { font-size: 15px; }
+.mfee summary { cursor: pointer; padding: 2px 0; }
+.mfee[open] { padding: 10px 12px; border: 1px dashed var(--line-strong); border-radius: 12px; }
+.mfee:not([open]) { border: 0; padding: 0; background: none; }
+.mloc-fee b { font-size: 18px; }
+@media (max-width: 560px) {
+  .msteps { gap: 4px; margin-inline: -4px; }
+  .msteps button { flex-direction: column; justify-content: center; gap: 3px; padding: 5px 4px; border-radius: 12px; font-size: 12px; text-align: center; min-height: 52px; }
+  .msteps button span { max-width: 100%; flex-direction: column; align-items: center; gap: 1px; }
+  .msteps button small { font-size: 11.5px; max-width: 100%; }
+  .msteps button i { width: 22px; height: 22px; font-size: 12px; }
+  .mbar { padding: 8px 10px; gap: 6px; }
+  .mbar span { font-size: 14px; }
+  .mbar { justify-content: space-between; gap: 5px; padding-inline: 10px; }
+  .mbar .btn.small { padding-inline: 9px; white-space: nowrap; font-size: 14px; }
+  .mbar #mBarTot em { display: none; }
+  .mbar #mBarTot b { font-size: 17px; }
+  .mbar span { white-space: nowrap; }
+  .mloc { flex-wrap: wrap; }
+  .mloc > div { flex: 1 1 calc(100% - 40px); }
+  .mloc .btn { margin-left: 32px; }
+}
+@media (min-width: 980px) {
+  .manual { max-width: none; grid-template-columns: minmax(0, 1fr) 360px; align-items: start; }
+  .mside { position: sticky; top: calc(var(--mtop, 64px) + var(--msh, 60px) + 4px); max-height: calc(100dvh - var(--mtop, 64px) - var(--msh, 60px) - 16px); overflow: auto; border-radius: var(--r, 14px); }
+  .mside .mstep { margin: 0; }
+  .mside .btn.big { width: 100%; }
+  .mside [data-draft] { width: 100%; }
+  .msteps { grid-template-columns: repeat(3, minmax(0, 1fr)) 360px; gap: 14px; }
+  .msteps [data-step="4"] { cursor: default; }
+  .mbar { display: none !important; }
+  .mprods { max-height: 460px; }
+}
