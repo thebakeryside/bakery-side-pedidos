@@ -460,7 +460,10 @@ p.warn, span.warn, .small.warn { color: var(--aviso); }
 .vkpi { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 12px 14px 0; display: grid; gap: 2px; overflow: hidden; align-content: start; }
 .vkpi:first-child { background: var(--tinta); border-color: var(--tinta); color: var(--crema); }
 .vkpi:first-child .muted { color: var(--crema-2); }
-.vkpi-top { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.vkpi-top { display: flex; justify-content: space-between; align-items: center; gap: 4px 6px; flex-wrap: wrap; }
+.vkpi-top > .muted { white-space: nowrap; }
+.vgoal .vkpi-top > .muted { white-space: normal; }
+.vkpi strong { font-weight: 700; }
 .vkpi b { font-family: var(--display); font-size: 36px; font-weight: 400; letter-spacing: .02em; line-height: 1.05; font-variant-numeric: tabular-nums; }
 .vkpi > .muted { min-height: 18px; }
 .vspark { display: block; width: calc(100% + 28px); height: 34px; margin: 4px -14px 0; }
@@ -529,7 +532,14 @@ p.warn, span.warn, .small.warn { color: var(--aviso); }
 .vprod-bar { grid-column: 1 / -1; height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
 .vprod-bar span { display: block; height: 100%; background: var(--tostado); border-radius: 4px; }
 .vprod > .muted { grid-column: 1 / -1; }
+.vkpi-avg { background: rgb(62 122 52 / .07); border-color: rgb(62 122 52 / .25); }
+.vgoal { grid-column: 1 / -1; padding-bottom: 14px; gap: 6px; }
+.vgoal-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.vgoal-bar { position: relative; height: 14px; border-radius: 7px; background: var(--surface); border: 1px solid rgb(62 122 52 / .25); overflow: visible; }
+.vgoal-bar span { display: block; height: 100%; border-radius: 7px; background: linear-gradient(90deg, #6FA663, var(--st-ok)); transition: width .4s; }
+.vgoal-bar i { position: absolute; top: -4px; bottom: -4px; width: 0; border-left: 2px dashed var(--tinta); }
 @media (max-width: 640px) {
+  .vkpi-avg:not(.vgoal) { grid-column: 1 / -1; }
   .vpresets { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-inline: -4px; padding: 2px 4px 4px; }
   .vpresets .chip-btn { white-space: nowrap; flex: none; }
   .vrange { grid-template-columns: 1fr 1fr; }

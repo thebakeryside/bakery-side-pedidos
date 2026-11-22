@@ -156,13 +156,14 @@ async function ventas() {
   const [pf, pt] = prevRange(V.from, V.to);
   if (!$("#vroot")) $("#view").innerHTML = `<div id="vroot"><div class="panel vskel"><div></div><div></div><div></div></div></div>`;
   $("#vroot").classList.add("vloading");
-  let rows, prev, chAll, lastApp, pmap;
+  let rows, prev, chAll, lastApp, pmap, base;
   try {
-    [rows, prev, { data: chAll }, { data: lastApp }, { data: pmap }] = await Promise.all([
+    [rows, prev, { data: chAll }, { data: lastApp }, { data: pmap }, base] = await Promise.all([
       loadSales(V.from, V.to), loadSales(pf, pt),
       sb.from("channel_settlements").select("*").in("channel", ["pedidosya", "payphone"]).order("period_from", { ascending: false }),
       sb.from("channel_orders").select("channel,placed_at").order("placed_at", { ascending: false }).limit(200),
       sb.from("channel_product_map").select("channel,app_name,factor,products(name)"),
+      n === 1 ? loadSales(addD(V.from, -28), addD(V.from, -1)) : Promise.resolve(null), // un día: su meta = promedio de las 4 semanas anteriores
     ]);
   } catch (e) { $("#view").innerHTML = `<p class="err">${esc(e.message)}</p>`; return; }
   const py = (chAll || []).filter((w) => w.channel === "pedidosya"), pp = (chAll || []).filter((w) => w.channel === "payphone");
@@ -296,6 +297,31 @@ async function ventas() {
       <td class="small">${r.items.map((i) => `${i.q}× ${esc(i.n)}`).join(", ")}</td><td class="tabnum">${money(r.sold)}</td><td class="tabnum"><b>${money(r.kept)}</b></td></tr>`).join("") || `<tr><td colspan="6" class="muted">Sin pedidos.</td></tr>`}
     </tbody></table></div>`;
   const totalSpark = B.map((b) => b[M]);
+  // promedio por día (sin contar hoy, que sigue abierto) / meta del día
+  let avgCard = "";
+  if (n > 1) {
+    const done = rows.filter((r) => r.day < today), days = V.to === today ? n - 1 : n;
+    if (days > 0) {
+      const avg = sumBy(done, (r) => r[M]) / days, pAvg = sumBy(prev, (r) => r[M]) / nDays(pf, pt);
+      const dayVals = B.length && group === "dia" ? B.filter((b) => b.k < today).map((b) => b[M]) : [];
+      avgCard = `<div class="vkpi vkpi-avg"><div class="vkpi-top"><span class="muted small">Promedio por día</span>${pctPill(avg, pAvg, cmpOk)}</div><b>${money(avg)}</b>
+        <span class="muted small">${(done.length / days).toFixed(1)} pedidos al día${cmpOk ? ` · antes ${money(pAvg)}` : ""}${V.to === today ? " · sin contar hoy" : ""}</span>${spark(dayVals, "#3E7A34")}</div>`;
+    }
+  } else if (base) {
+    // solo cuenta los días desde la primera venta (antes del relanzamiento no había ventas)
+    const first = base.reduce((m, r) => (r.day < m ? r.day : m), addD(V.from, -1)), days = nDays(first, addD(V.from, -1));
+    const wd = wdIdx(V.from); let wdN = 0; for (let d = first; d < V.from; d = addD(d, 1)) if (wdIdx(d) === wd) wdN++;
+    const avg = base.length ? sumBy(base, (r) => r[M]) / days : 0, wdAvg = wdN ? sumBy(base.filter((r) => wdIdx(r.day) === wd), (r) => r[M]) / wdN : 0;
+    const cur = M === "kept" ? kept : sold, pc = avg ? cur / avg : 0, isToday = V.from === today;
+    const wdName = ["los lunes", "los martes", "los miércoles", "los jueves", "los viernes", "los sábados", "los domingos"][wd];
+    const msg = !avg ? "Aún no hay suficientes días para calcular su promedio."
+      : cur >= avg ? `🎉 ${isToday ? "¡Ya superó" : "Superó"} su promedio por <strong>${money(cur - avg)}</strong>`
+      : isToday ? `Le faltan <strong>${money(avg - cur)}</strong> para llegar a su promedio` : `Llegó al ${Math.round(pc * 100)} % de su promedio`;
+    avgCard = `<div class="vkpi vkpi-avg vgoal"><div class="vkpi-top"><span class="muted small">${isToday ? "Meta de hoy" : "Frente a su promedio"} · promedio diario de ${days < 28 ? `los últimos ${days} días` : "las 4 semanas anteriores"}</span><span class="vpill ${cur >= avg && avg ? "up" : ""}">${avg ? Math.round(pc * 100) : 0} %</span></div>
+      <div class="vgoal-row"><b>${money(cur)}</b><span class="muted">de ${money(avg)}</span></div>
+      <div class="vgoal-bar"><span style="width:${Math.min(100, pc * 100).toFixed(1)}%"></span>${wdAvg > 0 && avg ? `<i style="left:${Math.min(100, wdAvg / avg * 100).toFixed(1)}%" title="Promedio de ${wdName}: ${money(wdAvg)}"></i>` : ""}</div>
+      <span class="small">${msg}${wdAvg > 0 ? ` <span class="muted">· ${wdName} suele vender ${money(wdAvg)}</span>` : ""}</span></div>`;
+  }
 
   $("#view").innerHTML = `<div id="vroot">
     <div class="panel vhead">
@@ -322,6 +348,7 @@ async function ventas() {
         ${kpi("Te queda", money(kept), pctPill(kept, pKept, cmpOk), cmpOk ? `antes ${money(pKept)}` : "", M === "kept" ? spark(totalSpark, "#C68A4E") : "", sold ? `${Math.round(kept / sold * 100)} % de lo vendido` : "")}
         ${kpi("Pedidos", String(nOrd), pctPill(nOrd, pN, cmpOk), cmpOk ? `antes ${pN}` : "", spark(B.map((b) => b.n), "#1C1714"))}
         ${kpi("Ticket promedio", nOrd ? money(sold / nOrd) : "—", nOrd && pN ? pctPill(sold / nOrd, pSold / pN, cmpOk) : "", cmpOk && pN ? `antes ${money(pSold / pN)}` : "", spark(B.filter((b) => b.n).map((b) => b.sold / b.n), "#5C5049"))}
+        ${avgCard}
       </div>
       ${notes.length ? `<p class="vnote">${notes.join("<br>")}</p>` : ""}
       ${insights.length ? `<div class="vins">${insights.map(([ic, t, v, s]) => `<div><span class="vins-ic" aria-hidden="true">${ic}</span><span class="muted small">${t}</span><b>${v}</b><span class="small">${s}</span></div>`).join("")}</div>` : ""}
