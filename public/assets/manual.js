@@ -638,7 +638,8 @@ function summaryText() {
 function banksText() {
   const b = st.bank;
   const bank = (n) => (/^banco/i.test(n) ? n : `Banco ${n}`);
-  const accs = b.accounts.map((a) => `${bank(a.bank)}\nCuenta de ${String(a.type || "ahorros").toLowerCase()} (${a.number})`).join("\n.\n");
+  // el número va solo en su línea: así se selecciona entero en WhatsApp (los que empiezan con 00 no salen como enlace)
+  const accs = b.accounts.map((a) => `${bank(a.bank)}\nCuenta de ${String(a.type || "ahorros").toLowerCase()}\n${a.number}`).join("\n.\n");
   return `Transferencia Directa\n👤 ${b.holder}${b.email ? `\n📩 ${b.email}` : ""}\n.\n${accs}`;
 }
 // número del cliente listo para WhatsApp (10 dígitos, 09…); si no, null
