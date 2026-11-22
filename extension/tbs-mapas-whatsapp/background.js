@@ -47,16 +47,20 @@ async function toCocina(mapTabId, c) {
   const text = `${c.lat}, ${c.lng}`;
   const [tab] = await chrome.tabs.query({ url: COCINA });
   if (tab) {
+    let ok = false;
     try {
-      await chrome.scripting.executeScript({
+      const [r] = await chrome.scripting.executeScript({
         target: { tabId: tab.id }, world: "MAIN",
-        func: (u) => window.dispatchEvent(new CustomEvent("tbs-ubicacion", { detail: u })), args: [text],
+        func: (u) => (typeof window.tbsUbicacion === "function" ? window.tbsUbicacion(u) : false), args: [text],
       });
-      await chrome.tabs.update(tab.id, { active: true });
-      await chrome.windows.update(tab.windowId, { focused: true });
-      await chrome.tabs.remove(mapTabId).catch(() => {});
-      return "enviado a la pestaña de Cocina";
-    } catch { /* si Cocina no responde, se abre en la misma pestaña del mapa */ }
+      ok = r?.result === true;
+    } catch { ok = false; }
+    // Cocina abierta pero con una versión vieja o sin responder: se recarga con la ubicación
+    if (!ok) await chrome.tabs.update(tab.id, { url: `${SITE}/cocina?ubicacion=${encodeURIComponent(text)}` });
+    await chrome.tabs.update(tab.id, { active: true });
+    await chrome.windows.update(tab.windowId, { focused: true });
+    if (tab.id !== mapTabId) await chrome.tabs.remove(mapTabId).catch(() => {});
+    return ok ? "enviado a la pestaña de Cocina" : "Cocina recargada con la ubicación";
   }
   await chrome.tabs.update(mapTabId, { url: `${SITE}/cocina?ubicacion=${encodeURIComponent(text)}`, active: true });
   return "Cocina abierta en la pestaña del mapa";

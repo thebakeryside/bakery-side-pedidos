@@ -46,6 +46,7 @@ async function openIncoming(url) {
   v.dataset.on = "nuevo"; render();
   try { await manualIncoming(v, url); } catch (e) { toast(e.message || "No se pudo abrir la ubicación."); }
 }
+window.tbsUbicacion = (u) => { window.focus(); openIncoming(String(u)); return true; }; // la extensión lo llama directo
 window.addEventListener("tbs-ubicacion", (e) => { if (e.detail) { window.focus(); openIncoming(String(e.detail)); } });
 {
   const q = new URLSearchParams(location.search), u = q.get("ubicacion");
