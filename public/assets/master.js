@@ -212,11 +212,15 @@ async function ventas() {
   const appName = {}, cnt = {};
   (pmap || []).forEach((m) => { (cnt[m.channel + "|" + m.app_name.toLowerCase()] ||= []).push(m); });
   Object.entries(cnt).forEach(([key, ms]) => { if (ms.length === 1 && Number(ms[0].factor) === 1 && ms[0].products?.name) appName[key] = ms[0].products.name; });
-  const prods = {};
-  for (const r of rows) for (const i of r.items) {
-    const nm = r.app ? (appName[r.ch + "|" + i.n.toLowerCase()] || i.n) : i.n; const key = nm.toLowerCase().trim();
-    const p = (prods[key] ||= { n: nm, q: 0, v: 0, ch: {} }); p.q += i.q; p.v += i.v; p.ch[r.ch] = (p.ch[r.ch] || 0) + i.q;
-  }
+  const aggProds = (rs) => {
+    const out = {};
+    for (const r of rs) for (const i of r.items) {
+      const nm = r.app ? (appName[r.ch + "|" + i.n.toLowerCase()] || i.n) : i.n; const key = nm.toLowerCase().trim();
+      const p = (out[key] ||= { n: nm, q: 0, v: 0, ch: {} }); p.q += i.q; p.v += i.v; p.ch[r.ch] = (p.ch[r.ch] || 0) + i.q;
+    }
+    return out;
+  };
+  const prods = aggProds(rows);
   const allProds = Object.values(prods), prodTotal = allProds.reduce((s, p) => s + p.v, 0);
   const top = allProds.sort((a, b) => b.v - a.v).slice(0, 10), topMax = Math.max(0.01, ...top.map((p) => p.v));
 
@@ -234,6 +238,40 @@ async function ventas() {
     grow && grow.g > 0 ? ["🚀", "El que más crece", esc(CH[grow.k].n), `▲ ${Math.round(grow.g * 100)} % vs. el periodo anterior`]
       : mainCh?.sold ? ["🏆", "Canal principal", esc(CH[mainCh.k].n), `${Math.round(mainCh.sold / sold * 100)} % de lo vendido`] : null,
   ].filter(Boolean) : [];
+
+  // conclusiones del periodo frente al anterior: 3 a 5 puntos, los de más impacto en dinero primero
+  const concl = (() => {
+    if (!(n >= 7 && cmpOk && nOrd)) return [];
+    const pct = (a, b) => (b ? Math.round((a / b - 1) * 100) : null);
+    const up = (t) => `<b style="color:var(--st-ok)">${t}</b>`, down = (t) => `<b style="color:var(--st-error)">${t}</b>`;
+    const arrow = (d) => (d >= 0 ? up(`▲ ${Math.abs(d)} %`) : down(`▼ ${Math.abs(d)} %`));
+    const out = [];
+    const dS = pct(sold, pSold);
+    out.push({ w: 1e9, ic: dS >= 0 ? "📈" : "📉", t: `Vendió <b>${money(sold)}</b> en ${nOrd} pedidos, ${arrow(dS)} frente a ${esc(prevLbl)} (${money(pSold)} en ${pN}).` });
+    // canales que más subieron y bajaron
+    const chMov = byCh.filter((c) => c.sold || c.pSold).map((c) => ({ ...c, d: c.sold - c.pSold }));
+    const chUp = chMov.filter((c) => c.d >= 15 && (!c.pSold || c.d / c.pSold >= 0.1)).sort((a, b) => b.d - a.d)[0];
+    const chDn = chMov.filter((c) => c.d <= -15 && c.pSold && -c.d / c.pSold >= 0.1).sort((a, b) => a.d - b.d)[0];
+    if (chUp) out.push({ w: chUp.d, ic: "🚀", t: `<b>${esc(CH[chUp.k].n)}</b> creció ${up("+" + money(chUp.d))}${chUp.pSold ? ` (${arrow(pct(chUp.sold, chUp.pSold))})` : ""}: ${money(chUp.sold)} contra ${money(chUp.pSold)}.` });
+    if (chDn) out.push({ w: -chDn.d, ic: "⚠️", t: `<b>${esc(CH[chDn.k].n)}</b> bajó ${down("−" + money(-chDn.d))} (${arrow(pct(chDn.sold, chDn.pSold))}): ${money(chDn.sold)} contra ${money(chDn.pSold)}.` });
+    // productos que más subieron y bajaron (en dinero), y lo nuevo que se vendió bien
+    const pp = aggProds(prev), keys = new Set([...Object.keys(prods), ...Object.keys(pp)]);
+    const pm = [...keys].map((k) => ({ n: (prods[k] || pp[k]).n, q: prods[k]?.q || 0, v: prods[k]?.v || 0, pq: pp[k]?.q || 0, pv: pp[k]?.v || 0 })).map((x) => ({ ...x, d: x.v - x.pv }));
+    const pNew = pm.filter((x) => !x.pq && x.q >= 3).sort((a, b) => b.v - a.v)[0];
+    const pUp = pm.filter((x) => x.pq && x.d >= 10 && x.q - x.pq >= 2).sort((a, b) => b.d - a.d)[0];
+    const pDn = pm.filter((x) => x.d <= -10 && x.pq - x.q >= 2).sort((a, b) => a.d - b.d)[0];
+    if (pNew) out.push({ w: pNew.v, ic: "✨", t: `<b>${esc(pNew.n)}</b> se estrenó con ${pNew.q} unidades (${money(pNew.v)}).` });
+    if (pUp) out.push({ w: pUp.d, ic: "⭐", t: `<b>${esc(pUp.n)}</b> subió de ${pUp.pq} a ${pUp.q} unidades (${up("+" + money(pUp.d))}).` });
+    if (pDn) out.push({ w: -pDn.d, ic: "🔻", t: `<b>${esc(pDn.n)}</b> bajó de ${pDn.pq} a ${pDn.q} unidades (${down("−" + money(-pDn.d))}).` });
+    // ticket y lo que queda de cada dólar
+    const tk = sold / nOrd, ptk = pSold / pN, dT = pct(tk, ptk);
+    if (Math.abs(dT) >= 10) out.push({ w: Math.abs(tk - ptk) * nOrd * 0.5, ic: "🧾", t: `El ticket promedio ${dT > 0 ? "subió" : "bajó"} a <b>${money(tk)}</b> (${arrow(dT)}; antes ${money(ptk)}).` });
+    const kr = sold ? kept / sold : 0, pkr = pSold ? pKept / pSold : 0;
+    if (Math.abs(kr - pkr) >= 0.02) out.push({ w: Math.abs(kr - pkr) * sold, ic: kr >= pkr ? "💰" : "💸", t: `De cada $1 vendido le quedaron <b>${Math.round(kr * 100)} ¢</b> (antes ${Math.round(pkr * 100)} ¢)${kr < pkr ? ", por más comisiones o envíos gratis" : ""}.` });
+    // mejor día de la semana del periodo
+    if (bestDay && n <= 14) out.push({ w: 1, ic: "📅", t: `Su mejor día fue el <b>${esc(fmtL(bestDay[0], { weekday: "long", day: "numeric" }))}</b> con ${money(bestDay[1])}.` });
+    return out.sort((a, b) => b.w - a.w).slice(0, 5);
+  })();
 
   // ¿cuándo te compran? (día de la semana × hora)
   const heat = n >= 7 && nOrd >= 10 ? (() => {
@@ -351,6 +389,7 @@ async function ventas() {
         ${avgCard}
       </div>
       ${notes.length ? `<p class="vnote">${notes.join("<br>")}</p>` : ""}
+      ${concl.length ? `<div class="vconcl"><b class="vconcl-t">📝 Conclusiones${isWeekRange(V.from, V.to) ? " de la semana" : isMonthRange(V.from, V.to) ? " del mes" : ""}</b><ul>${concl.map((c) => `<li><span aria-hidden="true">${c.ic}</span><span>${c.t}</span></li>`).join("")}</ul></div>` : ""}
       ${insights.length ? `<div class="vins">${insights.map(([ic, t, v, s]) => `<div><span class="vins-ic" aria-hidden="true">${ic}</span><span class="muted small">${t}</span><b>${v}</b><span class="small">${s}</span></div>`).join("")}</div>` : ""}
       <div>
         <div class="vlegend small">${chans.map((c) => `<span>${dot(c)}${esc(CH[c].n)}</span>`).join("")}${cmpOk ? `<span><span class="vprev-key"></span>${n === 1 ? "mismo día semana pasada" : "periodo anterior"}</span>` : ""}<span class="muted">${mName} por ${gName}</span></div>
