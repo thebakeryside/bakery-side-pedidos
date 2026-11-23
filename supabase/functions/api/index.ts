@@ -195,7 +195,9 @@ async function optionGroups(ids: number[]) {
   return m;
 }
 
-async function priceCart(items: Item[]) {
+// addonMin > 0: complemento a precio especial. Si el resto del pedido suma al menos addonMin,
+// UNA unidad de un producto con addon_price sale a ese precio (la de mayor ahorro). Misma regla en tienda.js.
+async function priceCart(items: Item[], addonMin = 0) {
   if (!Array.isArray(items) || items.length === 0) fail("Tu carrito está vacío.");
   if (items.length > 30) fail("Demasiados productos distintos en un solo pedido.");
   const ids = items.map((i) => Number(i.product_id));
@@ -240,6 +242,24 @@ async function priceCart(items: Item[]) {
     const name = picked.length ? `${p!.name} (${picked.map((x) => x.choice).join(", ")})` : p!.name;
     return { product_id: p!.id, name, unit_price: unit, quantity: q, line_total: line, ...(picked.length ? { options: picked } : {}) };
   });
+  if (addonMin > 0) {
+    let best = -1, save = 0;
+    lines.forEach((l: any, i) => {
+      const p = prods!.find((x) => x.id === l.product_id);
+      const ap = Number(p?.addon_price);
+      if (!(ap > 0) || l.options) return;
+      const sv = Math.round((l.unit_price - ap) * 100) / 100;
+      if (!(sv > 0) || subtotal - l.unit_price < addonMin - 1e-9) return;
+      if (sv > save) { save = sv; best = i; }
+    });
+    if (best >= 0) {
+      const l: any = lines[best], ap = Math.round((l.unit_price - save) * 100) / 100;
+      const special = { product_id: l.product_id, name: `${l.name} (precio especial)`, unit_price: ap, quantity: 1, line_total: ap };
+      if (l.quantity > 1) { l.quantity -= 1; l.line_total = Math.round(l.unit_price * l.quantity * 100) / 100; lines.splice(best + 1, 0, special); }
+      else lines[best] = special;
+      subtotal -= save;
+    }
+  }
   return { lines, subtotal: Math.round(subtotal * 100) / 100, prep, lead, prods: prods! };
 }
 
@@ -471,7 +491,8 @@ async function payQrs() {
 // Crea un pedido (tienda o WhatsApp). staff = { paid, by } cuando lo registra cocina o master.
 async function makeOrder(b: any, cust: Record<string, any> | null, staff: { paid: boolean; by: string; deposit?: number } | null, groupId: string | null = null, payLater = false) {
     const s = await getSettings();
-    const cart = await priceCart(b.items);
+    // complemento a precio especial: solo pedidos de la tienda en una sola entrega
+    const cart = await priceCart(b.items, staff || b.split ? 0 : Number((s as any).addon_min) || 0);
     let discount = 0, useBday = false, reward: any = null;
     if (cust && b.use_birthday) {
       if (!(await birthdayEligible(cust))) fail("El regalo de cumpleaños no está disponible en este pedido.");
@@ -665,6 +686,7 @@ const actions: Record<string, (b: any, user: User) => Promise<unknown>> = {
       transfer_extra: Number(s.transfer_extra_minutes ?? 5),
       first_slot: firstSlotWhenClosed(s),
       reward_max: Number(s.reward_max_value ?? 4),
+      addon_min: Number((s as any).addon_min ?? 0),
       next_day_only: Boolean((s as any).next_day_only),
     };
   },

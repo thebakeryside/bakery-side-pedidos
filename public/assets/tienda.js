@@ -419,7 +419,24 @@ function isPickChoice(cid) { for (const gs of Object.values(state.opts || {})) f
 const linePrice = (k) => Number(product(keyId(k)).price) + keyOpts(k).reduce((s, c) => s + Number(choiceOf(c)?.price_delta || 0), 0);
 const cartItems = (keys = [...state.cart.keys()]) => keys.map((k) => ({ product_id: keyId(k), quantity: state.cart.get(k), options: keyOpts(k) }));
 const product = (id) => state.products.find((p) => p.id === id);
-const subtotal = () => [...state.cart].reduce((s, [k, q]) => s + linePrice(k) * q, 0);
+const rawSubtotal = () => [...state.cart].reduce((s, [k, q]) => s + linePrice(k) * q, 0);
+// Complemento a precio especial (misma regla que la API): si el resto del pedido suma al menos addon_min,
+// UNA unidad de un producto con addon_price sale a ese precio (la de mayor ahorro). No aplica en dos entregas.
+const addonMin = () => Number(state.cfg?.addon_min) || 0;
+function addonDeal() {
+  const min = addonMin(); if (!(min > 0) || ($("#whenSplit") && isSplit())) return null;
+  const raw = rawSubtotal(); let best = null;
+  for (const [k] of state.cart) {
+    const p = product(keyId(k)), ap = Number(p?.addon_price);
+    if (!(ap > 0) || keyOpts(k).length) continue;
+    const save = Math.round((linePrice(k) - ap) * 100) / 100;
+    if (!(save > 0) || raw - linePrice(k) < min - 1e-9) continue;
+    if (!best || save > best.save) best = { k, save, ap };
+  }
+  return best;
+}
+const dealCut = (k) => { const d = addonDeal(); return d && d.k === k ? d.save : 0; };
+const subtotal = () => rawSubtotal() - (addonDeal()?.save || 0);
 const sumKeys = (keys) => keys.reduce((s, k) => s + linePrice(k) * state.cart.get(k), 0);
 const moneyEs = (n) => "$" + Number(n).toFixed(2).replace(".", ",");
 // Envío que paga el cliente. Gratis desde el monto (o en el primer pedido con cuenta);
@@ -513,7 +530,8 @@ function renderCart() {
   const n = [...state.cart.values()].reduce((a, b) => a + b, 0);
   const lines = [...state.cart].map(([k, q]) => {
     const p = product(keyId(k)), left = leftToday(p), nm = lineName(k);
-    return `<div class="cline"><span class="nm">${esc(nm)}</span><span class="tabnum">${money(linePrice(k) * q)}</span>
+    const cut = dealCut(k);
+    return `<div class="cline"><span class="nm">${esc(nm)}${cut ? `<small class="deal-tag">1 a precio especial (${moneyEs(linePrice(k) - cut)})</small>` : ""}</span><span class="tabnum">${money(linePrice(k) * q - cut)}</span>
       <div class="qty"><button type="button" data-c="-" data-id="${k}" aria-label="Quitar uno de ${esc(nm)}">−</button><span>${q}</span><button type="button" data-c="+" data-id="${k}" aria-label="Agregar uno de ${esc(nm)}"${left != null && qtyOf(p.id) >= left ? " disabled" : ""}>+</button></div>
       <button class="rm" type="button" data-c="x" data-id="${k}">Quitar</button></div>`;
   });
@@ -551,6 +569,18 @@ function chooseUpsell() {
   const ids = new Set([...state.cart.keys()].map(keyId));
   const catOf = (p) => state.cats.find((c) => c.id === p.category_id)?.name || "";
   const inCart = [...ids].map(product).filter(Boolean);
+  // Pedido que ya llega al mínimo y aún no usa el precio especial: se sugiere un complemento a ese precio
+  // (primero una bebida si no lleva; si ya lleva, unas mini)
+  if (addonMin() > 0 && !addonDeal() && rawSubtotal() >= addonMin() - 1e-9) {
+    const ok = (p) => Number(p.addon_price) > 0 && Number(p.addon_price) < Number(p.price) && !ids.has(p.id) && !groupsOf(p.id).length && leftToday(p) !== 0;
+    const hasDrink = inCart.some((p) => /bebida/i.test(catOf(p)));
+    const pool = state.products.filter((p) => ok(p) && (hasDrink ? !/bebida/i.test(catOf(p)) : /bebida/i.test(catOf(p))));
+    const any = pool.length ? pool : state.products.filter(ok);
+    if (any.length) {
+      if (upsellPick?.rule === "complemento" && any.some((p) => p.id === upsellPick.id)) return upsellPick;
+      return (upsellPick = { rule: "complemento", id: any[Math.floor(Math.random() * any.length)].id });
+    }
+  }
   for (const [rule, re] of UPSELL_RULES) {
     if (inCart.some((p) => re.test(catOf(p)))) continue;
     const pool = state.products.filter((p) => re.test(catOf(p)) && !ids.has(p.id) && Number(p.price) > 0 && !p.lead_hours && leftToday(p) !== 0);
@@ -564,8 +594,13 @@ function renderUpsell() {
   const box = $("#upsell"); if (!box) return;
   const pick = state.cart.size ? chooseUpsell() : null;
   if (!pick) { box.innerHTML = ""; return; }
-  const p = product(pick.id);
-  box.innerHTML = `<div class="upsell"><span class="up-k">¿Le sumas?</span><div class="up-row">${p.image_url ? `<img src="${esc(media(p.image_url))}" alt="" loading="lazy">` : ""}<div class="up-tx"><b>${esc(p.name)}</b><span class="tabnum">${money(p.price)}</span></div><button type="button" class="btn small" data-up="${p.id}">+ Agregar</button></div></div>`;
+  const p = product(pick.id), deal = pick.rule === "complemento";
+  // Aviso del precio especial para pedidos que aún no llegan al mínimo
+  const left = addonMin() - rawSubtotal();
+  const tip = !deal && !addonDeal() && addonMin() > 0 && left > 0 && left <= 6 && state.products.some((x) => Number(x.addon_price) > 0)
+    ? `<p class="up-tip">Te faltan <b>${moneyEs(left)}</b> para llevar una bebida o unas mini a precio especial.</p>` : "";
+  const price = deal ? `<s class="muted">${money(p.price)}</s> <b class="deal-price">${money(p.addon_price)}</b>` : money(p.price);
+  box.innerHTML = `<div class="upsell${deal ? " deal" : ""}"><span class="up-k">${deal ? "Precio especial por tu pedido" : "¿Le sumas?"}</span><div class="up-row">${p.image_url ? `<img src="${esc(media(p.image_url))}" alt="" loading="lazy">` : ""}<div class="up-tx"><b>${esc(p.name)}</b><span class="tabnum">${price}</span></div><button type="button" class="btn small" data-up="${p.id}">+ Agregar</button></div>${tip}</div>`;
   const key = `${pick.rule}:${pick.id}`;
   if (!upsellSeen.has(key)) { upsellSeen.add(key); logUpsell("shown", pick); }
 }
@@ -969,7 +1004,7 @@ function renderSummary() {
   const fees = fee != null && (!split || fee2 != null) ? fee + (split ? fee2 : 0) : null;
   const feeCell = (sh) => sh.fee == null ? "—" : sh.promo && sh.fee < sh.full - 1e-9 ? `<s class="muted">${money(sh.full)}</s> ${sh.fee > 0 ? money(sh.fee) : "Gratis"}` : money(sh.fee);
   const reward = $("#useReward")?.checked;
-  const line = (k, q) => `<div class="line"><span>${q} × ${esc(lineName(k))}</span><span class="tabnum">${money(linePrice(k) * q)}</span></div>`;
+  const line = (k, q) => `<div class="line"><span>${q} × ${esc(lineName(k))}${split || !dealCut(k) ? "" : " (1 a precio especial)"}</span><span class="tabnum">${money(linePrice(k) * q - (split ? 0 : dealCut(k)))}</span></div>`;
   const now = state.quote?.eta_if_now && state.cfg.open_now ? `Llega entre ${nowRange()}` : "";
   let body;
   if (split) {
