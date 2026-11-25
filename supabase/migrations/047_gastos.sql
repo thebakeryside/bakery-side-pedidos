@@ -14,7 +14,7 @@ create table if not exists public.expenses (
   source text not null default 'manual' check (source in ('manual','claude','foto')),
   source_ref text unique,                      -- para no duplicar: 'uber:<viaje>', 'gmail:<id>', 'mensual:<id>:<AAAA-MM>'
   receipt_path text,                           -- foto en el bucket privado 'gastos'
-  order_id bigint references public.orders(id) on delete set null,  -- pedido que se entregó con ese Uber
+  order_id uuid references public.orders(id) on delete set null,  -- pedido que se entregó con ese Uber
   repeat_monthly boolean not null default false, -- gasto fijo: la tarea semanal lo copia cada mes
   notes text,
   created_by uuid default auth.uid(),
