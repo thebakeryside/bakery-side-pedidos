@@ -3,6 +3,7 @@ import { requireLogin, loginHTML } from "./auth.js";
 import { renderManual } from "./manual.js?v=15";
 import { costos } from "./costos.js";
 import { renderQuotes } from "./cotizaciones.js";
+import { renderGastos } from "./gastos.js?v=1";
 
 $("#loginSlot").innerHTML = loginHTML("Panel master");
 const todayGye = () => new Date(Date.now() - 5 * 3600000).toISOString().slice(0, 10);
@@ -18,12 +19,13 @@ requireLogin(async (user) => {
     return;
   }
   render();
+  sb.from("expenses").select("id", { count: "exact", head: true }).neq("status", "ok").then(({ count }) => { const c = $("#cntExp"); if (c && count) { c.hidden = false; c.textContent = count; } });
 });
 $$(".tabs [data-tab]").forEach((b) => b.addEventListener("click", () => { S.tab = b.dataset.tab; render(); }));
 
 function render() {
   $$(".tabs [data-tab]").forEach((b) => b.setAttribute("aria-selected", b.dataset.tab === S.tab));
-  ({ ventas, nuevo: () => renderManual($("#view")), cotizaciones: () => renderQuotes($("#view")), costos, motorizados, accesos, menu, clientes, resenas, horarios, ajustes })[S.tab]();
+  ({ ventas, nuevo: () => renderManual($("#view")), cotizaciones: () => renderQuotes($("#view")), costos, gastos: () => renderGastos($("#view"), { loadSales, presetRange, prevRange, rangeLabel, todayGye, nDays, cap }), motorizados, accesos, menu, clientes, resenas, horarios, ajustes })[S.tab]();
 }
 
 // Confirmación dentro de la página (el navegador no muestra ventanas de confirmar aquí)
@@ -105,7 +107,7 @@ async function loadSales(from, to) {
     const sold = Number(o.subtotal) - Number(o.discount || 0);
     const card = o.payment_method === "tarjeta" ? Number(o.total) * 0.0575 : 0;
     const gift = Math.max(0, Number(o.rider_fee ?? o.delivery_fee) - Number(o.delivery_fee));
-    rows.push({ ch: o.channel === "whatsapp" ? "whatsapp" : "web", at: o.created_at, day: localDay(o.created_at), code: o.code, sold, kept: sold - card - gift, disc: Number(o.discount || 0),
+    rows.push({ ch: o.channel === "whatsapp" ? "whatsapp" : "web", at: o.created_at, day: localDay(o.created_at), code: o.code, sold, kept: sold - card - gift, disc: Number(o.discount || 0), gift, ship: Number(o.delivery_fee || 0),
       status: o.status, rider: o.status === "entregado" && o.rider_id ? (o.riders?.full_name || "Sin nombre") : null, riderFee: Number(o.rider_fee ?? o.delivery_fee),
       items: o.order_items.filter((i) => Number(i.line_total) > 0).map((i) => ({ n: i.name, q: i.quantity, v: Number(i.line_total) })) });
   }
