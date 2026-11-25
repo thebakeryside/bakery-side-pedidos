@@ -1,6 +1,6 @@
 import { sb, api, $, $$, money, esc, hhmm, when, dayLabel, orderRange, toast, waLink, waAttrs, waMode, setWaMode, waAuto, setWaAuto, openWa, fold, STATUS, todayLocal , tableSearch, localToISO } from "./common.js";
 import { requireLogin, loginHTML } from "./auth.js";
-import { renderManual, manualIncoming } from "./manual.js?v=14";
+import { renderManual, manualIncoming } from "./manual.js?v=15";
 import { renderQuotes } from "./cotizaciones.js";
 
 $("#loginSlot").innerHTML = loginHTML("Panel de cocina");
@@ -353,7 +353,7 @@ function openUber(o) {
 // Texto para pegar en las instrucciones del envío: solo nombre, teléfono y referencia (la ubicación ya va en el Uber)
 function uberText(o) {
   const name = o.recipient_name || o.customer_name, phone = (o.recipient_name && o.recipient_phone) || o.customer_phone;
-  return `${name} · ${phone}${o.reference ? `\nRef: ${o.reference}` : ""}`;
+  return `${name}${phone ? ` · ${phone}` : ""}${o.reference ? `\nRef: ${o.reference}` : ""}`;
 }
 // Aviso cuando llega la hora de pedir el Uber; se repite cada 3 min hasta tocar "Ya lo pedí".
 // Si el navegador aún no deja sonar (falta tocar la pantalla), queda pendiente y suena al primer toque.
@@ -405,7 +405,7 @@ function card(o) {
     <details class="more" data-more="${o.id}"${isOpenMore(String(o.id)) ? " open" : ""}>
       <summary>Datos del cliente y entrega</summary>
       <div class="meta">
-        <span><b>${esc(o.customer_name)}</b> · <a href="tel:${esc(o.customer_phone)}">${esc(o.customer_phone)}</a></span>
+        <span><b>${esc(o.customer_name)}</b> · ${o.customer_phone ? `<a href="tel:${esc(o.customer_phone)}">${esc(o.customer_phone)}</a>` : `<span class="muted">sin número</span>`}</span>
         ${o.recipient_name ? `<span>Recibe: <b>${esc(o.recipient_name)}</b>${o.recipient_phone ? " · " + esc(o.recipient_phone) : ""}</span>` : ""}
         <span>${esc(o.address)}${o.reference ? " · " + esc(o.reference) : ""}</span>
         ${Number(o.deposit) > 0 ? `<span>Evento · anticipo ${money(o.deposit)} · saldo ${money(o.balance_due)}${o.balance_paid_at ? ` cobrado ${hhmm(o.balance_paid_at)}` : " por cobrar"}</span>` : ""}

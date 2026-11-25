@@ -345,7 +345,7 @@ function payphoneParams(o: Record<string, any>, attempt: number, amount?: number
     reference: `The Bakery Side ${o.code}`,
     lang: "es",
     timeZone: -5,
-    phoneNumber: "+593" + String(o.customer_phone).slice(1),
+    ...(o.customer_phone ? { phoneNumber: "+593" + String(o.customer_phone).slice(1) } : {}),
   };
 }
 
@@ -539,7 +539,8 @@ async function makeOrder(b: any, cust: Record<string, any> | null, staff: { paid
     const row: Record<string, unknown> = {
       user_id: cust?.user_id ?? null, discount, birthday_discount: useBday, reward_id: reward?.id ?? null,
       customer_name: name,
-      customer_phone: normPhone(b.customer_phone),
+      // pedidos por WhatsApp de cocina/master: el número es opcional (a veces no se tiene)
+      customer_phone: staff && !String(b.customer_phone ?? "").replace(/\D/g, "") ? "" : normPhone(b.customer_phone),
       recipient_name: clean(b.recipient_name, 80) || null,
       recipient_phone: b.recipient_phone ? normPhone(b.recipient_phone) : null,
       gift_message: clean(b.gift_message, 300) || null,
@@ -728,8 +729,9 @@ const actions: Record<string, (b: any, user: User) => Promise<unknown>> = {
   async crear_manual(b, user) {
     const by = await staffName(user);
     // si el WhatsApp ya tiene cuenta, el pedido suma sellos a esa cuenta
-    const phone = normPhone(b.customer_phone);
-    const { data: cust } = await db.from("customers").select("*").eq("phone", phone).limit(1).maybeSingle();
+    // el número es opcional: sin número no se busca cuenta y el pedido queda sin WhatsApp
+    const phone = String(b.customer_phone ?? "").replace(/\D/g, "") ? normPhone(b.customer_phone) : "";
+    const { data: cust } = phone ? await db.from("customers").select("*").eq("phone", phone).limit(1).maybeSingle() : { data: null };
     const res = await makeOrder({ ...b, customer_phone: phone, invoice_type: "consumidor_final", use_birthday: false, reward_product_id: null }, cust ?? null, { paid: Boolean(b.paid), by, deposit: b.deposit != null && b.deposit !== "" ? Number(b.deposit) : undefined });
     delete res._order;
     return res;

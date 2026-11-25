@@ -76,8 +76,8 @@ function card(o) {
     <div class="navs">
       <a class="btn small" href="https://www.google.com/maps/dir/?api=1&destination=${o.lat},${o.lng}" target="_blank" rel="noopener">Google Maps</a>
       <a class="btn small" href="https://waze.com/ul?ll=${o.lat},${o.lng}&navigate=yes" target="_blank" rel="noopener">Waze</a>
-      <a class="btn small" href="${waLink(phone, `Hola ${to.split(" ")[0]}, soy ${rider.full_name.split(" ")[0]} de The Bakery Side. Voy con tu pedido ${o.code}.`)}" target="_blank" rel="noopener">WhatsApp</a>
-      <a class="btn small" href="tel:${esc(phone)}">Llamar</a>
+      ${phone ? `<a class="btn small" href="${waLink(phone, `Hola ${to.split(" ")[0]}, soy ${rider.full_name.split(" ")[0]} de The Bakery Side. Voy con tu pedido ${o.code}.`)}" target="_blank" rel="noopener">WhatsApp</a>
+      <a class="btn small" href="tel:${esc(phone)}">Llamar</a>` : `<span class="muted small">Sin número del cliente: si necesitas algo, escribe a cocina.</span>`}
     </div>
     <ul class="items">${o.order_items.map((i) => `<li>${i.quantity} × ${esc(i.name)}</li>`).join("")}</ul>
     ${Number(o.balance_due) > 0 && !o.balance_paid_at ? `<div class="gift"><b>⚠️ Saldo pendiente de ${money(o.balance_due)}.</b> Confirma con cocina que ya se cobró antes de entregar.</div>` : ""}

@@ -80,7 +80,8 @@ export const setWaMode = (m) => { try { localStorage.setItem("tbs_wa_mode", m ==
 export function waAppLink(phone, text) {
   const p = String(phone || "").replace(/\D/g, "").replace(/^0/, "593");
   const t = encodeURIComponent(text || "");
-  return waMode() === "web" ? `https://web.whatsapp.com/send?phone=${p}&text=${t}` : `whatsapp://send?phone=${p}&text=${t}`;
+  const q = p ? `phone=${p}&text=${t}` : `text=${t}`; // sin número: WhatsApp pide elegir el chat
+  return waMode() === "web" ? `https://web.whatsapp.com/send?${q}` : `whatsapp://send?${q}`;
 }
 // Al cambiar de estado un pedido, abrir el chat del cliente con el mensaje listo (por equipo; encendido por defecto)
 export const waAuto = () => { try { return localStorage.getItem("tbs_wa_auto") !== "0"; } catch { return true; } };

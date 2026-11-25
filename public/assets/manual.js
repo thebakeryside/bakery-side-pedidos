@@ -163,8 +163,10 @@ function clearCustomer(wipe) {
 }
 
 // ---------- pasos arriba (saltar sin scrollear) y tarjeta de ubicación ----------
+// número vacío o de 10 dígitos
+const phoneOk = () => { const n = $("#mPhone").value.replace(/\D/g, "").length; return n === 0 || n >= 10; };
 const stepOk = {
-  1: () => Boolean($("#mName")?.value.trim()) && $("#mPhone").value.replace(/\D/g, "").length >= 10,
+  1: () => Boolean($("#mName")?.value.trim()) && phoneOk(), // el WhatsApp es opcional
   2: () => st.cart.size > 0,
   3: () => {
     if (isDone()) return isPickup() || Boolean(st.loc && $("#mAddr").value.trim());
@@ -196,7 +198,7 @@ function goStep(n) {
   const sec = $(`#mStep${n}`); if (!sec) return;
   sec.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
   // el primer campo vacío del paso, para seguir escribiendo
-  const target = n === 1 ? (!$("#mName").value.trim() ? $("#mName") : $("#mPhone").value.replace(/\D/g, "").length < 10 ? $("#mPhone") : null)
+  const target = n === 1 ? (!$("#mName").value.trim() ? $("#mName") : !phoneOk() ? $("#mPhone") : null)
     : n === 2 ? $("#mSearch") : n === 3 && !isPickup() ? (!st.loc ? $("#mPaste") : !$("#mAddr").value.trim() ? $("#mAddr") : null) : null;
   if (target) setTimeout(() => target.focus({ preventScroll: true }), 350);
 }
@@ -299,7 +301,7 @@ export async function renderManual(view, draft = null) {
         <h2 class="mtitle"><span>1</span> Cliente</h2>
         <div class="form-grid">
           <div><label class="f" for="mName">Nombre</label><div class="ac"><input class="in" id="mName" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="mNameAc"><ul class="ac-list" id="mNameAc" role="listbox" hidden></ul></div></div>
-          <div><label class="f" for="mPhone">WhatsApp</label><div class="ac"><input class="in" id="mPhone" type="tel" inputmode="tel" placeholder="0991234567" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="mPhoneAc"><ul class="ac-list" id="mPhoneAc" role="listbox" hidden></ul></div></div>
+          <div><label class="f" for="mPhone">WhatsApp <span class="hint">(opcional)</span></label><div class="ac"><input class="in" id="mPhone" type="tel" inputmode="tel" placeholder="0991234567" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="mPhoneAc"><ul class="ac-list" id="mPhoneAc" role="listbox" hidden></ul></div></div>
           <div><label class="f" for="mEmail">Correo <span class="hint">(opcional)</span></label><input class="in" id="mEmail" type="email" inputmode="email" autocomplete="off"></div>
         </div>
         <p class="muted small" id="mCustNote" hidden style="margin:8px 0 0"></p>
@@ -750,7 +752,7 @@ async function submit(e) {
   const err = $("#mErr"); err.textContent = "";
   const bad = (m, el) => { err.textContent = m; toast(m, 3500); if (el) { if (el.closest("[hidden]")) el = null; } if (el) { el.scrollIntoView({ block: "center" }); el.focus({ preventScroll: true }); } else err.scrollIntoView({ block: "center" }); };
   if (!$("#mName").value.trim()) return bad("Escribe el nombre del cliente.", $("#mName"));
-  if ($("#mPhone").value.replace(/\D/g, "").length < 10) return bad("Escribe el WhatsApp de 10 dígitos.", $("#mPhone"));
+  if (!phoneOk()) return bad("El WhatsApp debe tener 10 dígitos, o déjalo vacío si no lo tienes.", $("#mPhone"));
   if ($("#mEmail").value.trim() && !/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test($("#mEmail").value.trim())) return bad("Revisa el correo o déjalo vacío.", $("#mEmail"));
   if (!st.cart.size) return bad("Agrega al menos un producto.", $("#mSearch"));
   const pickup = isPickup();
@@ -833,7 +835,7 @@ function done(res, body, paid, delivered = false) {
       <p class="muted">${res.deposit != null ? `Anticipo ${money(res.deposit)} registrado; ya está en Pedidos de cocina. Saldo por cobrar el día del evento: <b>${money(res.balance_due)}</b>.` : delivered ? `Quedó guardado como pagado y entregado${body.sold_at && localDayOf(body.sold_at) !== todayStr() ? ` el ${dayShort(localDayOf(body.sold_at))}` : ""}. Lo ves en Historial y en Master → Ventas.` : paid ? "Quedó pagado y ya está en Pedidos de cocina." : "Queda «Esperando pago». Pasa a cocina apenas el cliente pague con el enlace."}</p>
       <pre class="msg">${esc(msg)}</pre>
       <div class="row-btns">
-        <a class="btn primary" ${waAttrs(body.customer_phone, msg)}>Enviar por WhatsApp</a>
+        <a class="btn primary" ${waAttrs(body.customer_phone, msg)}${body.customer_phone.replace(/\D/g, "") ? "" : ' title="Sin número: WhatsApp te pide elegir el chat"'}>${body.customer_phone.replace(/\D/g, "") ? "Enviar por WhatsApp" : "Enviar por WhatsApp (elegir chat)"}</a>
         <button class="btn" type="button" id="mCopy">Copiar mensaje</button>
         <button class="btn ghost" type="button" id="mNew">Nuevo pedido</button>
       </div>
