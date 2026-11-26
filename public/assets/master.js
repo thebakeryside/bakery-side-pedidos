@@ -56,7 +56,7 @@ const monthEndOf = (s) => { const d = new Date(ldMs(s)); return isoD(Date.UTC(d.
 const addMonths = (s, k) => { const d = new Date(ldMs(s)); return isoD(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + k, 1)); };
 const utcStart = (s) => new Date(ldMs(s) + 5 * 3600000).toISOString();
 const fmtL = (s, o) => new Date(s + "T12:00:00Z").toLocaleDateString("es-EC", { ...o, timeZone: "UTC" }).replace(/\./g, "");
-const CH = { web: { n: "Web", c: "#C68A4E" }, whatsapp: { n: "WhatsApp", c: "#5E8C61" }, pedidosya: { n: "PedidosYa", c: "#D33A4C" } };
+const CH = { web: { n: "Web", c: "#C68A4E" }, whatsapp: { n: "WhatsApp", c: "#5E8C61" }, pedidosya: { n: "PedidosYa", c: "#D33A4C" }, vendedora: { n: "Mamá", c: "#8C6BB1" } };
 const CH_EXTRA = ["#2F5C8C", "#7A5BA6", "#3B8C8C", "#8C6A2F"];
 const chInfo = (k) => CH[k] || (CH[k] = { n: k.charAt(0).toUpperCase() + k.slice(1), c: CH_EXTRA[(Object.keys(CH).length - 3) % CH_EXTRA.length] });
 const PRESETS = [["hoy", "Hoy"], ["ayer", "Ayer"], ["semana", "Esta semana"], ["semana_pasada", "Semana pasada"], ["mes", "Este mes"], ["mes_pasado", "Mes pasado"], ["30d", "Últimos 30 días"], ["anio", "Este año"]];
@@ -107,7 +107,7 @@ async function loadSales(from, to) {
     const sold = Number(o.subtotal) - Number(o.discount || 0);
     const card = o.payment_method === "tarjeta" ? Number(o.total) * 0.0575 : 0;
     const gift = Math.max(0, Number(o.rider_fee ?? o.delivery_fee) - Number(o.delivery_fee));
-    rows.push({ ch: o.channel === "whatsapp" ? "whatsapp" : "web", at: o.created_at, day: localDay(o.created_at), code: o.code, sold, kept: sold - card - gift, disc: Number(o.discount || 0), gift, ship: Number(o.delivery_fee || 0),
+    rows.push({ ch: ["whatsapp", "vendedora"].includes(o.channel) ? o.channel : "web", at: o.created_at, day: localDay(o.created_at), code: o.code, sold, kept: sold - card - gift, disc: Number(o.discount || 0), gift, ship: Number(o.delivery_fee || 0),
       status: o.status, rider: o.status === "entregado" && o.rider_id ? (o.riders?.full_name || "Sin nombre") : null, riderFee: Number(o.rider_fee ?? o.delivery_fee),
       items: o.order_items.filter((i) => Number(i.line_total) > 0).map((i) => ({ n: i.name, q: i.quantity, v: Number(i.line_total) })) });
   }
@@ -299,7 +299,7 @@ async function ventas() {
 
   // avisos de las apps: hasta cuándo están cargadas y cuántos pedidos faltan confirmar con la factura
   const whenTxt = (t) => new Date(t).toLocaleString("es-EC", { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: "America/Guayaquil" }).replace(/\./g, "");
-  const appCh = chans.filter((c) => !["web", "whatsapp"].includes(c));
+  const appCh = chans.filter((c) => !["web", "whatsapp", "vendedora"].includes(c));
   const notes = appCh.map((c) => {
     const last = lastBy[c], pend = rows.filter((r) => r.ch === c && r.pending).length, parts = [];
     if (!last) parts.push("aún no tiene pedidos cargados");

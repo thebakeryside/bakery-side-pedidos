@@ -10,6 +10,7 @@ Sistema propio de pedidos a domicilio, sin comisiones de apps de delivery.
 | `/cocina` | Dueños | Pedidos en tiempo real, transferencias, motorizados, menú y ajustes |
 | `/cotizacion?t=…` | Clientes | Cotización con enlace propio; se descarga como PDF |
 | `/moto` | Motorizados | Sus entregas, ruta en Maps/Waze y botones de recogido/entregado |
+| `/mama?k=…` | Mamá (vende por su cuenta) | Anota a quién le vende, qué y para qué día, y si ya le pagaron. Sin cuenta: entra con el enlace secreto (tabla `sellers`, funciones `seller_*`, migración 048). Cocina ve sus pedidos juntos en una tarjeta por día |
 
 ## Partes
 

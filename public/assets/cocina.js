@@ -211,12 +211,52 @@ function render(force = false) {
       : `<div class="panel"><p class="muted">No hay entregas agendadas para más adelante. Los pedidos agendados pasan a «Pedidos» ${AGENDA_HOURS} horas antes de su hora.</p></div>`;
   } else if (S.tab === "historial") {
     const list = S.orders.filter((o) => ["entregado", "cancelado"].includes(o.status));
-    v.innerHTML = list.length ? `<div class="cards">${list.map(card).join("")}</div>` : `<div class="panel"><p class="muted">Aquí verás los pedidos entregados y cancelados de los últimos 3 días.</p></div>`;
+    v.innerHTML = list.length ? `<div class="cards">${bundle(list).map(card).join("")}</div>` : `<div class="panel"><p class="muted">Aquí verás los pedidos entregados y cancelados de los últimos 3 días.</p></div>`;
   } else if (S.tab === "motorizados") renderRiders();
   else if (S.tab === "menu") renderMenu();
   else if (S.tab === "ajustes") renderSettings();
 }
-const group = (title, list) => list.length ? `<h2 class="group-title">${esc(title)}</h2><div class="cards">${list.map(card).join("")}</div>` : "";
+const group = (title, list) => list.length ? `<h2 class="group-title">${esc(title)}</h2><div class="cards">${bundle(list).map(card).join("")}</div>` : "";
+
+// ---------- ventas de Mamá (/mama): sus pedidos del mismo día y estado van juntos en una sola tarjeta ----------
+const localDay = (d) => new Date(new Date(d).getTime() - 5 * 3600000).toISOString().slice(0, 10);
+const batchKey = (o) => `${o.seller_id}|${localDay(o.scheduled_for || o.created_at)}|${o.status}`;
+function bundle(list) {
+  const out = [], seen = new Map();
+  for (const o of list) {
+    if (!o.seller_id) { out.push(o); continue; }
+    const k = batchKey(o);
+    let b = seen.get(k);
+    if (!b) { b = { _batch: true, key: k, id: "b:" + k, status: o.status, scheduled_for: o.scheduled_for, eta: o.eta, orders: [] }; seen.set(k, b); out.push(b); }
+    b.orders.push(o);
+  }
+  return out;
+}
+const batchMembers = (k) => S.orders.filter((o) => o.seller_id && batchKey(o) === k);
+function batchCard(b) {
+  const os = b.orders, seller = String(os[0].address || "").replace(/^Lo lleva /, "") || "Mamá";
+  const sum = {};
+  os.forEach((o) => o.order_items.forEach((i) => (sum[i.name] = (sum[i.name] || 0) + i.quantity)));
+  const total = os.reduce((t, o) => t + Number(o.total), 0), paid = os.filter((o) => o.payment_status === "pagado").reduce((t, o) => t + Number(o.total), 0);
+  const day = dayLabel(os[0].scheduled_for || os[0].created_at);
+  const k = esc(b.key);
+  let main = "";
+  if (b.status === "confirmado") main = `<button class="btn primary" data-bact="preparando" data-key="${k}">Empezar a preparar todo</button>`;
+  else if (b.status === "preparando") main = `<button class="btn primary" data-bact="listo" data-key="${k}">Todo listo · para que lo retire</button>`;
+  else if (b.status === "listo") main = `<button class="btn primary" data-bact="entregado" data-key="${k}">Entregado a ${esc(seller)}</button>`;
+  return `<article class="ocard" data-s="${b.status}">
+    <div class="ohead"><span class="oid">🧺 Ventas de ${esc(seller)} <span class="wa-tag">${os.length} pedido${os.length > 1 ? "s" : ""}</span></span><span class="st st-${b.status}">${STATUS[b.status]}</span></div>
+    <div class="owhen tabnum">${esc(day)} · lo lleva ${esc(seller)}</div>
+    <div class="oname"><b>Preparar todo junto</b></div>
+    <ul class="kitems">${Object.entries(sum).map(([n, q]) => itemLine({ name: n, quantity: q })).join("")}</ul>
+    <div class="chips"><span class="chip ${paid >= total ? "ok" : "warn"}">${ICON.pay}Cobrado ${money(paid)} de ${money(total)} · lo cobra ${esc(seller)}</span><span class="chip ok">🛍️ Lo retira en la cocina</span></div>
+    ${main ? `<div class="acts main">${main}</div>` : ""}
+    <details class="more" data-more="${k}"${isOpenMore(b.key) ? " open" : ""}>
+      <summary>Ver cada cliente (${os.length})</summary>
+      <div class="meta">${os.map((o) => `<span><b>${esc(o.customer_name)}</b> · ${o.order_items.map((i) => `${i.quantity}× ${esc(i.name)}`).join(", ")} · ${money(o.total)} · ${o.payment_status === "pagado" ? "✅ pagado" : "⏳ sin pagar"} <span class="muted">(${esc(o.code)})</span>${o.reference ? ` · 📝 ${esc(o.reference)}` : ""}</span>`).join("")}</div>
+    </details>
+  </article>`;
+}
 
 function waText(o) {
   const link = `${location.origin}/pedido?t=${o.tracking_token}`;
@@ -368,6 +408,7 @@ function uberAlerts() {
 }
 // La hora de entrega (eta) es la que pidió el cliente al hacer el pedido: cocina nunca la cambia.
 function card(o) {
+  if (o._batch) return batchCard(o);
   const pick = o.fulfillment === "pickup";
   const t = o.scheduled_for ? `${dayLabel(o.scheduled_for)} · ${orderRange(o, win())}` : `Entre ${orderRange(o, win())}`;
   const riderOpts = `<option value="">Asignar motorizado…</option>` + S.riders.filter((r) => r.active).map((r) => `<option value="${r.id}" ${o.rider_id === r.id ? "selected" : ""}>${esc(r.full_name)}</option>`).join("");
@@ -458,6 +499,19 @@ function tell(o, status) {
   const text = waText({ ...o, status });
   if (text) openWa(o.customer_phone, text);
 }
+// botones de la tarjeta de ventas de Mamá: cambian todos sus pedidos juntos
+document.addEventListener("click", async (e) => {
+  const b = e.target.closest("button[data-bact]"); if (!b) return;
+  const to = b.dataset.bact, now = new Date().toISOString(), list = batchMembers(b.dataset.key);
+  const patch = to === "preparando" ? { status: to, prep_started_at: now } : to === "listo" ? { status: to, ready_at: now }
+    : { status: "entregado", delivered_at: now, picked_at: now, delivered_by: "cocina", delivery_note: "Lo llevó a vender" };
+  b.disabled = true;
+  for (const o of list) {
+    const { error } = await sb.from("orders").update(patch).eq("id", o.id);
+    if (error) { b.disabled = false; return toast("No se pudo guardar: " + error.message); }
+  }
+  toast(`${list.length} pedido${list.length > 1 ? "s" : ""}: ${STATUS[patch.status].toLowerCase()}`); await loadOrders(); render();
+});
 document.addEventListener("click", async (e) => {
   const b = e.target.closest("button[data-act]"); if (!b) return;
   const id = b.dataset.id, o = S.orders.find((x) => x.id === id), now = new Date().toISOString();
