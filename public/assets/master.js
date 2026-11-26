@@ -56,7 +56,7 @@ const monthEndOf = (s) => { const d = new Date(ldMs(s)); return isoD(Date.UTC(d.
 const addMonths = (s, k) => { const d = new Date(ldMs(s)); return isoD(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + k, 1)); };
 const utcStart = (s) => new Date(ldMs(s) + 5 * 3600000).toISOString();
 const fmtL = (s, o) => new Date(s + "T12:00:00Z").toLocaleDateString("es-EC", { ...o, timeZone: "UTC" }).replace(/\./g, "");
-const CH = { web: { n: "Web", c: "#C68A4E" }, whatsapp: { n: "WhatsApp", c: "#5E8C61" }, pedidosya: { n: "PedidosYa", c: "#D33A4C" }, vendedora: { n: "Mamá", c: "#8C6BB1" } };
+const CH = { web: { n: "Web", c: "#C68A4E" }, whatsapp: { n: "WhatsApp", c: "#5E8C61" }, pedidosya: { n: "PedidosYa", c: "#D33A4C" }, vendedora: { n: "Mom", c: "#8C6BB1" } };
 const CH_EXTRA = ["#2F5C8C", "#7A5BA6", "#3B8C8C", "#8C6A2F"];
 const chInfo = (k) => CH[k] || (CH[k] = { n: k.charAt(0).toUpperCase() + k.slice(1), c: CH_EXTRA[(Object.keys(CH).length - 3) % CH_EXTRA.length] });
 const PRESETS = [["hoy", "Hoy"], ["ayer", "Ayer"], ["semana", "Esta semana"], ["semana_pasada", "Semana pasada"], ["mes", "Este mes"], ["mes_pasado", "Mes pasado"], ["30d", "Últimos 30 días"], ["anio", "Este año"]];

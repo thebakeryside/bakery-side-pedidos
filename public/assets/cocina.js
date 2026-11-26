@@ -218,7 +218,7 @@ function render(force = false) {
 }
 const group = (title, list) => list.length ? `<h2 class="group-title">${esc(title)}</h2><div class="cards">${bundle(list).map(card).join("")}</div>` : "";
 
-// ---------- ventas de Mamá (/mama): sus pedidos del mismo día y estado van juntos en una sola tarjeta ----------
+// ---------- ventas de Mom (/mama): sus pedidos del mismo día y estado van juntos en una sola tarjeta ----------
 const localDay = (d) => new Date(new Date(d).getTime() - 5 * 3600000).toISOString().slice(0, 10);
 const batchKey = (o) => `${o.seller_id}|${localDay(o.scheduled_for || o.created_at)}|${o.status}`;
 function bundle(list) {
@@ -234,7 +234,7 @@ function bundle(list) {
 }
 const batchMembers = (k) => S.orders.filter((o) => o.seller_id && batchKey(o) === k);
 function batchCard(b) {
-  const os = b.orders, seller = String(os[0].address || "").replace(/^Lo lleva /, "") || "Mamá";
+  const os = b.orders, seller = String(os[0].address || "").replace(/^Lo lleva /, "") || "Mom";
   const sum = {};
   os.forEach((o) => o.order_items.forEach((i) => (sum[i.name] = (sum[i.name] || 0) + i.quantity)));
   const total = os.reduce((t, o) => t + Number(o.total), 0), paid = os.filter((o) => o.payment_status === "pagado").reduce((t, o) => t + Number(o.total), 0);
@@ -499,7 +499,7 @@ function tell(o, status) {
   const text = waText({ ...o, status });
   if (text) openWa(o.customer_phone, text);
 }
-// botones de la tarjeta de ventas de Mamá: cambian todos sus pedidos juntos
+// botones de la tarjeta de ventas de Mom: cambian todos sus pedidos juntos
 document.addEventListener("click", async (e) => {
   const b = e.target.closest("button[data-bact]"); if (!b) return;
   const to = b.dataset.bact, now = new Date().toISOString(), list = batchMembers(b.dataset.key);

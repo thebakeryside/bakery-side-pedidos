@@ -19,7 +19,7 @@ create index if not exists orders_seller on public.orders (seller_id) where sell
 alter table public.orders drop constraint if exists orders_channel_check;
 alter table public.orders add constraint orders_channel_check check (channel in ('web', 'whatsapp', 'vendedora'));
 
-insert into public.sellers (name) select 'Mamá' where not exists (select 1 from public.sellers);
+insert into public.sellers (name) select 'Mom' where not exists (select 1 from public.sellers);
 
 -- vendedora activa por su clave
 create or replace function private.seller_by_key(p_key text) returns public.sellers
