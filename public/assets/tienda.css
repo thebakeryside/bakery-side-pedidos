@@ -449,6 +449,7 @@ html.noscroll, html.noscroll body { overflow: hidden; overscroll-behavior: none;
 .bf-off { top: 14px; right: 14px; width: 92px; height: 92px; border-radius: 50%; background: #C0392B; color: #fff; display: grid; place-items: center; font-family: var(--display); font-size: 40px; letter-spacing: .02em; transform: rotate(-12deg); box-shadow: 0 8px 22px rgb(192 57 43 / .45); animation: bf-pop 2.4s ease-in-out infinite; }
 @keyframes bf-pop { 0%, 100% { transform: rotate(-12deg) scale(1); } 50% { transform: rotate(-8deg) scale(1.08); } }
 
+.bf-head { display: grid; gap: 12px; }
 .bf-body { padding: 30px 32px; display: flex; flex-direction: column; gap: 14px; justify-content: center; min-width: 0; }
 .bf-eyebrow { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; color: #F0B36E; }
 .bf-dot { width: 9px; height: 9px; border-radius: 50%; background: #FF5A43; box-shadow: 0 0 0 0 rgb(255 90 67 / .7); animation: bf-ping 1.6s infinite; }
@@ -470,6 +471,11 @@ html.noscroll, html.noscroll body { overflow: hidden; overscroll-behavior: none;
 .bf-units i { font-style: normal; font-family: var(--display); font-size: 32px; line-height: 1.3; color: rgb(246 247 222 / .4); }
 
 .bf-stock { margin-top: 4px; }
+.bf-stock-top { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+.bf-limit { font-size: 11.5px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: #0E0B09; background: #F0B36E; padding: 5px 10px; border-radius: 6px; }
+.bf-big { font-family: var(--display); font-weight: 400; font-size: 34px; line-height: .9; letter-spacing: .02em; color: #F6F7DE; }
+.bf-stock.low .bf-big { color: #FF7A63; }
+.bf-stock.low .bf-limit { background: #FF5A43; color: #fff; }
 .bf-stock p { margin: 7px 0 0; font-size: 14px; color: rgb(246 247 222 / .8); }
 .bf-stock b { color: #F6F7DE; }
 .bf-bar { height: 10px; border-radius: 999px; background: rgb(246 247 222 / .12); overflow: hidden; }
@@ -496,12 +502,54 @@ html.noscroll, html.noscroll body { overflow: hidden; overscroll-behavior: none;
 .bf-hero.soldout .bf-ph img { filter: grayscale(.8); opacity: .7; }
 
 @media (prefers-reduced-motion: reduce) { .bf-off, .bf-dot, .bf-bar span, .bf-cta { animation: none; } }
+.bf-night { margin: 0; font-size: 13.5px; line-height: 1.45; color: #F6F7DE; background: rgb(246 247 222 / .08); border: 1px dashed rgb(240 179 110 / .45); border-radius: 12px; padding: 9px 12px; }
 @media (max-width: 899px) {
-  .bf-hero { grid-template-columns: 1fr; border-radius: 18px; margin-top: 6px; }
-  .bf-ph { aspect-ratio: 1 / .92; min-height: 0; }
-  .bf-eyebrow { letter-spacing: .1em; font-size: 11.5px; }
-  .bf-off { width: 76px; height: 76px; font-size: 33px; }
-  .bf-body { padding: 20px 18px 22px; gap: 12px; }
-  .bf-cta { width: 100%; }
-  .bf-units > div { min-width: 56px; }
+  /* celular: toda la oferta cabe en una pantalla al tocar «Black Friday» */
+  .bf-title { font-size: 24px; margin: 12px 0 6px; }
+  .bf-hero { grid-template-columns: 118px minmax(0, 1fr); grid-template-areas: "ph head" "body body"; border-radius: 18px; margin-top: 0; }
+  .bf-ph { grid-area: ph; aspect-ratio: auto; min-height: 0; height: 100%; background: #F5F5F5; }
+  .bf-ph img { inset: 0; object-fit: cover; transform: scale(1.12); }
+  .bf-new { top: 8px; left: 8px; font-size: 9.5px; padding: 4px 7px; letter-spacing: .1em; }
+  .bf-off { top: auto; bottom: 6px; right: 6px; width: 46px; height: 46px; font-size: 20px; }
+  .bf-body { display: contents; }
+  .bf-head { grid-area: head; padding: 12px 12px 10px 14px; gap: 5px; align-content: center; }
+  .bf-eyebrow { font-size: 10px; letter-spacing: .08em; gap: 6px; }
+  .bf-dot { width: 7px; height: 7px; }
+  .bf-name { font-size: 30px; line-height: .95; }
+  .bf-price { gap: 7px; row-gap: 4px; }
+  .bf-price b { font-size: 44px; }
+  .bf-price s { font-size: 17px; }
+  .bf-price span { font-size: 11px; padding: 3px 7px; }
+  .bf-desc { display: none; }
+  .bf-clock, .bf-live { grid-column: 1 / -1; }
+  .bf-clock { padding: 12px 14px 0; gap: 10px; justify-content: space-between; flex-wrap: nowrap; }
+  .bf-live { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px; }
+  .bf-units > div { min-width: 50px; padding: 5px 4px 4px; border-radius: 10px; }
+  .bf-units b { font-size: 26px; }
+  .bf-units small { font-size: 9px; }
+  .bf-units i { font-size: 22px; }
+  .bf-stock { margin: 0; }
+  .bf-stock-top { margin-bottom: 6px; }
+  .bf-limit { font-size: 10px; padding: 4px 8px; }
+  .bf-big { font-size: 28px; }
+  .bf-stock p { font-size: 13px; margin-top: 5px; }
+  .bf-bar { height: 8px; }
+  .bf-cta { width: 100%; min-height: 50px; font-size: 16px; }
+  .bf-step button { width: 40px; height: 40px; }
+  .bf-night { font-size: 12.5px; padding: 7px 10px; }
 }
+
+/* portada de Black Friday (reemplaza la de Navidad solo ese día) */
+.bf-portada { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 18px; max-width: 760px; padding: 22px 24px; border-radius: 22px; color: #F6F7DE;
+  background: radial-gradient(110% 120% at 100% 0%, #3A2A1E 0%, #16110D 55%, #0E0B09 100%); box-shadow: 0 14px 40px rgb(28 23 20 / .22); }
+.bfp-txt { display: grid; gap: 8px; min-width: 0; justify-items: start; }
+.bfp-eyebrow { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; color: #F0B36E; }
+.bfp-h { margin: 0; font-family: var(--display); font-weight: 400; font-size: clamp(36px, 8.6vw, 64px); line-height: .95; text-wrap: balance; color: #F6F7DE; }
+.bfp-h em { font-style: normal; color: #F0B36E; }
+.bfp-lead { margin: 0; font-size: clamp(13.5px, 3.6vw, 16px); color: rgb(246 247 222 / .82); }
+.bfp-lead s { text-decoration-color: #FF5A43; text-decoration-thickness: 2px; color: rgb(246 247 222 / .6); }
+.bfp-go { margin-top: 4px; border: 0; border-radius: 999px; padding: 11px 20px; background: #F0B36E; color: #0E0B09; font: inherit; font-weight: 800; font-size: 15px; cursor: pointer; animation: bf-glow 2.2s ease-in-out infinite; }
+.bfp-ph { position: relative; width: clamp(108px, 28vw, 200px); aspect-ratio: 3 / 4; border-radius: 16px; overflow: hidden; background: #F5F5F5; }
+.bfp-ph img { width: 100%; height: 100%; object-fit: cover; transform: scale(1.18); }
+.bfp-off { position: absolute; right: 6px; bottom: 6px; width: 50px; height: 50px; border-radius: 50%; background: #C0392B; color: #fff; display: grid; place-items: center; font-family: var(--display); font-size: 22px; transform: rotate(-12deg); animation: bf-pop 2.4s ease-in-out infinite; }
+@media (max-width: 520px) { .bf-portada { padding: 16px; gap: 12px; border-radius: 18px; } .bfp-eyebrow { letter-spacing: .08em; font-size: 11px; } }

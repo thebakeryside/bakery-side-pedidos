@@ -96,7 +96,7 @@ async function init() {
   renderWelcomeBar();
   mountSocial(c.whatsapp);
   try { JSON.parse(localStorage.getItem(CART_KEY) || "[]").forEach(([k, q]) => { k = String(k); if (state.products.some((p) => p.id === keyId(k)) && validKey(k)) state.cart.set(k, q); }); } catch {}
-  renderCats(); renderMenu(); renderCart(); renderBFBar();
+  renderCats(); renderMenu(); renderCart(); renderBFBar(); renderBFPortada();
   // estrellas de cada producto (llegan después para no frenar el menú)
   loadRatings().then((r) => { state.ratings = r; state.products.forEach((p) => updateCard(p.id)); });
   await refreshAccount();
@@ -349,8 +349,9 @@ function bfClock() {
 let bfShown = null, bfAnim = 0;
 function bfStockHtml(n) {
   const sold = Math.max(0, BF.total - n), pct = Math.round((sold / BF.total) * 100);
-  const txt = n === 0 ? `<b>¡Se vendieron las ${BF.total}!</b> Gracias, bakers` : n <= 10 ? `<b>¡Últimas <span class="bf-n tabnum">${n}</span> latas!</b> Se acaban hoy` : `<b>Quedan <span class="bf-n tabnum">${n}</span></b> de ${BF.total} latas${sold ? ` · ya se llevaron ${sold}` : ""}`;
-  return `<div class="bf-bar" role="progressbar" aria-valuemin="0" aria-valuemax="${BF.total}" aria-valuenow="${sold}" aria-label="Latas vendidas"><span style="width:${Math.max(pct, 4)}%"></span></div><p>${txt}</p>`;
+  const big = n === 0 ? `<b class="bf-big">Agotadas</b>` : `<b class="bf-big">Quedan <span class="bf-n tabnum">${n}</span></b>`;
+  const sub = n === 0 ? `Se vendieron las ${BF.total}. ¡Gracias, bakers!` : n <= 10 ? `¡Últimas latas! Cuando se acaban, se acabó` : sold ? `Ya se llevaron ${sold} · cuando se acaban, se acabó` : `Cuando se acaban, se acabó`;
+  return `<div class="bf-stock-top"><span class="bf-limit">⚠️ Stock limitado · solo ${BF.total} latas</span>${big}</div><div class="bf-bar" role="progressbar" aria-valuemin="0" aria-valuemax="${BF.total}" aria-valuenow="${sold}" aria-label="Latas vendidas"><span style="width:${Math.max(pct, 4)}%"></span></div><p>${sub}</p>`;
 }
 function bfTick(target) {
   clearTimeout(bfAnim);
@@ -366,15 +367,15 @@ function bfTick(target) {
 function bfLive() {
   const p = bfProduct(), q = qtyOf(BF.pid), left = leftToday(p) ?? BF.total;
   const shown = bfShown ?? BF.total;
-  const save = moneyEs(BF.was - Number(p.price));
   const ctrl = left === 0 && !q
     ? `<button type="button" class="bf-cta" disabled>Agotadas por hoy</button>`
     : !q
       ? `<button type="button" class="bf-cta" data-a="+" data-id="${BF.pid}">Agregar al pedido<span>${moneyEs(p.price)}</span></button>`
       : `<div class="bf-step"><button type="button" data-a="-" data-id="${BF.pid}" aria-label="${q === 1 ? "Quitar" : "Quitar una"}">${q === 1 ? TRASH : MINUS}</button><b class="tabnum">${q}</b><button type="button" data-a="+" data-id="${BF.pid}" aria-label="Agregar una"${q >= left ? " disabled" : ""}>${PLUS}</button></div><button type="button" class="bf-go" data-a="bfcart" data-id="${BF.pid}">Ver mi pedido →</button>`;
-  return `<div class="bf-price"><b>${moneyEs(p.price)}</b><s>${moneyEs(BF.was)}</s><span>Ahorras ${save}</span></div>
-    <div class="bf-stock${shown <= 10 ? " low" : ""}">${bfStockHtml(shown)}</div>
-    <div class="bf-ctrl">${ctrl}</div>`;
+  const n = state.cfg?.next_open, closed = state.cfg && !state.cfg.open_now && left > 0;
+  const night = closed ? `<p class="bf-night">🌙 Pide ahora y asegura tu lata a ${moneyEs(p.price)}. Entregamos ${n ? `${whenLabel(n) === "hoy" ? "hoy" : whenLabel(n)} desde las ${hTxt(n.time)}` : "apenas abramos"}.</p>` : "";
+  return `<div class="bf-stock${shown <= 10 ? " low" : ""}">${bfStockHtml(shown)}</div>
+    <div class="bf-ctrl">${ctrl}</div>${night}`;
 }
 function bfSection() {
   const p = bfProduct(), c = bfClock();
@@ -384,13 +385,31 @@ function bfSection() {
   <article class="bf-hero${leftToday(p) === 0 ? " soldout" : ""}" data-pid="${p.id}" data-bf>
     <div class="bf-ph"><span class="bf-new">¡Nuevo!</span><span class="bf-off">-${off}%</span>${img}</div>
     <div class="bf-body">
-      <p class="bf-eyebrow"><span class="bf-dot"></span>Solo hoy · precio de lanzamiento</p>
+      <div class="bf-head"><p class="bf-eyebrow"><span class="bf-dot"></span>Solo hoy · precio de lanzamiento</p>
       <h4 class="bf-name">${esc(p.name)}</h4>
+      <div class="bf-price"><b>${moneyEs(p.price)}</b><s>${moneyEs(BF.was)}</s><span>Ahorras ${moneyEs(BF.was - Number(p.price))}</span></div></div>
       <p class="bf-desc">Trozos de alfajor de maicena con capas generosas de dulce de leche. La lata nueva, a precio de Black Friday solo este viernes.</p>
       <div class="bf-clock" aria-label="Tiempo que queda de Black Friday"><span class="bf-lbl">Termina en</span><div class="bf-units"><div><b data-bf="h">${c.h}</b><small>horas</small></div><i>:</i><div><b data-bf="m">${c.m}</b><small>min</small></div><i>:</i><div><b data-bf="s">${c.s}</b><small>seg</small></div></div></div>
       <div class="bf-live">${bfLive()}</div>
     </div>
   </article>`;
+}
+// Portada de hoy: Black Friday en lugar de la de Navidad (la de Navidad vuelve sola el sábado)
+function renderBFPortada() {
+  const old = $(".hero-b"); let el = $("#bfPortada");
+  if (!bfOn()) { if (el) el.remove(); if (old) old.hidden = false; return; }
+  const p = bfProduct();
+  if (!el) {
+    el = document.createElement("section"); el.id = "bfPortada"; el.className = "bf-portada";
+    el.innerHTML = `<div class="bfp-txt"><p class="bfp-eyebrow"><span class="bf-dot"></span>Black Friday · solo hoy</p>
+      <h1 class="bfp-h">La lata nueva a <em>${moneyEs(p.price)}</em></h1>
+      <p class="bfp-lead">Alfajor de Dulce de Leche <s>${moneyEs(BF.was)}</s> · solo ${BF.total} latas</p>
+      <button type="button" class="bfp-go" id="bfPortadaGo">¡La quiero! <span aria-hidden="true">↓</span></button></div>
+      <div class="bfp-ph"><img src="${esc(media(p.image_url))}" alt="Lata de Alfajor de Dulce de Leche de The Bakery Side" fetchpriority="high"><span class="bfp-off">-${Math.round((1 - Number(p.price) / BF.was) * 100)}%</span></div>`;
+    old?.before(el);
+    $("#bfPortadaGo").onclick = () => $("#bfBar").click();
+  }
+  if (old) old.hidden = true;
 }
 function renderBF() {
   const el = document.querySelector("#menu [data-bf] .bf-live"); if (!el) return;
@@ -410,7 +429,7 @@ function renderBFBar() {
 // Cada segundo: el contador. Cada 30 s: cuántas latas quedan (la base cuenta las vendidas).
 setInterval(() => {
   if (!state.products.length) return;
-  if (document.querySelector("#menu [data-bf]") && !bfOn()) { renderCats(); renderMenu(); renderBFBar(); return; }
+  if (document.querySelector("#menu [data-bf]") && !bfOn()) { renderCats(); renderMenu(); renderBFBar(); renderBFPortada(); return; }
   if (!bfOn()) return;
   const c = bfClock();
   for (const k of ["h", "m", "s"]) { const b = document.querySelector(`#menu [data-bf="${k}"]`); if (b && b.textContent !== c[k]) b.textContent = c[k]; }
