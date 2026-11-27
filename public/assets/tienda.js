@@ -402,7 +402,7 @@ function renderBFPortada() {
   const p = bfProduct(), off = Math.round((1 - Number(p.price) / BF.was) * 100);
   el = document.createElement("section"); el.id = "bfPortada"; el.className = "bf-portada bfp-a";
   el.innerHTML = `<div class="bfp-txt"><p class="bfp-eyebrow">Solo hoy</p>
-      <h1 class="bfp-h">Nueva latita a <em>${moneyEs(p.price)}</em></h1>
+      <h1 class="bfp-h">Nueva latita viral a <em>${moneyEs(p.price)}</em></h1>
       <p class="bfp-lead">Alfajor de Dulce de Leche a <b>${moneyEs(p.price)}</b> <s>${moneyEs(BF.was)}</s></p></div>
     <button type="button" class="bfp-ph" id="bfPortadaGo" aria-label="Ver la oferta de Black Friday"><img src="${esc(media(p.image_url))}" alt="Lata de Alfajor de Dulce de Leche" fetchpriority="high"><span class="bfp-tag">Black Friday</span><span class="bfp-off">-${off}%</span></button>`;
   old?.before(el);
