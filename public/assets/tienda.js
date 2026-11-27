@@ -383,7 +383,7 @@ function changeQty(key, d) {
   const id = keyId(key);
   const q = (state.cart.get(key) || 0) + d;
   const left = leftToday(product(id));
-  if (d > 0 && left != null && qtyOf(id) + d > left) { toast(left ? `Solo quedan ${left} hoy` : "Agotado por hoy"); return; }
+  if (d > 0 && left != null && qtyOf(id) + d > left) { toast(product(id)?.block_note || (left ? `Solo quedan ${left} hoy` : "Agotado por hoy")); return; }
   if (q <= 0) state.cart.delete(key); else state.cart.set(key, Math.min(q, 50));
   try { localStorage.setItem(CART_KEY, JSON.stringify([...state.cart])); } catch {}
   updateCard(id); renderCart(); if (state.loc) requestQuote();
