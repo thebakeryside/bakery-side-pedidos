@@ -393,21 +393,20 @@ function bfSection() {
     </div>
   </article>`;
 }
-// Portada de hoy: Black Friday en lugar de la de Navidad (la de Navidad vuelve sola el sábado)
+// Portada de hoy: Black Friday en lugar de la de Navidad (la de Navidad vuelve sola el sábado).
+// Formato clásico; tocar la foto lleva a la categoría Black Friday.
 function renderBFPortada() {
   const old = $(".hero-b"); let el = $("#bfPortada");
   if (!bfOn()) { if (el) el.remove(); if (old) old.hidden = false; return; }
-  const p = bfProduct();
-  if (!el) {
-    el = document.createElement("section"); el.id = "bfPortada"; el.className = "bf-portada";
-    el.innerHTML = `<div class="bfp-txt"><p class="bfp-eyebrow"><span class="bf-dot"></span>Black Friday · solo hoy</p>
-      <h1 class="bfp-h">La lata nueva a <em>${moneyEs(p.price)}</em></h1>
-      <p class="bfp-lead">Alfajor de Dulce de Leche <s>${moneyEs(BF.was)}</s> · stock limitado</p>
-      <button type="button" class="bfp-go" id="bfPortadaGo">¡La quiero! <span aria-hidden="true">↓</span></button></div>
-      <div class="bfp-ph"><img src="${esc(media(p.image_url))}" alt="Lata de Alfajor de Dulce de Leche de The Bakery Side" fetchpriority="high"><span class="bfp-off">-${Math.round((1 - Number(p.price) / BF.was) * 100)}%</span></div>`;
-    old?.before(el);
-    $("#bfPortadaGo").onclick = bfScroll;
-  }
+  if (el) return;
+  const p = bfProduct(), off = Math.round((1 - Number(p.price) / BF.was) * 100);
+  el = document.createElement("section"); el.id = "bfPortada"; el.className = "bf-portada bfp-a";
+  el.innerHTML = `<div class="bfp-txt"><p class="bfp-eyebrow">Solo hoy</p>
+      <h1 class="bfp-h">Nueva latita a <em>${moneyEs(p.price)}</em></h1>
+      <p class="bfp-lead">Alfajor de Dulce de Leche a <b>${moneyEs(p.price)}</b> <s>${moneyEs(BF.was)}</s></p></div>
+    <button type="button" class="bfp-ph" id="bfPortadaGo" aria-label="Ver la oferta de Black Friday"><img src="${esc(media(p.image_url))}" alt="Lata de Alfajor de Dulce de Leche" fetchpriority="high"><span class="bfp-tag">Black Friday</span><span class="bfp-off">-${off}%</span></button>`;
+  old?.before(el);
+  $("#bfPortadaGo").onclick = bfScroll;
   if (old) old.hidden = true;
 }
 function renderBF() {
