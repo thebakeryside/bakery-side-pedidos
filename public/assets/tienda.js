@@ -96,7 +96,7 @@ async function init() {
   renderWelcomeBar();
   mountSocial(c.whatsapp);
   try { JSON.parse(localStorage.getItem(CART_KEY) || "[]").forEach(([k, q]) => { k = String(k); if (state.products.some((p) => p.id === keyId(k)) && validKey(k)) state.cart.set(k, q); }); } catch {}
-  renderCats(); renderMenu(); renderCart();
+  renderCats(); renderMenu(); renderCart(); renderBFBar();
   // estrellas de cada producto (llegan después para no frenar el menú)
   loadRatings().then((r) => { state.ratings = r; state.products.forEach((p) => updateCard(p.id)); });
   await refreshAccount();
@@ -235,7 +235,8 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#wel
 // ---------- menú ----------
 // Las categorías quedan fijas arriba al bajar; tocar una lleva a su sección y la activa se marca sola
 function renderCats() {
-  $("#cats").innerHTML = state.cats.map((c, i) => `<button type="button" aria-pressed="${i === 0}" data-cat="${c.id}">${esc(c.name)}</button>`).join("");
+  const bf = bfOn();
+  $("#cats").innerHTML = (bf ? `<button type="button" class="cat-bf" aria-pressed="true" data-cat="bf">🔥 Black Friday</button>` : "") + state.cats.map((c, i) => `<button type="button" aria-pressed="${!bf && i === 0}" data-cat="${c.id}">${esc(c.name)}</button>`).join("");
 }
 const stickyTop = () => $(".topbar").offsetHeight + $("#cats").offsetHeight + 8;
 $("#cats").addEventListener("click", (e) => {
@@ -262,7 +263,7 @@ addEventListener("scroll", () => {
     const line = stickyTop() + 4;
     let cur = null;
     for (const h of $$("#menu .cat-title")) { if (h.getBoundingClientRect().top <= line) cur = h.id.slice(4); }
-    setActiveCat(cur ?? state.cats[0]?.id);
+    setActiveCat(cur ?? (bfOn() ? "bf" : state.cats[0]?.id));
   });
 }, { passive: true });
 
@@ -332,8 +333,111 @@ const baseOrder = (c) => (/dulces enteros/i.test(c.name) ? (a, b) => Number(b.pr
 // Combos: siempre por precio, de mayor a menor (también los navideños)
 const byPriceDesc = (a, b) => Number(b.price) - Number(a.price) || byName(a, b);
 const menuOrder = (c) => /^combos/i.test(c.name) ? byPriceDesc : (a, b) => (b.seasonal ? 1 : 0) - (a.seasonal ? 1 : 0) || (a.seasonal && b.seasonal ? (a.sort ?? 0) - (b.sort ?? 0) : baseOrder(c)(a, b));
+// ---------- Black Friday (viernes 27 nov 2026, hora de Guayaquil) ----------
+// La lata nueva sale en grande arriba del menú, con contador hasta la medianoche y las latas que quedan.
+// Se apaga sola al terminar el día. El precio y el tope de 50 salen de la base (producto 63).
+const BF = { pid: 63, start: Date.parse("2026-11-27T00:00:00-05:00"), end: Date.parse("2026-11-28T00:00:00-05:00"), was: 4.25, total: 50 };
+if (new URLSearchParams(location.search).get("bf") === "1") { BF.start = 0; BF.end = Math.max(BF.end, Date.now() + 9 * 3600000); } // vista previa
+const bfProduct = () => state.products.find((p) => p.id === BF.pid);
+const bfOn = () => Date.now() >= BF.start && Date.now() < BF.end && Boolean(bfProduct());
+const two = (n) => String(n).padStart(2, "0");
+function bfClock() {
+  const ms = Math.max(0, BF.end - Date.now()), t = Math.floor(ms / 1000);
+  return { h: two(Math.floor(t / 3600)), m: two(Math.floor((t % 3600) / 60)), s: two(t % 60) };
+}
+// Lo que muestra el contador de latas: arranca en 50 y baja una por una hasta lo que queda de verdad
+let bfShown = null, bfAnim = 0;
+function bfStockHtml(n) {
+  const sold = Math.max(0, BF.total - n), pct = Math.round((sold / BF.total) * 100);
+  const txt = n === 0 ? `<b>¡Se vendieron las ${BF.total}!</b> Gracias, bakers` : n <= 10 ? `<b>¡Últimas <span class="bf-n tabnum">${n}</span> latas!</b> Se acaban hoy` : `<b>Quedan <span class="bf-n tabnum">${n}</span></b> de ${BF.total} latas${sold ? ` · ya se llevaron ${sold}` : ""}`;
+  return `<div class="bf-bar" role="progressbar" aria-valuemin="0" aria-valuemax="${BF.total}" aria-valuenow="${sold}" aria-label="Latas vendidas"><span style="width:${Math.max(pct, 4)}%"></span></div><p>${txt}</p>`;
+}
+function bfTick(target) {
+  clearTimeout(bfAnim);
+  if (bfShown == null) bfShown = BF.total;
+  const el = document.querySelector("#menu [data-bf] .bf-stock");
+  if (!el || bfShown <= target) { bfShown = target; if (el) { el.innerHTML = bfStockHtml(target); el.classList.toggle("low", target <= 10); } return; }
+  const gap = bfShown - target, wait = Math.max(70, Math.min(650, 3200 / gap)); // muchas vendidas: baja más rápido
+  bfShown -= 1;
+  el.innerHTML = bfStockHtml(bfShown); el.classList.toggle("low", bfShown <= 10);
+  el.classList.remove("tick"); void el.offsetWidth; el.classList.add("tick");
+  bfAnim = setTimeout(() => bfTick(target), wait);
+}
+function bfLive() {
+  const p = bfProduct(), q = qtyOf(BF.pid), left = leftToday(p) ?? BF.total;
+  const shown = bfShown ?? BF.total;
+  const save = moneyEs(BF.was - Number(p.price));
+  const ctrl = left === 0 && !q
+    ? `<button type="button" class="bf-cta" disabled>Agotadas por hoy</button>`
+    : !q
+      ? `<button type="button" class="bf-cta" data-a="+" data-id="${BF.pid}">Agregar al pedido<span>${moneyEs(p.price)}</span></button>`
+      : `<div class="bf-step"><button type="button" data-a="-" data-id="${BF.pid}" aria-label="${q === 1 ? "Quitar" : "Quitar una"}">${q === 1 ? TRASH : MINUS}</button><b class="tabnum">${q}</b><button type="button" data-a="+" data-id="${BF.pid}" aria-label="Agregar una"${q >= left ? " disabled" : ""}>${PLUS}</button></div><button type="button" class="bf-go" data-a="bfcart" data-id="${BF.pid}">Ver mi pedido →</button>`;
+  return `<div class="bf-price"><b>${moneyEs(p.price)}</b><s>${moneyEs(BF.was)}</s><span>Ahorras ${save}</span></div>
+    <div class="bf-stock${shown <= 10 ? " low" : ""}">${bfStockHtml(shown)}</div>
+    <div class="bf-ctrl">${ctrl}</div>`;
+}
+function bfSection() {
+  const p = bfProduct(), c = bfClock();
+  const img = p.image_url ? `<img src="${esc(media(p.image_url))}" alt="${esc(p.name)} en lata, Black Friday" fetchpriority="high">` : "";
+  const off = Math.round((1 - Number(p.price) / BF.was) * 100);
+  return `<h3 class="cat-title bf-title" id="cat-bf">Black Friday <span class="bf-pill">Solo hoy</span></h3>
+  <article class="bf-hero${leftToday(p) === 0 ? " soldout" : ""}" data-pid="${p.id}" data-bf>
+    <div class="bf-ph"><span class="bf-new">¡Nuevo!</span><span class="bf-off">-${off}%</span>${img}</div>
+    <div class="bf-body">
+      <p class="bf-eyebrow"><span class="bf-dot"></span>Solo hoy · precio de lanzamiento</p>
+      <h4 class="bf-name">${esc(p.name)}</h4>
+      <p class="bf-desc">Trozos de alfajor de maicena con capas generosas de dulce de leche. La lata nueva, a precio de Black Friday solo este viernes.</p>
+      <div class="bf-clock" aria-label="Tiempo que queda de Black Friday"><span class="bf-lbl">Termina en</span><div class="bf-units"><div><b data-bf="h">${c.h}</b><small>horas</small></div><i>:</i><div><b data-bf="m">${c.m}</b><small>min</small></div><i>:</i><div><b data-bf="s">${c.s}</b><small>seg</small></div></div></div>
+      <div class="bf-live">${bfLive()}</div>
+    </div>
+  </article>`;
+}
+function renderBF() {
+  const el = document.querySelector("#menu [data-bf] .bf-live"); if (!el) return;
+  el.innerHTML = bfLive();
+  el.closest(".bf-hero").classList.toggle("soldout", leftToday(bfProduct()) === 0);
+  bfTick(leftToday(bfProduct()) ?? BF.total);
+  renderBFBar();
+}
+function renderBFBar() {
+  const bar = $("#bfBar"); if (!bar) return;
+  if (!bfOn()) { bar.hidden = true; return; }
+  const p = bfProduct(), left = leftToday(p) ?? BF.total, c = bfClock();
+  bar.hidden = false;
+  const n = bfShown ?? left;
+  $("#bfBarTxt").innerHTML = left === 0 ? `<b>Black Friday</b> · ¡Se vendieron todas las latas!` : `<b>Black Friday</b> · Lata nueva a <b>${moneyEs(p.price)}</b> · Quedan <b class="tabnum">${n}</b> · Termina en <span class="tabnum">${c.h}:${c.m}:${c.s}</span>`;
+}
+// Cada segundo: el contador. Cada 30 s: cuántas latas quedan (la base cuenta las vendidas).
+setInterval(() => {
+  if (!state.products.length) return;
+  if (document.querySelector("#menu [data-bf]") && !bfOn()) { renderCats(); renderMenu(); renderBFBar(); return; }
+  if (!bfOn()) return;
+  const c = bfClock();
+  for (const k of ["h", "m", "s"]) { const b = document.querySelector(`#menu [data-bf="${k}"]`); if (b && b.textContent !== c[k]) b.textContent = c[k]; }
+  renderBFBar();
+}, 1000);
+async function bfRefresh() {
+  if (!bfOn() || document.hidden) return;
+  const { data } = await sb.from("products").select("id,price,stock_left,stock_day,sold_out_day,active").eq("id", BF.pid).maybeSingle();
+  const p = bfProduct(); if (!data || !p) return;
+  if (!data.active) { state.products = state.products.filter((x) => x.id !== BF.pid); renderCats(); renderMenu(); renderBFBar(); return; }
+  const before = leftToday(p); Object.assign(p, data);
+  const now = leftToday(p);
+  if (now !== before) {
+    renderBF();
+    if (before != null && now != null && now < before) toast(now === 0 ? "🔥 ¡Se acaban de vender las últimas latas!" : `🔥 ¡Alguien acaba de llevarse ${before - now === 1 ? "una lata" : `${before - now} latas`}! Quedan ${now}`, 3500);
+  }
+}
+setInterval(bfRefresh, 15000);
+document.addEventListener("visibilitychange", bfRefresh);
+$("#bfBar")?.addEventListener("click", () => {
+  const sec = document.getElementById("cat-bf"); if (!sec) return;
+  scrollTo({ top: sec.getBoundingClientRect().top + scrollY - stickyTop(), behavior: "smooth" });
+});
+
 // Al agregar o quitar solo se actualizan los botones de ese producto (las fotos no se recargan)
 function updateCard(id) {
+  if (id === BF.pid && document.querySelector("#menu [data-bf]")) return renderBF();
   const el = document.querySelector(`#menu [data-pid="${id}"]`); if (!el) return;
   const t = document.createElement("template"); t.innerHTML = itemCard(product(id)).trim();
   const fresh = t.content.firstElementChild;
@@ -345,13 +449,22 @@ function updateCard(id) {
   else if (!rate && freshRate) el.querySelector(".body > p")?.after(freshRate);
 }
 function renderMenu() {
+  const bf = bfOn();
   const groups = state.cats
-    .map((c) => ({ c, items: state.products.filter((p) => p.category_id === c.id).sort(menuOrder(c)) }));
-  $("#menu").innerHTML = groups.length
+    .map((c) => ({ c, items: state.products.filter((p) => p.category_id === c.id && !(bf && p.id === BF.pid)).sort(menuOrder(c)) }))
+    .filter((g) => g.items.length || !bf || g.c.id !== bfProduct()?.category_id);
+  if (bf) { clearTimeout(bfAnim); bfShown = null; }
+  $("#menu").innerHTML = (bf ? bfSection() : "") + (groups.length
     ? groups.map((g) => `<h3 class="cat-title" id="cat-${g.c.id}">${esc(g.c.name)}</h3>${g.items.length
         ? `<div class="menu-grid">${g.items.map(itemCard).join("")}</div>`
         : `<div class="soon"><span class="display">Próximamente</span><span class="muted small">Estamos preparando esta sección.</span></div>`}`).join("")
-    : `<p class="muted">Pronto publicaremos el menú.</p>`;
+    : `<p class="muted">Pronto publicaremos el menú.</p>`);
+  const hero = bf && document.querySelector("#menu [data-bf]");
+  if (hero) {
+    const go = () => setTimeout(() => bfTick(leftToday(bfProduct()) ?? BF.total), 500);
+    if (!("IntersectionObserver" in window)) go();
+    else { const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io.disconnect(); go(); } }, { threshold: 0.35 }); io.observe(hero); }
+  }
   // Leyenda de alérgenos al final del menú: oculta por ahora (solo está marcado el alcohol; 17 nov).
   // if (groups.length && state.products.some((p) => p.allergens?.length)) $("#menu").insertAdjacentHTML("beforeend", `<div class="alg-legend"><b>Alérgenos</b>${ALLERGENS.map(([k, i, n]) => `<span><span class="alg" aria-hidden="true">${i}</span>${n}</span>`).join("")}<small>Todo se prepara en la misma cocina: puede haber trazas. ¿Alergia severa? Escríbenos antes de pedir.</small></div>`);
 }
@@ -368,6 +481,8 @@ $("#menu").addEventListener("click", (e) => {
   }
   if (a === "pick") { if (expanded === id) { expanded = null; clearTimeout(expTimer); updateCard(id); } return openPicker(product(id)); }
   if (a === "expand") { setExpanded(id); return; }
+  if (a === "bfcart") { openCart(); return; }
+  if (a === "+" && id === BF.pid && !qtyOf(id) && bfOn()) setTimeout(() => qtyOf(id) && toast("🔥 ¡Tu lata de Black Friday ya está en tu pedido!"), 0);
   if (a === "+" && qtyOf(id) > 0) expanded = id; // sigue mostrando − y + mientras ajusta
   // con opciones (endulzante): el − quita la última que agregó de ese producto
   const key = a === "-" && groupsOf(id).length ? lastKeyOf(id) : String(id);

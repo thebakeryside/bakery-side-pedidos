@@ -56,13 +56,15 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=Bebas+Neue&display=swap">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="/assets/app.css">
-<link rel="stylesheet" href="/assets/tienda.css?v=8">
+<link rel="stylesheet" href="/assets/tienda.css?v=9">
 <link rel="stylesheet" href="/assets/account.css">
 <!-- Temporada navideña (se activa sola por fecha; ver assets/temporada.js) -->
 <link rel="stylesheet" href="/assets/temporada.css?v=3">
 <script src="/assets/temporada.js?v=2"></script>
 </head>
 <body class="light">
+<!-- Black Friday (vie 27 nov 2026): aparece solo ese día; lo maneja tienda.js (BF) -->
+<button type="button" class="bf-topbar" id="bfBar" hidden><span class="wrap bf-tb-in"><span id="bfBarTxt"><b>Black Friday</b></span><span class="bf-tb-go">Ver oferta ↓</span></span></button>
 <!-- Aviso de alta demanda: aparece solo mientras está activo "Solo pedidos para el día siguiente" en Master → Ajustes -->
 <div class="demand-bar" id="demandBar" role="status" hidden>
   <div class="wrap db-in"><p>🤍 <b>Bakers, ¡gracias por tanto cariño!</b> Hoy nos superó la demanda, así que todos los pedidos se entregan mañana. Agende el suyo ahora y lo preparamos con todo el amor 🍪✨</p></div>
@@ -293,6 +295,6 @@
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script type="module" src="/assets/tienda.js?v=8"></script>
+<script type="module" src="/assets/tienda.js?v=9"></script>
 </body>
 </html>
