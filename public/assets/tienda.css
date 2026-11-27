@@ -472,8 +472,8 @@ html.noscroll, html.noscroll body { overflow: hidden; overscroll-behavior: none;
 
 .bf-stock { margin-top: 4px; }
 .bf-stock-top { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
-.bf-limit { font-size: 11.5px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: #0E0B09; background: #F0B36E; padding: 5px 10px; border-radius: 6px; }
-.bf-big { font-family: var(--display); font-weight: 400; font-size: 34px; line-height: .9; letter-spacing: .02em; color: #F6F7DE; }
+.bf-limit { font-size: 13px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: #0E0B09; background: #F0B36E; padding: 5px 10px; border-radius: 6px; }
+.bf-big { font-family: var(--display); font-weight: 400; font-size: 44px; line-height: .9; letter-spacing: .02em; color: #F6F7DE; }
 .bf-stock.low .bf-big { color: #FF7A63; }
 .bf-stock.low .bf-limit { background: #FF5A43; color: #fff; }
 .bf-stock p { margin: 7px 0 0; font-size: 14px; color: rgb(246 247 222 / .8); }
@@ -514,26 +514,26 @@ html.noscroll, html.noscroll body { overflow: hidden; overscroll-behavior: none;
   .bf-body { flex: none; padding: 12px 14px 14px; gap: 9px; }
   .bf-head { gap: 4px; }
   .bf-eyebrow, .bf-desc { display: none; }
-  .bf-name { font-size: 30px; line-height: .95; }
+  .bf-name { font-size: 34px; line-height: .95; }
   .bf-price { gap: 8px; }
-  .bf-price b { font-size: 46px; }
-  .bf-price s { font-size: 18px; }
-  .bf-price span { font-size: 11px; padding: 3px 8px; }
+  .bf-price b { font-size: 56px; }
+  .bf-price s { font-size: 21px; }
+  .bf-price span { font-size: 12px; padding: 4px 9px; }
   .bf-clock { gap: 8px; justify-content: space-between; flex-wrap: nowrap; }
-  .bf-lbl { font-size: 10.5px; letter-spacing: .1em; }
+  .bf-lbl { font-size: 12px; letter-spacing: .1em; }
   .bf-units { gap: 4px; }
-  .bf-units > div { min-width: 48px; padding: 4px 4px 3px; border-radius: 9px; }
-  .bf-units b { font-size: 24px; }
-  .bf-units small { font-size: 8.5px; }
-  .bf-units i { font-size: 20px; line-height: 1.2; }
+  .bf-units > div { min-width: 56px; padding: 6px 5px 4px; border-radius: 10px; }
+  .bf-units b { font-size: 30px; }
+  .bf-units small { font-size: 9.5px; }
+  .bf-units i { font-size: 24px; line-height: 1.3; }
   .bf-live { display: flex; flex-direction: column; gap: 9px; }
   .bf-stock { margin: 0; }
   .bf-stock-top { margin-bottom: 5px; align-items: center; }
-  .bf-limit { font-size: 9.5px; padding: 4px 7px; letter-spacing: .06em; }
-  .bf-big { font-size: 26px; }
-  .bf-stock p { font-size: 12px; margin-top: 4px; }
-  .bf-bar { height: 7px; }
-  .bf-cta { width: 100%; min-height: 50px; font-size: 16px; }
+  .bf-limit { font-size: 13px; padding: 6px 10px; letter-spacing: .08em; }
+  .bf-big { font-size: 38px; }
+  .bf-stock p { font-size: 13px; margin-top: 5px; }
+  .bf-bar { height: 9px; }
+  .bf-cta { width: 100%; min-height: 58px; font-size: 18px; }
   .bf-step button { width: 40px; height: 40px; }
   .bf-night { font-size: 11.5px; padding: 6px 10px; line-height: 1.35; }
 }

@@ -352,7 +352,7 @@ function bfStockHtml(n) {
   const sold = Math.max(0, BF.total - n), pct = Math.round((sold / BF.total) * 100);
   const big = n === 0 ? `<b class="bf-big">Agotadas</b>` : `<b class="bf-big">Quedan <span class="bf-n tabnum">${n}</span></b>`;
   const sub = n === 0 ? `Se vendieron las ${BF.total}. ¡Gracias, bakers!` : n <= 10 ? `¡Últimas latas! Cuando se acaban, se acabó` : sold ? `Ya se llevaron ${sold} · cuando se acaban, se acabó` : `Cuando se acaban, se acabó`;
-  return `<div class="bf-stock-top"><span class="bf-limit">⚠️ Stock limitado · solo ${BF.total} latas</span>${big}</div><div class="bf-bar" role="progressbar" aria-valuemin="0" aria-valuemax="${BF.total}" aria-valuenow="${sold}" aria-label="Latas vendidas"><span style="width:${Math.max(pct, 4)}%"></span></div><p>${sub}</p>`;
+  return `<div class="bf-stock-top"><span class="bf-limit">⚠️ Stock limitado</span>${big}</div><div class="bf-bar" role="progressbar" aria-valuemin="0" aria-valuemax="${BF.total}" aria-valuenow="${sold}" aria-label="Latas vendidas"><span style="width:${Math.max(pct, 4)}%"></span></div><p>${sub}</p>`;
 }
 function bfTick(target) {
   clearTimeout(bfAnim);
@@ -373,10 +373,8 @@ function bfLive() {
     : !q
       ? `<button type="button" class="bf-cta" data-a="+" data-id="${BF.pid}">Agregar al pedido<span>${moneyEs(p.price)}</span></button>`
       : `<div class="bf-step"><button type="button" data-a="-" data-id="${BF.pid}" aria-label="${q === 1 ? "Quitar" : "Quitar una"}">${q === 1 ? TRASH : MINUS}</button><b class="tabnum">${q}</b><button type="button" data-a="+" data-id="${BF.pid}" aria-label="Agregar una"${q >= left ? " disabled" : ""}>${PLUS}</button></div><button type="button" class="bf-go" data-a="bfcart" data-id="${BF.pid}">Ver mi pedido →</button>`;
-  const n = state.cfg?.next_open, closed = state.cfg && !state.cfg.open_now && left > 0;
-  const night = closed ? `<p class="bf-night">🌙 Pide ahora y asegura tu lata a ${moneyEs(p.price)}. Entregamos ${n ? `${whenLabel(n) === "hoy" ? "hoy" : whenLabel(n)} desde las ${hTxt(n.time)}` : "apenas abramos"}.</p>` : "";
   return `<div class="bf-stock${shown <= 10 ? " low" : ""}">${bfStockHtml(shown)}</div>
-    <div class="bf-ctrl">${ctrl}</div>${night}`;
+    <div class="bf-ctrl">${ctrl}</div>`;
 }
 function bfSection() {
   const p = bfProduct(), c = bfClock();
@@ -404,7 +402,7 @@ function renderBFPortada() {
     el = document.createElement("section"); el.id = "bfPortada"; el.className = "bf-portada";
     el.innerHTML = `<div class="bfp-txt"><p class="bfp-eyebrow"><span class="bf-dot"></span>Black Friday · solo hoy</p>
       <h1 class="bfp-h">La lata nueva a <em>${moneyEs(p.price)}</em></h1>
-      <p class="bfp-lead">Alfajor de Dulce de Leche <s>${moneyEs(BF.was)}</s> · solo ${BF.total} latas</p>
+      <p class="bfp-lead">Alfajor de Dulce de Leche <s>${moneyEs(BF.was)}</s> · stock limitado</p>
       <button type="button" class="bfp-go" id="bfPortadaGo">¡La quiero! <span aria-hidden="true">↓</span></button></div>
       <div class="bfp-ph"><img src="${esc(media(p.image_url))}" alt="Lata de Alfajor de Dulce de Leche de The Bakery Side" fetchpriority="high"><span class="bfp-off">-${Math.round((1 - Number(p.price) / BF.was) * 100)}%</span></div>`;
     old?.before(el);
