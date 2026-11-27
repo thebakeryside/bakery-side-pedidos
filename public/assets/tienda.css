@@ -504,39 +504,38 @@ html.noscroll, html.noscroll body { overflow: hidden; overscroll-behavior: none;
 @media (prefers-reduced-motion: reduce) { .bf-off, .bf-dot, .bf-bar span, .bf-cta { animation: none; } }
 .bf-night { margin: 0; font-size: 13.5px; line-height: 1.45; color: #F6F7DE; background: rgb(246 247 222 / .08); border: 1px dashed rgb(240 179 110 / .45); border-radius: 12px; padding: 9px 12px; }
 @media (max-width: 899px) {
-  /* celular: toda la oferta cabe en una pantalla al tocar «Black Friday» */
+  /* celular: al tocar «Black Friday» la tarjeta llena justo la pantalla, con la foto grande */
   .bf-title { font-size: 24px; margin: 12px 0 6px; }
-  .bf-hero { grid-template-columns: 118px minmax(0, 1fr); grid-template-areas: "ph head" "body body"; border-radius: 18px; margin-top: 0; }
-  .bf-ph { grid-area: ph; aspect-ratio: auto; min-height: 0; height: 100%; background: #F5F5F5; }
-  .bf-ph img { inset: 0; object-fit: cover; transform: scale(1.12); }
-  .bf-new { top: 8px; left: 8px; font-size: 9.5px; padding: 4px 7px; letter-spacing: .1em; }
-  .bf-off { top: auto; bottom: 6px; right: 6px; width: 46px; height: 46px; font-size: 20px; }
-  .bf-body { display: contents; }
-  .bf-head { grid-area: head; padding: 12px 12px 10px 14px; gap: 5px; align-content: center; }
-  .bf-eyebrow { font-size: 10px; letter-spacing: .08em; gap: 6px; }
-  .bf-dot { width: 7px; height: 7px; }
+  .bf-hero { display: flex; flex-direction: column; height: calc(100svh - var(--bf-top, 140px) - 10px); min-height: 520px; max-height: 960px; border-radius: 18px; margin-top: 0; }
+  .bf-ph { flex: 1 1 0; min-height: 0; aspect-ratio: auto; }
+  .bf-ph img { object-fit: contain; transform: scale(1.06); }
+  .bf-new { top: 12px; left: 12px; font-size: 11px; padding: 5px 10px; }
+  .bf-off { top: 10px; right: 10px; width: 70px; height: 70px; font-size: 30px; }
+  .bf-body { flex: none; padding: 12px 14px 14px; gap: 9px; }
+  .bf-head { gap: 4px; }
+  .bf-eyebrow, .bf-desc { display: none; }
   .bf-name { font-size: 30px; line-height: .95; }
-  .bf-price { gap: 7px; row-gap: 4px; }
-  .bf-price b { font-size: 44px; }
-  .bf-price s { font-size: 17px; }
-  .bf-price span { font-size: 11px; padding: 3px 7px; }
-  .bf-desc { display: none; }
-  .bf-clock, .bf-live { grid-column: 1 / -1; }
-  .bf-clock { padding: 12px 14px 0; gap: 10px; justify-content: space-between; flex-wrap: nowrap; }
-  .bf-live { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px; }
-  .bf-units > div { min-width: 50px; padding: 5px 4px 4px; border-radius: 10px; }
-  .bf-units b { font-size: 26px; }
-  .bf-units small { font-size: 9px; }
-  .bf-units i { font-size: 22px; }
+  .bf-price { gap: 8px; }
+  .bf-price b { font-size: 46px; }
+  .bf-price s { font-size: 18px; }
+  .bf-price span { font-size: 11px; padding: 3px 8px; }
+  .bf-clock { gap: 8px; justify-content: space-between; flex-wrap: nowrap; }
+  .bf-lbl { font-size: 10.5px; letter-spacing: .1em; }
+  .bf-units { gap: 4px; }
+  .bf-units > div { min-width: 48px; padding: 4px 4px 3px; border-radius: 9px; }
+  .bf-units b { font-size: 24px; }
+  .bf-units small { font-size: 8.5px; }
+  .bf-units i { font-size: 20px; line-height: 1.2; }
+  .bf-live { display: flex; flex-direction: column; gap: 9px; }
   .bf-stock { margin: 0; }
-  .bf-stock-top { margin-bottom: 6px; }
-  .bf-limit { font-size: 10px; padding: 4px 8px; }
-  .bf-big { font-size: 28px; }
-  .bf-stock p { font-size: 13px; margin-top: 5px; }
-  .bf-bar { height: 8px; }
+  .bf-stock-top { margin-bottom: 5px; align-items: center; }
+  .bf-limit { font-size: 9.5px; padding: 4px 7px; letter-spacing: .06em; }
+  .bf-big { font-size: 26px; }
+  .bf-stock p { font-size: 12px; margin-top: 4px; }
+  .bf-bar { height: 7px; }
   .bf-cta { width: 100%; min-height: 50px; font-size: 16px; }
   .bf-step button { width: 40px; height: 40px; }
-  .bf-night { font-size: 12.5px; padding: 7px 10px; }
+  .bf-night { font-size: 11.5px; padding: 6px 10px; line-height: 1.35; }
 }
 
 /* portada de Black Friday (reemplaza la de Navidad solo ese día) */

@@ -96,7 +96,7 @@ async function init() {
   renderWelcomeBar();
   mountSocial(c.whatsapp);
   try { JSON.parse(localStorage.getItem(CART_KEY) || "[]").forEach(([k, q]) => { k = String(k); if (state.products.some((p) => p.id === keyId(k)) && validKey(k)) state.cart.set(k, q); }); } catch {}
-  renderCats(); renderMenu(); renderCart(); renderBFBar(); renderBFPortada();
+  renderCats(); renderMenu(); renderCart(); renderBFBar(); renderBFPortada(); setBfTop();
   // estrellas de cada producto (llegan después para no frenar el menú)
   loadRatings().then((r) => { state.ratings = r; state.products.forEach((p) => updateCard(p.id)); });
   await refreshAccount();
@@ -241,6 +241,7 @@ function renderCats() {
 const stickyTop = () => $(".topbar").offsetHeight + $("#cats").offsetHeight + 8;
 $("#cats").addEventListener("click", (e) => {
   const b = e.target.closest("[data-cat]"); if (!b) return;
+  if (b.dataset.cat === "bf") return bfScroll();
   const sec = document.getElementById(`cat-${b.dataset.cat}`); if (!sec) return;
   spyLock = Date.now() + 700; setActiveCat(b.dataset.cat);
   scrollTo({ top: sec.getBoundingClientRect().top + scrollY - stickyTop(), behavior: "smooth" });
@@ -407,7 +408,7 @@ function renderBFPortada() {
       <button type="button" class="bfp-go" id="bfPortadaGo">¡La quiero! <span aria-hidden="true">↓</span></button></div>
       <div class="bfp-ph"><img src="${esc(media(p.image_url))}" alt="Lata de Alfajor de Dulce de Leche de The Bakery Side" fetchpriority="high"><span class="bfp-off">-${Math.round((1 - Number(p.price) / BF.was) * 100)}%</span></div>`;
     old?.before(el);
-    $("#bfPortadaGo").onclick = () => $("#bfBar").click();
+    $("#bfPortadaGo").onclick = bfScroll;
   }
   if (old) old.hidden = true;
 }
@@ -449,10 +450,16 @@ async function bfRefresh() {
 }
 setInterval(bfRefresh, 15000);
 document.addEventListener("visibilitychange", bfRefresh);
-$("#bfBar")?.addEventListener("click", () => {
-  const sec = document.getElementById("cat-bf"); if (!sec) return;
-  scrollTo({ top: sec.getBoundingClientRect().top + scrollY - stickyTop(), behavior: "smooth" });
-});
+function bfScroll() {
+  const phone = matchMedia("(max-width: 899px)").matches;
+  const sec = phone ? document.querySelector("#menu [data-bf]") : document.getElementById("cat-bf"); if (!sec) return;
+  spyLock = Date.now() + 900; setActiveCat("bf");
+  scrollTo({ top: sec.getBoundingClientRect().top + scrollY - stickyTop() + (phone ? 4 : 0), behavior: "smooth" });
+}
+$("#bfBar")?.addEventListener("click", bfScroll);
+// alto disponible bajo la cabecera fija: la tarjeta del celular ocupa justo una pantalla
+const setBfTop = () => document.documentElement.style.setProperty("--bf-top", `${stickyTop()}px`);
+addEventListener("resize", setBfTop);
 
 // Al agregar o quitar solo se actualizan los botones de ese producto (las fotos no se recargan)
 function updateCard(id) {
