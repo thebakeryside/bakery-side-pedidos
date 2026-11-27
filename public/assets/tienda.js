@@ -282,6 +282,7 @@ const promoTag = (p) => (promoDays(p).length && promoDays(p).length < 7 ? `<span
 // Stock del día: null = sin límite, 0 = agotado hoy, N = quedan N hoy
 function leftToday(p) {
   const today = todayLocal();
+  if (p.block_note) return 0; // visible pero no se puede pedir (ej.: ley seca)
   if (p.sold_out_day === today) return 0;
   if (p.stock_day === today && p.stock_left != null) return p.stock_left;
   return null;
@@ -292,7 +293,7 @@ const MINUS = `<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true
 const TRASH = `<svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V5h6v2M7 7l1 12h8l1-12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 let expanded = null, expTimer = 0;
 function photoCtrl(p, q, left, opts) {
-  if (left === 0 && !q) return `<div class="pctrl"><span class="sold">Agotado hoy</span></div>`;
+  if (left === 0 && !q) return `<div class="pctrl"><span class="sold">${p.block_note ? "No disponible" : "Agotado hoy"}</span></div>`;
   const full = left != null && q >= left;
   if (opts && !q) return `<div class="pctrl"><button type="button" class="pc-plus" data-a="pick" data-id="${p.id}" aria-label="Agregar ${esc(p.name)}"${full ? " disabled" : ""}>${PLUS}</button></div>`;
   if (!q) return `<div class="pctrl"><button type="button" class="pc-plus" data-a="+" data-id="${p.id}" aria-label="Agregar ${esc(p.name)}"${full ? " disabled" : ""}>${PLUS}</button></div>`;
@@ -320,7 +321,7 @@ function itemCard(p) {
   const q = qtyOf(p.id), left = leftToday(p), opts = groupsOf(p.id).length > 0;
   const img = p.image_url ? `<img src="${esc(media(p.image_url))}" alt="${esc(p.name)}" loading="lazy">` : `<span class="can" aria-hidden="true">${esc(p.name.split(" ").map((w) => w[0]).join("").slice(0, 2))}</span>`;
   const lead = p.lead_hours ? `<span class="tag">${p.lead_hours < 24 ? "¡Agenda para mañana!" : `Pedir con ${p.lead_hours} h de anticipación`}</span>` : "";
-  const stock = left === 0 ? `<span class="tag">Agotado por hoy · vuelve mañana</span>` : left != null ? `<span class="tag">Quedan ${left} hoy</span>` : "";
+  const stock = p.block_note ? `<span class="tag">${esc(p.block_note)}</span>` : left === 0 ? `<span class="tag">Agotado por hoy · vuelve mañana</span>` : left != null ? `<span class="tag">Quedan ${left} hoy</span>` : "";
   const hint = opts ? `<span class="optnote">Eliges ${groupsOf(p.id).map((g) => (pickN(g) ? "tus sabores" : g.name.toLowerCase())).join(" y ")} al agregar</span>` : "";
   return `<article class="item${p.seasonal || p.theme ? " seasonal" : ""}${p.theme ? ` theme-${esc(p.theme)}` : ""}${left === 0 ? " soldout" : ""}${q ? " incart-on" : ""}" data-pid="${p.id}"><div class="ph">${img}${photoCtrl(p, q, left, opts)}</div><div class="body"><h3>${esc(p.name)}</h3>${servChip(p)}<p>${descHtml(p.description)}</p>${rateRow(p)}${hint}${lead}${promoTag(p)}${stock}<div class="foot"><span class="price">${money(p.price)}</span>${algRow(p)}</div></div></article>`;
 }
