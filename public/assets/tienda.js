@@ -336,14 +336,19 @@ const byPriceDesc = (a, b) => Number(b.price) - Number(a.price) || byName(a, b);
 const menuOrder = (c) => /^combos/i.test(c.name) ? byPriceDesc : (a, b) => (b.seasonal ? 1 : 0) - (a.seasonal ? 1 : 0) || (a.seasonal && b.seasonal ? (a.sort ?? 0) - (b.sort ?? 0) : baseOrder(c)(a, b));
 // ---------- Black Friday (viernes 27 nov 2026, hora de Guayaquil) ----------
 // La lata nueva sale en grande arriba del menú, con contador hasta la medianoche y las latas que quedan.
-// Se apaga sola al terminar el día. El precio y el tope de 50 salen de la base (producto 63).
-const BF = { pid: 63, start: Date.parse("2026-11-27T00:00:00-05:00"), end: Date.parse("2026-11-28T00:00:00-05:00"), was: 4.25, total: 50 };
-if (new URLSearchParams(location.search).get("bf") === "1") { BF.start = 0; BF.end = Math.max(BF.end, Date.now() + 9 * 3600000); } // vista previa
+// Viernes 27: 50 latas. Sábado 28: "segunda oportunidad" con 10 latas. Se apaga sola el domingo 00:00.
+// El precio y el tope salen de la base (producto 63).
+const BF = { pid: 63, start: Date.parse("2026-11-27T00:00:00-05:00"), sat: Date.parse("2026-11-28T00:00:00-05:00"), end: Date.parse("2026-11-29T00:00:00-05:00"), was: 4.25 };
+const bfQ = new URLSearchParams(location.search).get("bf");
+if (bfQ === "1" || bfQ === "sab") { BF.start = 0; BF.end = Math.max(BF.end, Date.now() + 9 * 3600000); if (bfQ === "sab") BF.sat = 0; } // vista previa (?bf=sab: la del sábado)
+const bfSat = () => Date.now() >= BF.sat; // segunda oportunidad
+Object.defineProperty(BF, "total", { get: () => (bfSat() ? 10 : 50) });
+const bfDayEnd = () => (bfSat() ? BF.end : BF.sat);
 const bfProduct = () => state.products.find((p) => p.id === BF.pid);
 const bfOn = () => Date.now() >= BF.start && Date.now() < BF.end && Boolean(bfProduct());
 const two = (n) => String(n).padStart(2, "0");
 function bfClock() {
-  const ms = Math.max(0, BF.end - Date.now()), t = Math.floor(ms / 1000);
+  const ms = Math.max(0, (bfQ ? BF.end : bfDayEnd()) - Date.now()), t = Math.floor(ms / 1000);
   return { h: two(Math.floor(t / 3600)), m: two(Math.floor((t % 3600) / 60)), s: two(t % 60) };
 }
 // Lo que muestra el contador de latas: arranca en 50 y baja una por una hasta lo que queda de verdad
@@ -384,10 +389,10 @@ function bfSection() {
   <article class="bf-hero${leftToday(p) === 0 ? " soldout" : ""}" data-pid="${p.id}" data-bf>
     <div class="bf-ph"><span class="bf-new">¡Nuevo!</span><span class="bf-off">-${off}%</span>${img}</div>
     <div class="bf-body">
-      <div class="bf-head"><p class="bf-eyebrow"><span class="bf-dot"></span>Solo hoy · precio de lanzamiento</p>
+      <div class="bf-head"><p class="bf-eyebrow"><span class="bf-dot"></span>${bfSat() ? "Segunda oportunidad · solo 10 latas" : "Solo hoy · precio de lanzamiento"}</p>
       <h4 class="bf-name">${esc(p.name)}</h4>
       <div class="bf-price"><b>${moneyEs(p.price)}</b><s>${moneyEs(BF.was)}</s><span>Ahorras ${moneyEs(BF.was - Number(p.price))}</span></div></div>
-      <p class="bf-desc">Trozos de alfajor de maicena con capas generosas de dulce de leche. La lata nueva, a precio de Black Friday solo este viernes.</p>
+      <p class="bf-desc">${bfSat() ? "Para quienes no alcanzaron a probarla: la lata nueva vuelve a precio de Black Friday, solo este sábado y solo 10 latas." : "Trozos de alfajor de maicena con capas generosas de dulce de leche. La lata nueva, a precio de Black Friday solo este viernes."}</p>
       <div class="bf-clock" aria-label="Tiempo que queda de Black Friday"><span class="bf-lbl">Termina en</span><div class="bf-units"><div><b data-bf="h">${c.h}</b><small>horas</small></div><i>:</i><div><b data-bf="m">${c.m}</b><small>min</small></div><i>:</i><div><b data-bf="s">${c.s}</b><small>seg</small></div></div></div>
       <div class="bf-live">${bfLive()}</div>
     </div>
@@ -401,9 +406,9 @@ function renderBFPortada() {
   if (el) return;
   const p = bfProduct(), off = Math.round((1 - Number(p.price) / BF.was) * 100);
   el = document.createElement("section"); el.id = "bfPortada"; el.className = "bf-portada bfp-a";
-  el.innerHTML = `<div class="bfp-txt"><p class="bfp-eyebrow">Solo hoy</p>
+  el.innerHTML = `<div class="bfp-txt"><p class="bfp-eyebrow">${bfSat() ? "Segunda oportunidad · solo hoy" : "Solo hoy"}</p>
       <h1 class="bfp-h">Nueva latita viral a <em>${moneyEs(p.price)}</em></h1>
-      <p class="bfp-lead">Alfajor de Dulce de Leche a <b>${moneyEs(p.price)}</b> <s>${moneyEs(BF.was)}</s></p></div>
+      <p class="bfp-lead">${bfSat() ? "Solo 10 latas · " : ""}Alfajor de Dulce de Leche a <b>${moneyEs(p.price)}</b> <s>${moneyEs(BF.was)}</s></p></div>
     <button type="button" class="bfp-ph" id="bfPortadaGo" aria-label="Ver la oferta de Black Friday"><img src="${esc(media(p.image_url))}" alt="Lata de Alfajor de Dulce de Leche" fetchpriority="high"><span class="bfp-tag">Black Friday</span><span class="bfp-off">-${off}%</span></button>`;
   old?.before(el);
   $("#bfPortadaGo").onclick = bfScroll;
@@ -422,7 +427,7 @@ function renderBFBar() {
   const p = bfProduct(), left = leftToday(p) ?? BF.total, c = bfClock();
   bar.hidden = false;
   const n = bfShown ?? left;
-  $("#bfBarTxt").innerHTML = left === 0 ? `<b>Black Friday</b> · ¡Se vendieron todas las latas!` : `<b>Black Friday</b> · Lata nueva a <b>${moneyEs(p.price)}</b> · Quedan <b class="tabnum">${n}</b> · Termina en <span class="tabnum">${c.h}:${c.m}:${c.s}</span>`;
+  $("#bfBarTxt").innerHTML = left === 0 ? `<b>${bfSat() ? "Segunda oportunidad" : "Black Friday"}</b> · ¡Se vendieron todas las latas!` : `<b>${bfSat() ? "Segunda oportunidad" : "Black Friday"}</b> · Lata nueva a <b>${moneyEs(p.price)}</b> · Quedan <b class="tabnum">${n}</b> · Termina en <span class="tabnum">${c.h}:${c.m}:${c.s}</span>`;
 }
 // Cada segundo: el contador. Cada 30 s: cuántas latas quedan (la base cuenta las vendidas).
 setInterval(() => {
